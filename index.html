@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>GT7 Dashboard</title>
+    <style>
+        body { background: #111; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .dashboard { display: flex; gap: 40px; align-items: center; }
+        
+        /* Speed Meter */
+        .meter-box { text-align: center; }
+        .value { font-size: 80px; font-weight: bold; font-variant-numeric: tabular-nums; }
+        .label { font-size: 20px; color: #888; }
+        
+        /* RPM Bar */
+        .rpm-container { width: 80%; height: 30px; background: #333; margin-top: 20px; border-radius: 15px; overflow: hidden; position: relative; }
+        .rpm-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000); transition: width 0.05s linear; }
+        .rpm-val { position: absolute; top: 0; left: 50%; transform: translateX(-50%); line-height: 30px; font-weight: bold; text-shadow: 1px 1px 2px #000; }
+        
+        /* Pedals */
+        .pedals { display: flex; gap: 10px; height: 150px; align-items: flex-end; }
+        .pedal { width: 40px; background: #333; position: relative; border-radius: 4px; overflow: hidden; }
+        .pedal-fill { position: absolute; bottom: 0; width: 100%; transition: height 0.05s; }
+        .brake .pedal-fill { background: #ff3333; height: 0%; }
+        .throttle .pedal-fill { background: #33cc33; height: 0%; }
+        
+        .gear { font-size: 120px; font-weight: bold; color: yellow; min-width: 100px; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <div class="meter-box">
+            <div class="gear" id="gear">-</div>
+            <div class="label">GEAR</div>
+        </div>
+        
+        <div class="meter-box">
+            <div class="value" id="speed">0</div>
+            <div class="label">km/h</div>
+        </div>
+
+        <div class="pedals">
+            <div class="pedal brake"><div class="pedal-fill" id="brake-bar"></div></div>
+            <div class="pedal throttle"><div class="pedal-fill" id="throttle-bar"></div></div>
+        </div>
+    </div>
+
+    <div class="rpm-container">
+        <div class="rpm-bar" id="rpm-bar"></div>
+        <div class="rpm-val" id="rpm-text">0 RPM</div>
+    </div>
+
+    <script>
+        // DockerホストのIPを指定（ローカルならlocalhost）
+        const ws = new WebSocket('ws://localhost:8080');
+
+        ws.onopen = () => console.log('Connected to GT7 Bridge');
+        
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // Speed
+            document.getElementById('speed').innerText = Math.round(data.speed_kmh);
+            
+            // RPM
+            const rpmPct = (data.rpm / (data.max_rpm || 9000)) * 100;
+            document.getElementById('rpm-bar').style.width = rpmPct + '%';
+            document.getElementById('rpm-text').innerText = Math.round(data.rpm) + ' RPM';
+            
+            // Gear
+            let g = data.gear; 
+            document.getElementById('gear').innerText = g === 0 ? 'R' : (g === 1 ? 'N' : g - 1);
+
+            // Pedals
+            document.getElementById('throttle-bar').style.height = data.throttle_pct + '%';
+            document.getElementById('brake-bar').style.height = data.brake_pct + '%';
+        };
+    </script>
+</body>
+</html>

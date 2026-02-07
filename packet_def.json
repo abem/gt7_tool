@@ -1,0 +1,13 @@
+{
+    "fields": {
+        "position_x": {"offset": "0x04", "type": "float"},
+        "position_y": {"offset": "0x08", "type": "float"},
+        "position_z": {"offset": "0x0C", "type": "float"},
+        "speed_ms":   {"offset": "0x4C", "type": "float"},
+        "rpm":        {"offset": "0x3C", "type": "float"},
+        "max_rpm":    {"offset": "0x40", "type": "float"},
+        "gear_byte":  {"offset": "0x92", "type": "byte"},
+        "throttle":   {"offset": "0x91", "type": "byte"},
+        "brake":      {"offset": "0x92", "type": "byte"}
+    }
+}

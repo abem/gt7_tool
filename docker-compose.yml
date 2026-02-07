@@ -1,0 +1,9 @@
+services:
+  gt7-logger:
+    build: .
+    network_mode: "host"
+    volumes:
+      - ./:/app  # 現在のフォルダをコンテナ内の/appに同期
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
