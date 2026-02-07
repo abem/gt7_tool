@@ -1,68 +1,69 @@
 # GT7 Telemetry Dashboard
 
-A real-time telemetry dashboard for Gran Turismo 7 using Python and WebSocket.
-This tool captures telemetry packets from PS5/PS4, decrypts them (Salsa20), and broadcasts them to a web-based dashboard via WebSocket.
+PythonとWebSocketを使用した、グランツーリスモ7 (GT7) 用のリアルタイム・テレメトリーダッシュボードです。
+PS5/PS4から送信されるテレメトリーパケットを受信・復号（Salsa20）し、WebSocket経由でウェブブラウザ上のダッシュボードに表示します。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.11-blue.svg)
 
-## Features
-- **Real-time Data**: Speed, RPM, Gear, Throttle, Brake.
-- **Web Dashboard**: Simple HTML/JS frontend (customizable).
-- **Dockerized**: Easy setup with Docker Compose.
-- **Configurable**: Packet definitions and network settings are separated in JSON files.
+## 特徴
+- **リアルタイム表示**: 速度、回転数 (RPM)、ギア、アクセル開度、ブレーキ開度。
+- **Webダッシュボード**: HTML/JS製のシンプルなフロントエンド（カスタマイズ容易）。
+- **Docker対応**: Docker Compose で環境構築が不要。
+- **設定分離**: パケット定義やネットワーク設定をJSONで外出ししているため、コード修正なしで設定変更可能。
 
-## Prerequisites
-- PlayStation 4 or 5 with Gran Turismo 7
-- Docker & Docker Compose
+## 必須環境
+- グランツーリスモ7 が動作する PlayStation 4 または 5
+- Docker および Docker Compose
 
-## Quick Start
+## クイックスタート
 
-1. **Configure IP Address**
-   Edit `config.json` and set your PS5's IP address:
+1. **IPアドレスの設定**
+   `config.json` を編集し、PS5のIPアドレスを設定してください:
    ```json
    {
-       "ps5_ip": "192.168.1.10",  <-- Change this
+       "ps5_ip": "192.168.1.10",  <-- ここを自分のPS5のIPに変更
        "gt7_port": 33739,
        "ws_port": 8080,
        "heartbeat_interval": 10
    }
    ```
 
-2. **Start the Server**
+2. **サーバーの起動**
    ```bash
    docker compose up --build
    ```
-   You should see `Client connected. Starting stream...` in the logs when the browser connects.
+   ブラウザが接続すると、ログに `Client connected. Starting stream...` と表示されます。
 
-3. **Open Dashboard**
-   Open `index.html` in your web browser.
+3. **ダッシュボードを開く**
+   `index.html` をウェブブラウザで開いてください。
    
-   Example (Local file):
+   例 (ローカルファイル):
    `file:///path/to/gt7_tool/index.html`
+   （WindowsならエクスプローラーからダブルクリックでOK）
 
-## Architecture
+## 構成
 
-- **`main.py`**: Entry point. Runs the WebSocket server (`asyncio` + `websockets`).
-- **`telemetry.py`**: Handles UDP communication with PS5 (including Heartbeat `A` packets).
-- **`decoder.py`**: Decrypts Salsa20 encrypted packets and parses fields based on `packet_def.json`.
-- **`packet_def.json`**: Defines memory offsets and data types for telemetry fields.
-- **`config.json`**: Network configuration.
+- **`main.py`**: エントリーポイント。WebSocketサーバー (`asyncio` + `websockets`) を実行します。
+- **`telemetry.py`**: PS5とのUDP通信（ハートビート `A` パケット送信など）を管理します。
+- **`decoder.py`**: Salsa20で暗号化されたパケットを復号し、`packet_def.json` に基づいてデータを解析します。
+- **`packet_def.json`**: テレメトリーデータのメモリオフセットとデータ型を定義しています。
+- **`config.json`**: ネットワーク設定ファイル。
 
-## Customization
+## カスタマイズ方法
 
-To add more data fields (e.g., Tire Temp, Fuel, Boost):
+新しいデータ項目（例：タイヤ温度、燃料残量、ブースト圧など）を追加したい場合:
 
-1. Find the offset in GT7 telemetry documentation (community resources).
-2. Add the field to `packet_def.json`:
+1. GT7テレメトリーの仕様（コミュニティ等のドキュメント）でオフセットを探します。
+2. `packet_def.json` にフィールドを追加します:
    ```json
    "boost_pressure": {"offset": "0x50", "type": "float"}
    ```
-3. Update `index.html` to visualize the new data.
+3. `index.html` を編集して、新しいデータを表示するようにします。
 
-## Credits
-This tool uses the Salsa20 decryption logic required for GT7/GT Sport telemetry.
-Encryption key: `Simulator Interface Packet GT7 ver 0.0`
+## クレジット
+このツールは、GT7/GT Sportのテレメトリーに必要なSalsa20復号ロジックを使用しています。
+暗号化キー: `Simulator Interface Packet GT7 ver 0.0`
 
-## License
+## ライセンス
 MIT License
