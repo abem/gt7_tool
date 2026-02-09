@@ -236,6 +236,46 @@ MIT License
   - タイヤ温度を色で視覚化
   - decoder.pyの配列型処理のバグを修正
 
+## ブランチ構成
+
+このプロジェクトはGit Flowのベストプラクティスに従って管理されています：
+
+### ブランチタイプ
+
+| ブランチ名 | 用途 | 更新頻度 |
+|-----------|------|---------|
+| **main** | メインブランチ（デフォルト） | バグ修正、ドキュメント更新のみ |
+| **dev** | 開発ブランチ | 新機能開発、テスト |
+| **feature-xxx** | 新しい機能を個別に開発 | 機能が完成するまで |
+
+### 作業フロー
+
+1. **機能を追加する場合:**
+   ```bash
+   git checkout dev
+   git checkout -b feature-タイヤ温度表示拡張
+   # 変更をコミット
+   git checkout dev
+   git merge feature-タイヤ温度表示拡張
+   ```
+
+2. **バグ修正やドキュメント更新:**
+   ```bash
+   git checkout main
+   # 変更をコミット
+   git push origin main
+   ```
+
+3. **パッチ適用:**
+   ```bash
+   git checkout main
+   git pull origin main
+   # バグ修正をコミット
+   git push origin main
+   ```
+
+**注意:** masterブランチは廃止され、代わりにmainブランチを使用しています。
+
 ---
 
 *My shape is designed to be trusted by you.*
