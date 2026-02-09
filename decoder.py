@@ -1,16 +1,42 @@
+"""
+GT7デコーダーモジュール
+
+PS5からの暗号化テレメトリーパケットを復号し、解析します。
+"""
+
 import struct
 import json
 from salsa20 import Salsa20_xor
+from math_utils import calculate_slip_ratio, calculate_load_ratio, get_temp_color
+from tyre_helper import TyreHistory
+
 
 class GT7Decoder:
-    def __init__(self, def_file='packet_def.json'):
+    """GT7テレメトリーパケットの復号と解析"""
+
+    def __init__(self, def_file='packet_def.json', max_history: int = 10):
+        """
+        デコーダーを初期化します
+
+        Args:
+            def_file: パケット定義ファイルのパス
+            max_history: タイヤ温度履歴の最大数
+        """
         self.key = b'Simulator Interface Packet GT7 ver 0.0'
         with open(def_file, 'r') as f:
             self.definition = json.load(f)
-        self.tyre_history = []  # タイヤ温度の履歴保存
+        self.tyre_history = TyreHistory(max_history)
 
-    def decrypt(self, data):
-        """Decrypts the GT7 packet using Salsa20"""
+    def decrypt(self, data: bytes) -> bytes:
+        """
+        GT7パケットを復号します
+
+        Args:
+            data: 暗号化されたパケット
+
+        Returns:
+            復号されたパケット
+        """
         if len(data) < 0x100:
             return None
 
@@ -25,14 +51,23 @@ class GT7Decoder:
             print(f"Decryption Error: {e}")
             return None
 
-    def parse(self, decrypted_data):
-        """Parses the decrypted data based on JSON definition"""
+    def parse(self, decrypted_data: bytes) -> dict:
+        """
+        復号されたパケットを解析します
+
+        Args:
+            decrypted_data: 復号されたパケット
+
+        Returns:
+            解析されたデータ
+        """
         if not decrypted_data:
             return None
 
         result = {}
         fields = self.definition.get("fields", {})
 
+        # 各フィールドを解析
         for name, meta in fields.items():
             offset = int(meta["offset"], 16)
             data_type = meta["type"]
@@ -44,7 +79,7 @@ class GT7Decoder:
                 val = decrypted_data[offset]
                 result[name] = val
             elif data_type == "array_float":
-                # Handle float arrays (e.g., tyre temperature)
+                # フロート配列の処理（タイヤ温度など）
                 array_len = meta["length"]
                 array_data = []
                 for i in range(array_len):
@@ -52,14 +87,14 @@ class GT7Decoder:
                     array_data.append(val)
                 result[name] = array_data
 
-        # Computed values / Post-processing
+        # 計算値の処理
         result["speed_kmh"] = result.get("speed_ms", 0) * 3.6
         result["throttle_pct"] = result.get("throttle", 0) / 2.55
         result["brake_pct"] = result.get("brake", 0) / 2.55
 
-        # Gear logic (masking)
+        # ギアロジック
         if "gear_byte" in result:
-             result["gear"] = result["gear_byte"] & 0x0F
+            result["gear"] = result["gear_byte"] & 0x0F
 
         # タイヤスリップ率と接地率の計算
         result["slip_ratio"] = []
@@ -69,34 +104,25 @@ class GT7Decoder:
         if "wheel_rps" in result and "speed_ms" in result:
             wheel_rps = result["wheel_rps"]
             speed_ms = result["speed_ms"]
-            # スリップ率: (wheelSpeed - vehicleSpeed) / max(wheelSpeed, vehicleSpeed)
+
+            # 各タイヤのスリップ率を計算
             for i, rps in enumerate(wheel_rps):
                 wheel_kmh = rps * 2 * 3.14159 * result.get("tyre_radius", [0.3])[i] * 3.6
-                if wheel_kmh > speed_ms:
-                    slip = (wheel_kmh - speed_ms) / wheel_kmh * 100
-                else:
-                    slip = 0
-                result["slip_ratio"].append(min(max(slip, 0), 100))
+                slip_ratio = calculate_slip_ratio(wheel_kmh, speed_ms * 3.6)
+                result["slip_ratio"].append(slip_ratio)
 
-        # 接地率: 1 - (suspensionTravel / maxTravel)
-        # 最大サスペンションストロークは概ね50mmと仮定
+        # 接地率の計算
         if "susp_height" in result:
             for i, height in enumerate(result["susp_height"]):
-                max_travel = 50.0
-                travel = (max_travel - height)  # サスペンションが伸びているほど接地率は低い
-                load_ratio = 1 - (travel / max_travel)
-                result["load_ratio"].append(min(max(load_ratio, 0), 1))
+                load_ratio = calculate_load_ratio(height)
+                result["load_ratio"].append(load_ratio)
 
         # ブレーキ温度
         if "brake_temp" in result:
-            for i, temp in enumerate(result["brake_temp"]):
-                result["brake_temp"][i] = temp
+            result["brake_temp"] = result["brake_temp"]
 
-        # タイヤ温度の履歴を保存（最新10点）
+        # タイヤ温度履歴を保存
         if "tyre_temp" in result:
-            tyre_temp = result["tyre_temp"]
-            self.tyre_history.append(tyre_temp.copy())
-            if len(self.tyre_history) > 10:
-                self.tyre_history.pop(0)
+            self.tyre_history.add(result["tyre_temp"])
 
         return result
