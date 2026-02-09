@@ -23,10 +23,9 @@
             background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 100%);
         }
 
-        /* HUD Container */
         .hud-container {
             width: 100%;
-            max-width: 1400px;
+            max-width: 1600px;
             padding: 20px;
         }
 
@@ -297,7 +296,7 @@
         }
 
         .tyre-data-value {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
             color: #fff;
         }
@@ -340,6 +339,67 @@
         .tyre-card.cold .tyre-data-value {
             color: #44ffff;
             text-shadow: 0 0 10px rgba(68, 255, 255, 0.8);
+        }
+
+        /* Slip Ratio Display */
+        .slip-display {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .slip-bar {
+            height: 100%;
+            transition: width 0.05s, background-color 0.05s;
+        }
+
+        .slip-good { background: #00ff88; }
+        .slip-warn { background: #ffff00; }
+        .slip-danger { background: #ff4444; animation: warningFlash 0.3s infinite; }
+
+        /* Load Ratio Display */
+        .load-display {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .load-bar {
+            height: 100%;
+            transition: width 0.05s, background-color 0.05s;
+        }
+
+        .load-ideal { background: #00ff88; }
+        .load-low { background: #ffff00; }
+        .load-void { background: #ff4444; }
+
+        /* History Graph */
+        .history-graph {
+            width: 100%;
+            height: 40px;
+            margin-top: 5px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .history-bar {
+            position: absolute;
+            bottom: 0;
+            height: 100%;
+            transition: width 0.05s, background-color 0.05s;
+        }
+
+        /* Brake Temp */
+        .brake-temp {
+            font-size: 12px;
         }
     </style>
 </head>
@@ -554,7 +614,7 @@
         function updateWheelMeter(position, rps) {
             const fill = document.getElementById('wheel-' + position);
             const value = document.getElementById('wheel-' + position + '-val');
-            const maxRps = 20; // 最大値を設定
+            const maxRps = 20;
 
             if (rps !== undefined) {
                 const pct = Math.min((rps / maxRps) * 100, 100);
@@ -571,6 +631,9 @@
             const susp = data.susp_height && data.susp_height[index];
             const wheel = data.wheel_rps && data.wheel_rps[index];
             const radius = data.tyre_radius && data.tyre_radius[index];
+            const slipRatio = data.slip_ratio && data.slip_ratio[index];
+            const loadRatio = data.load_ratio && data.load_ratio[index];
+            const brakeTemp = data.brake_temp && data.brake_temp[index];
 
             // Temperature
             if (temp !== undefined) {
@@ -580,21 +643,17 @@
 
                 tempElement.innerText = temp.toFixed(1) + '°C';
 
-                // Temperature color
                 let tempPct = Math.min(Math.max((temp - 20) / 80, 0), 1);
                 let color;
                 let tempState;
 
                 if (temp < 40) {
-                    // Cold
                     color = '#44ffff';
                     tempState = 'cold';
                 } else if (temp < 80) {
-                    // Optimal
                     color = '#00ff88';
                     tempState = 'optimal';
                 } else {
-                    // Hot
                     color = '#ff4444';
                     tempState = 'hot';
                 }
@@ -604,7 +663,6 @@
                 tempElement.style.color = color;
                 tempElement.style.textShadow = `0 0 10px ${color}`;
 
-                // Card state
                 tempCard.className = 'tyre-card ' + position + ' ' + tempState;
             }
 
@@ -621,6 +679,58 @@
             // Radius
             if (radius !== undefined) {
                 document.getElementById('tyre-' + position + '-radius').innerText = radius.toFixed(3) + 'm';
+            }
+
+            // Slip Ratio
+            if (slipRatio !== undefined) {
+                const slipElement = document.getElementById('tyre-' + position + '-slip');
+                const slipBar = document.getElementById('tyre-' + position + '-slip-bar');
+                const slipContainer = document.getElementById('tyre-' + position + '-slip-container');
+
+                if (slipContainer) {
+                    slipContainer.style.display = 'block';
+                    slipElement.innerText = slipRatio.toFixed(1) + '%';
+
+                    let colorClass = 'slip-good';
+                    if (slipRatio > 20) colorClass = 'slip-warn';
+                    if (slipRatio > 50) colorClass = 'slip-danger';
+
+                    slipBar.className = 'slip-bar ' + colorClass;
+                    slipBar.style.width = slipRatio + '%';
+                }
+            }
+
+            // Load Ratio
+            if (loadRatio !== undefined) {
+                const loadElement = document.getElementById('tyre-' + position + '-load');
+                const loadBar = document.getElementById('tyre-' + position + '-load-bar');
+                const loadContainer = document.getElementById('tyre-' + position + '-load-container');
+
+                if (loadContainer) {
+                    loadContainer.style.display = 'block';
+                    loadElement.innerText = (loadRatio * 100).toFixed(0) + '%';
+
+                    let colorClass = 'load-ideal';
+                    if (loadRatio < 0.5) colorClass = 'load-low';
+                    if (loadRatio < 0.2) colorClass = 'load-void';
+
+                    loadBar.className = 'load-bar ' + colorClass;
+                    loadBar.style.width = (loadRatio * 100) + '%';
+                }
+            }
+
+            // Brake Temp
+            if (brakeTemp !== undefined) {
+                const brakeElement = document.getElementById('tyre-' + position + '-brake');
+                if (brakeElement) {
+                    brakeElement.className = 'tyre-data-item brake-temp';
+                    brakeElement.innerHTML = `
+                        <div class="tyre-data-label">BRAKE</div>
+                        <div class="tyre-data-value" style="color: ${brakeTemp > 400 ? '#ff4444' : '#ffaa00'}">
+                            ${brakeTemp.toFixed(0)}°C
+                        </div>
+                    `;
+                }
             }
         }
     </script>
