@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>GT7 Telemetry Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .connected { background: #2ecc71; }
+        .disconnected { background: #e74c3c; }
+        .data-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .data-box {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .data-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0f3460;
+        }
+        .data-label {
+            font-size: 12px;
+            color: #888;
+        }
+        #speed-box .data-value { color: #e94560; font-size: 48px; }
+        #rpm-box .data-value { color: #0f3460; }
+        #gear-box .data-value { color: #ffd700; font-size: 72px; }
+    </style>
+</head>
+<body>
+    <h1>GT7 Telemetry Test</h1>
+    <div id="status" class="status disconnected">Disconnected</div>
+
+    <div class="data-container">
+        <div class="data-box" id="speed-box">
+            <div class="data-value" id="speed">0</div>
+            <div class="data-label">km/h</div>
+        </div>
+        <div class="data-box" id="rpm-box">
+            <div class="data-value" id="rpm">0</div>
+            <div class="data-label">RPM</div>
+        </div>
+        <div class="data-box" id="gear-box">
+            <div class="data-value" id="gear">N</div>
+            <div class="data-label">GEAR</div>
+        </div>
+        <div class="data-box">
+            <div class="data-value" id="throttle">0</div>
+            <div class="data-label">THROTTLE %</div>
+        </div>
+        <div class="data-box">
+            <div class="data-value" id="brake">0</div>
+            <div class="data-label">BRAKE %</div>
+        </div>
+        <div class="data-box">
+            <div class="data-value" id="fl-temp">0</div>
+            <div class="data-label">FL TEMP °C</div>
+        </div>
+        <div class="data-box">
+            <div class="data-value" id="fr-temp">0</div>
+            <div class="data-label">FR TEMP °C</div>
+        </div>
+        <div class="data-box">
+            <div class="data-value" id="rl-temp">0</div>
+            <div class="data-label">RL TEMP °C</div>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px;">
+        <h3>Raw Data (last update)</h3>
+        <pre id="raw-data" style="background: #000; padding: 10px; border-radius: 5px;">No data</pre>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const rawEl = document.getElementById('raw-data');
+
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsHost = window.location.host;
+        const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws`);
+
+        ws.onopen = () => {
+            console.log('Connected to GT7 Bridge');
+            statusEl.textContent = 'Connected';
+            statusEl.className = 'status connected';
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket Error:', error);
+            statusEl.textContent = 'Error: ' + error;
+            statusEl.className = 'status disconnected';
+        };
+
+        ws.onclose = () => {
+            console.log('Disconnected from GT7 Bridge');
+            statusEl.textContent = 'Disconnected';
+            statusEl.className = 'status disconnected';
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+
+                // 更新表示
+                document.getElementById('speed').textContent = Math.round(data.speed_kmh || 0);
+                document.getElementById('rpm').textContent = Math.round(data.rpm || 0);
+
+                const gear = data.gear || 0;
+                document.getElementById('gear').textContent = gear === 0 ? 'R' : (gear === 1 ? 'N' : gear - 1);
+
+                document.getElementById('throttle').textContent = Math.round(data.throttle_pct || 0);
+                document.getElementById('brake').textContent = Math.round(data.brake_pct || 0);
+
+                if (data.tyre_temp) {
+                    document.getElementById('fl-temp').textContent = Math.round(data.tyre_temp[0]);
+                    document.getElementById('fr-temp').textContent = Math.round(data.tyre_temp[1]);
+                    document.getElementById('rl-temp').textContent = Math.round(data.tyre_temp[2]);
+                }
+
+                rawEl.textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                console.error('Parse error:', e);
+                rawEl.textContent = 'Parse error: ' + e + '\nRaw: ' + event.data;
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,384 @@
+/**
+ * GT7 Telemetry HUD
+ * スタイルシート
+ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #0a0a0f;
+    color: #fff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 100%);
+}
+
+.hud-container {
+    width: 100%;
+    max-width: 1600px;
+    padding: 20px;
+}
+
+/* Main Gauge Area */
+.gauge-area {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 40px;
+    margin-bottom: 30px;
+}
+
+/* Gear Display */
+.gear-display {
+    text-align: center;
+    position: relative;
+}
+
+.gear-value {
+    font-size: 180px;
+    font-weight: bold;
+    color: #00ff88;
+    text-shadow: 0 0 20px rgba(0, 255, 136, 0.5),
+                 0 0 40px rgba(0, 255, 136, 0.3),
+                 0 0 60px rgba(0, 255, 136, 0.1);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 10px;
+}
+
+.gear-label {
+    font-size: 24px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 5px;
+    margin-top: 10px;
+}
+
+.gear-sub {
+    font-size: 16px;
+    color: #555;
+    margin-top: 5px;
+}
+
+/* Speed Display */
+.speed-display {
+    text-align: center;
+    position: relative;
+}
+
+.speed-value {
+    font-size: 160px;
+    font-weight: bold;
+    color: #ffaa00;
+    text-shadow: 0 0 20px rgba(255, 170, 0, 0.5),
+                 0 0 40px rgba(255, 170, 0, 0.3);
+    font-variant-numeric: tabular-nums;
+}
+
+.speed-unit {
+    font-size: 32px;
+    color: #ffaa00;
+    text-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+}
+
+/* RPM Bar */
+.rpm-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px;
+    height: 15px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.rpm-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #00ff88, #ffff00, #ff4444);
+    width: 0%;
+    transition: width 0.05s linear;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.rpm-text {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 20px;
+    color: #ffff00;
+    font-weight: bold;
+    text-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+}
+
+/* Pedals */
+.pedals {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 40px;
+}
+
+.pedal {
+    width: 50px;
+    height: 150px;
+    background: linear-gradient(180deg, #333 0%, #222 100%);
+    border-radius: 5px 5px 0 0;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.pedal-label {
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+}
+
+.pedal-fill {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    transition: height 0.05s;
+    box-shadow: 0 0 20px currentColor;
+}
+
+.pedal.throttle .pedal-fill {
+    background: linear-gradient(180deg, #44ff44 0%, #22cc22 100%);
+    color: #44ff44;
+}
+
+.pedal.brake .pedal-fill {
+    background: linear-gradient(180deg, #ff4444 0%, #cc2222 100%);
+    color: #ff4444;
+}
+
+/* Wheel Rotation Meters */
+.wheel-meters {
+    display: flex;
+    justify-content: center;
+    gap: 80px;
+    margin-bottom: 30px;
+}
+
+.wheel-meter {
+    position: relative;
+    width: 120px;
+    height: 120px;
+}
+
+.wheel-circle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 3px solid #333;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.wheel-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: conic-gradient(#00aaff 0deg, #00ff88 180deg, #ff4444 360deg);
+    mask: radial-gradient(transparent 70%, black 71%);
+    -webkit-mask: radial-gradient(transparent 70%, black 71%);
+    transform: rotate(-90deg);
+    opacity: 0.8;
+}
+
+.wheel-value {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px;
+    color: #00aaff;
+    font-weight: bold;
+    text-shadow: 0 0 10px rgba(0, 170, 255, 0.5);
+}
+
+.wheel-label {
+    position: absolute;
+    bottom: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+}
+
+/* Tyre Grid */
+.tyre-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.tyre-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 15px;
+    position: relative;
+    overflow: hidden;
+}
+
+.tyre-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+}
+
+.tyre-card.fl::before { background: linear-gradient(90deg, #00ff88, #00aaff); }
+.tyre-card.fr::before { background: linear-gradient(90deg, #00ff88, #00aaff); }
+.tyre-card.rl::before { background: linear-gradient(90deg, #ff00ff, #aa00ff); }
+.tyre-card.rr::before { background: linear-gradient(90deg, #ff00ff, #aa00ff); }
+
+.tyre-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.tyre-position {
+    font-size: 16px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.tyre-card.fl .tyre-position { color: #00ff88; }
+.tyre-card.fr .tyre-position { color: #00ff88; }
+.tyre-card.rl .tyre-position { color: #ff00ff; }
+.tyre-card.rr .tyre-position { color: #ff00ff; }
+
+.tyre-data {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.tyre-data-item {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 8px;
+    border-radius: 8px;
+}
+
+.tyre-data-label {
+    font-size: 10px;
+    color: #666;
+    text-transform: uppercase;
+}
+
+.tyre-data-value {
+    font-size: 14px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.tyre-card.fl .tyre-data-value { color: #00ff88; }
+.tyre-card.fr .tyre-data-value { color: #00ff88; }
+.tyre-card.rl .tyre-data-value { color: #ff00ff; }
+.tyre-card.rr .tyre-data-value { color: #ff00ff; }
+
+/* Temperature Display */
+.temp-display {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+
+.temp-bar {
+    height: 100%;
+    transition: width 0.05s, background-color 0.05s;
+}
+
+/* Warning Flash */
+@keyframes warningFlash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.warning {
+    animation: warningFlash 0.5s infinite;
+}
+
+.tyre-card.hot .tyre-data-value {
+    color: #ff4444;
+    text-shadow: 0 0 10px rgba(255, 68, 68, 0.8);
+}
+
+.tyre-card.cold .tyre-data-value {
+    color: #44ffff;
+    text-shadow: 0 0 10px rgba(68, 255, 255, 0.8);
+}
+
+/* Slip Ratio Display */
+.slip-display {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+
+.slip-bar {
+    height: 100%;
+    transition: width 0.05s, background-color 0.05s;
+}
+
+.slip-good { background: #00ff88; }
+.slip-warn { background: #ffff00; }
+.slip-danger { background: #ff4444; animation: warningFlash 0.3s infinite; }
+
+/* Load Ratio Display */
+.load-display {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+
+.load-bar {
+    height: 100%;
+    transition: width 0.05s, background-color 0.05s;
+}
+
+.load-ideal { background: #00ff88; }
+.load-low { background: #ffff00; }
+.load-void { background: #ff4444; }
+
+/* Brake Temp */
+.brake-temp {
+    font-size: 12px;
+}

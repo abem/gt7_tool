@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>GT7 Telemetry HUD</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div class="hud-container">
+        <!-- Gauge Area -->
+        <div class="gauge-area">
+            <!-- Gear Display -->
+            <div class="gear-display">
+                <div class="gear-value" id="gear">N</div>
+                <div class="gear-label">GEAR</div>
+                <div class="gear-sub" id="gear-rpm">0 RPM</div>
+            </div>
+
+            <!-- Speed Display -->
+            <div class="speed-display">
+                <div class="speed-value" id="speed">0</div>
+                <div class="speed-unit">km/h</div>
+            </div>
+        </div>
+
+        <!-- RPM Bar -->
+        <div class="rpm-container">
+            <div class="rpm-text" id="rpm-text">0 RPM</div>
+            <div class="rpm-bar" id="rpm-bar"></div>
+        </div>
+
+        <!-- Pedals -->
+        <div class="pedals">
+            <div class="pedal brake">
+                <span class="pedal-label">BRAKE</span>
+                <div class="pedal-fill" id="brake-bar"></div>
+            </div>
+            <div class="pedal throttle">
+                <span class="pedal-label">THROTTLE</span>
+                <div class="pedal-fill" id="throttle-bar"></div>
+            </div>
+        </div>
+
+        <!-- Wheel Rotation Meters -->
+        <div class="wheel-meters">
+            <div class="wheel-meter">
+                <div class="wheel-circle"></div>
+                <div class="wheel-fill" id="wheel-fl"></div>
+                <div class="wheel-value" id="wheel-fl-val">0 rps</div>
+                <div class="wheel-label">FL</div>
+            </div>
+            <div class="wheel-meter">
+                <div class="wheel-circle"></div>
+                <div class="wheel-fill" id="wheel-fr"></div>
+                <div class="wheel-value" id="wheel-fr-val">0 rps</div>
+                <div class="wheel-label">FR</div>
+            </div>
+            <div class="wheel-meter">
+                <div class="wheel-circle"></div>
+                <div class="wheel-fill" id="wheel-rl"></div>
+                <div class="wheel-value" id="wheel-rl-val">0 rps</div>
+                <div class="wheel-label">RL</div>
+            </div>
+            <div class="wheel-meter">
+                <div class="wheel-circle"></div>
+                <div class="wheel-fill" id="wheel-rr"></div>
+                <div class="wheel-value" id="wheel-rr-val">0 rps</div>
+                <div class="wheel-label">RR</div>
+            </div>
+        </div>
+
+        <!-- Tyre Grid -->
+        <div class="tyre-grid">
+            <div class="tyre-card fl" id="tyre-fl">
+                <div class="tyre-header">
+                    <span class="tyre-position">FL</span>
+                </div>
+                <div class="tyre-data">
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">TEMP</div>
+                        <div class="tyre-data-value" id="tyre-fl-temp">--°C</div>
+                        <div class="temp-display"><div class="temp-bar" id="tyre-fl-temp-bar"></div></div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">SUSP</div>
+                        <div class="tyre-data-value" id="tyre-fl-susp">--mm</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">WHEEL</div>
+                        <div class="tyre-data-value" id="tyre-fl-wheel">--rps</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">RADIUS</div>
+                        <div class="tyre-data-value" id="tyre-fl-radius">--m</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tyre-card fr" id="tyre-fr">
+                <div class="tyre-header">
+                    <span class="tyre-position">FR</span>
+                </div>
+                <div class="tyre-data">
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">TEMP</div>
+                        <div class="tyre-data-value" id="tyre-fr-temp">--°C</div>
+                        <div class="temp-display"><div class="temp-bar" id="tyre-fr-temp-bar"></div></div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">SUSP</div>
+                        <div class="tyre-data-value" id="tyre-fr-susp">--mm</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">WHEEL</div>
+                        <div class="tyre-data-value" id="tyre-fr-wheel">--rps</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">RADIUS</div>
+                        <div class="tyre-data-value" id="tyre-fr-radius">--m</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tyre-card rl" id="tyre-rl">
+                <div class="tyre-header">
+                    <span class="tyre-position">RL</span>
+                </div>
+                <div class="tyre-data">
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">TEMP</div>
+                        <div class="tyre-data-value" id="tyre-rl-temp">--°C</div>
+                        <div class="temp-display"><div class="temp-bar" id="tyre-rl-temp-bar"></div></div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">SUSP</div>
+                        <div class="tyre-data-value" id="tyre-rl-susp">--mm</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">WHEEL</div>
+                        <div class="tyre-data-value" id="tyre-rl-wheel">--rps</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">RADIUS</div>
+                        <div class="tyre-data-value" id="tyre-rl-radius">--m</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tyre-card rr" id="tyre-rr">
+                <div class="tyre-header">
+                    <span class="tyre-position">RR</span>
+                </div>
+                <div class="tyre-data">
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">TEMP</div>
+                        <div class="tyre-data-value" id="tyre-rr-temp">--°C</div>
+                        <div class="temp-display"><div class="temp-bar" id="tyre-rr-temp-bar"></div></div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">SUSP</div>
+                        <div class="tyre-data-value" id="tyre-rr-susp">--mm</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">WHEEL</div>
+                        <div class="tyre-data-value" id="tyre-rr-wheel">--rps</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">RADIUS</div>
+                        <div class="tyre-data-value" id="tyre-rr-radius">--m</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="ui_components.js"></script>
+    <script>
+        // 現在のホストからWebSocket URLを構築
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsHost = window.location.host;
+        const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws`);
+
+        ws.onopen = () => {
+            console.log('Connected to GT7 Bridge');
+            document.querySelector('.hud-container').style.opacity = '1';
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket Error:', error);
+        };
+
+        ws.onclose = () => {
+            console.log('Disconnected from GT7 Bridge');
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            // ギア表示
+            updateGearDisplay(data.gear, data.rpm);
+
+            // スピード表示
+            updateSpeedDisplay(data.speed_kmh);
+
+            // RPMバー
+            updateRpmBar(data.rpm, data.max_rpm);
+
+            // パドル
+            updatePedals(data.throttle_pct, data.brake_pct);
+
+            // ホイール回転
+            updateWheelMeters(data.wheel_rps);
+
+            // タイヤデータ
+            updateAllTyreData(data);
+        };
+    </script>
+</body>
+</html>
