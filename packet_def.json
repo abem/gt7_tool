@@ -8,6 +8,10 @@
         "max_rpm":    {"offset": "0x40", "type": "float"},
         "gear_byte":  {"offset": "0x92", "type": "byte"},
         "throttle":   {"offset": "0x91", "type": "byte"},
-        "brake":      {"offset": "0x92", "type": "byte"}
+        "brake":      {"offset": "0x92", "type": "byte"},
+        "tyre_temp":  {"offset": "0x140", "type": "array_float", "length": 4},
+        "susp_height": {"offset": "0x180", "type": "array_float", "length": 4},
+        "wheel_rps":  {"offset": "0x1A0", "type": "array_float", "length": 4},
+        "tyre_radius": {"offset": "0x1C0", "type": "array_float", "length": 4}
     }
 }

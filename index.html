@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>GT7 Dashboard</title>
     <style>
-        body { background: #111; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        body { background: #111; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100vh; margin: 0; padding: 20px; overflow: auto; }
         .dashboard { display: flex; gap: 40px; align-items: center; }
         
         /* Speed Meter */
@@ -25,6 +25,26 @@
         .throttle .pedal-fill { background: #33cc33; height: 0%; }
         
         .gear { font-size: 120px; font-weight: bold; color: yellow; min-width: 100px; text-align: center; }
+
+        /* Tyre Section */
+        .tyre-section { margin-top: 30px; width: 100%; max-width: 900px; }
+        .tyre-section-title { font-size: 24px; color: #888; text-align: center; margin-bottom: 15px; }
+        .tyre-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .tyre-card { background: #222; padding: 15px; border-radius: 10px; border: 2px solid #444; }
+        .tyre-card.front { border-color: #4CAF50; }
+        .tyre-card.rear { border-color: #2196F3; }
+        .tyre-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .tyre-position { font-size: 20px; font-weight: bold; }
+        .tyre-position.fl { color: #4CAF50; }
+        .tyre-position.fr { color: #4CAF50; }
+        .tyre-position.rl { color: #2196F3; }
+        .tyre-position.rr { color: #2196F3; }
+        .tyre-data { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .tyre-data-item { background: #333; padding: 8px; border-radius: 5px; }
+        .tyre-data-label { font-size: 12px; color: #888; }
+        .tyre-data-value { font-size: 18px; font-weight: bold; }
+        .tyre-temp-display { width: 100%; height: 8px; background: #444; border-radius: 4px; margin-top: 5px; overflow: hidden; }
+        .tyre-temp-bar { height: 100%; transition: width 0.05s, background-color 0.05s; }
     </style>
 </head>
 <body>
@@ -51,6 +71,108 @@
         <div class="rpm-val" id="rpm-text">0 RPM</div>
     </div>
 
+    <div class="tyre-section">
+        <div class="tyre-section-title">タイヤ状態</div>
+        <div class="tyre-grid">
+            <div class="tyre-card front" id="tyre-fl">
+                <div class="tyre-header">
+                    <span class="tyre-position fl">FL (前左)</span>
+                </div>
+                <div class="tyre-data">
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">温度</div>
+                        <div class="tyre-data-value" id="tyre-fl-temp">--°C</div>
+                        <div class="tyre-temp-display"><div class="tyre-temp-bar" id="tyre-fl-temp-bar"></div></div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">サスペンション</div>
+                        <div class="tyre-data-value" id="tyre-fl-susp">--mm</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">回転数</div>
+                        <div class="tyre-data-value" id="tyre-fl-rps">--rps</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">タイヤ半径</div>
+                        <div class="tyre-data-value" id="tyre-fl-radius">--m</div>
+                    </div>
+                </div>
+            </div>
+            <div class="tyre-card front" id="tyre-fr">
+                <div class="tyre-header">
+                    <span class="tyre-position fr">FR (前右)</span>
+                </div>
+                <div class="tyre-data">
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">温度</div>
+                        <div class="tyre-data-value" id="tyre-fr-temp">--°C</div>
+                        <div class="tyre-temp-display"><div class="tyre-temp-bar" id="tyre-fr-temp-bar"></div></div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">サスペンション</div>
+                        <div class="tyre-data-value" id="tyre-fr-susp">--mm</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">回転数</div>
+                        <div class="tyre-data-value" id="tyre-fr-rps">--rps</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">タイヤ半径</div>
+                        <div class="tyre-data-value" id="tyre-fr-radius">--m</div>
+                    </div>
+                </div>
+            </div>
+            <div class="tyre-card rear" id="tyre-rl">
+                <div class="tyre-header">
+                    <span class="tyre-position rl">RL (後左)</span>
+                </div>
+                <div class="tyre-data">
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">温度</div>
+                        <div class="tyre-data-value" id="tyre-rl-temp">--°C</div>
+                        <div class="tyre-temp-display"><div class="tyre-temp-bar" id="tyre-rl-temp-bar"></div></div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">サスペンション</div>
+                        <div class="tyre-data-value" id="tyre-rl-susp">--mm</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">回転数</div>
+                        <div class="tyre-data-value" id="tyre-rl-rps">--rps</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">タイヤ半径</div>
+                        <div class="tyre-data-value" id="tyre-rl-radius">--m</div>
+                    </div>
+                </div>
+            </div>
+            <div class="tyre-card rear" id="tyre-rr">
+                <div class="tyre-header">
+                    <span class="tyre-position rr">RR (後右)</span>
+                </div>
+                <div class="tyre-data">
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">温度</div>
+                        <div class="tyre-data-value" id="tyre-rr-temp">--°C</div>
+                        <div class="tyre-temp-display"><div class="tyre-temp-bar" id="tyre-rr-temp-bar"></div></div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">サスペンション</div>
+                        <div class="tyre-data-value" id="tyre-rr-susp">--mm</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">回転数</div>
+                        <div class="tyre-data-value" id="tyre-rr-rps">--rps</div>
+                    </div>
+                    <div class="tyre-data-item">
+                        <div class="tyre-data-label">タイヤ半径</div>
+                        <div class="tyre-data-value" id="tyre-rr-radius">--m</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // DockerホストのIPを指定（ローカルならlocalhost）
         const ws = new WebSocket('ws://localhost:8080');
@@ -75,7 +197,56 @@
             // Pedals
             document.getElementById('throttle-bar').style.height = data.throttle_pct + '%';
             document.getElementById('brake-bar').style.height = data.brake_pct + '%';
+
+            // Tyre Data
+            updateTyreData('fl', data, 0);
+            updateTyreData('fr', data, 1);
+            updateTyreData('rl', data, 2);
+            updateTyreData('rr', data, 3);
         };
+
+        function updateTyreData(position, data, index) {
+            // Tyre Temperature (Celsius)
+            if (data.tyre_temp && data.tyre_temp[index] !== undefined) {
+                const temp = data.tyre_temp[index];
+                document.getElementById(`tyre-${position}-temp`).innerText = temp.toFixed(1) + '°C';
+                
+                // Temperature color (Blue: cold -> Green: optimal -> Red: hot)
+                const tempPct = Math.min(Math.max((temp - 20) / 80, 0), 1);
+                document.getElementById(`tyre-${position}-temp-bar`).style.width = (tempPct * 100) + '%';
+                
+                let tempColor;
+                if (temp < 40) {
+                    // Cold (blue to cyan)
+                    tempColor = `rgb(${Math.round(tempPct * 100)}, 255, 255)`;
+                } else if (temp < 80) {
+                    // Optimal (green to yellow)
+                    tempColor = `rgb(255, 255, ${Math.round(255 - tempPct * 255)})`;
+                } else {
+                    // Hot (yellow to red)
+                    tempColor = `rgb(255, ${Math.round(255 - tempPct * 255)}, 0)`;
+                }
+                document.getElementById(`tyre-${position}-temp-bar`).style.backgroundColor = tempColor;
+            }
+
+            // Suspension Height (mm)
+            if (data.susp_height && data.susp_height[index] !== undefined) {
+                const susp = data.susp_height[index];
+                document.getElementById(`tyre-${position}-susp`).innerText = susp.toFixed(1) + 'mm';
+            }
+
+            // Wheel RPS
+            if (data.wheel_rps && data.wheel_rps[index] !== undefined) {
+                const rps = data.wheel_rps[index];
+                document.getElementById(`tyre-${position}-rps`).innerText = rps.toFixed(2) + ' rps';
+            }
+
+            // Tyre Radius (m)
+            if (data.tyre_radius && data.tyre_radius[index] !== undefined) {
+                const radius = data.tyre_radius[index];
+                document.getElementById(`tyre-${position}-radius`).innerText = radius.toFixed(3) + 'm';
+            }
+        }
     </script>
 </body>
 </html>
