@@ -2,188 +2,516 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>GT7 Telemetry HUD</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GT7 Telemetry Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e1a;
+            color: #fff;
+            font-family: 'Orbitron', 'Segoe UI', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* メインエリア */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 400px 1fr;
+            grid-template-rows: auto 1fr auto;
+            gap: 10px;
+            padding: 10px;
+            flex: 1;
+            height: 100%;
+        }
+
+        /* トップエリア - 速度・RPM・ギア */
+        .top-area {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+        }
+
+        /* 速度表示 */
+        .speed-display {
+            text-align: center;
+        }
+
+        .speed-value {
+            font-size: 120px;
+            font-weight: bold;
+            color: #00ff88;
+            text-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+            line-height: 1;
+        }
+
+        .speed-unit {
+            font-size: 24px;
+            color: #888;
+        }
+
+        /* RPM・ギア表示 */
+        .rpm-gear-display {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .gear-display {
+            text-align: center;
+        }
+
+        .gear-value {
+            font-size: 100px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+            line-height: 1;
+        }
+
+        .gear-label {
+            font-size: 16px;
+            color: #888;
+        }
+
+        /* RPMバー */
+        .rpm-container {
+            width: 200px;
+        }
+
+        .rpm-bar-bg {
+            width: 100%;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+
+        .rpm-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #ffff00, #ff4444);
+            transition: width 0.1s;
+        }
+
+        .rpm-text {
+            font-size: 20px;
+            color: #fff;
+            text-align: center;
+            margin-top: 5px;
+        }
+
+        /* タイヤエリア */
+        .tyres-area {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+        }
+
+        .tyre {
+            width: 180px;
+            height: 180px;
+            position: relative;
+        }
+
+        .tyre-svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .tyre-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .tyre-position {
+            font-size: 32px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .tyre-temp {
+            font-size: 48px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .tyre-temp-unit {
+            font-size: 18px;
+            color: #888;
+        }
+
+        .tyre-pressure {
+            font-size: 24px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        /* 中央エリア - 追加情報 */
+        .center-info {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 15px;
+            border-radius: 8px;
+        }
+
+        .info-label {
+            font-size: 14px;
+            color: #888;
+        }
+
+        .info-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        /* パドル */
+        .pedals-area {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: center;
+            gap: 50px;
+        }
+
+        .pedal {
+            width: 300px;
+        }
+
+        .pedal-label {
+            font-size: 16px;
+            color: #888;
+            text-align: center;
+            margin-bottom: 5px;
+        }
+
+        .pedal-bar-bg {
+            width: 100%;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        .throttle .pedal-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00aa44, #00ff88);
+            transition: width 0.1s;
+        }
+
+        .brake .pedal-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #aa0000, #ff4444);
+            transition: width 0.1s;
+        }
+
+        .pedal-value {
+            text-align: center;
+            font-size: 20px;
+            color: #fff;
+            margin-top: 5px;
+        }
+
+        /* 状態表示 */
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .status-item {
+            text-align: center;
+        }
+
+        .status-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .status-label {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .status-value.hot { color: #ff4444; }
+        .status-value.optimal { color: #00ff88; }
+        .status-value.cold { color: #44ffff; }
+        .status-value.boost { color: #ff8800; }
+
+        /* 接続状態 */
+        #connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        #connection-status.connected {
+            background: #00ff88;
+            color: #000;
+        }
+
+        #connection-status.disconnected {
+            background: #ff4444;
+            color: #fff;
+        }
+    </style>
 </head>
 <body>
+    <div id="connection-status" class="disconnected">Disconnected</div>
 
-    <div class="hud-container">
-        <!-- Gauge Area -->
-        <div class="gauge-area">
-            <!-- Gear Display -->
-            <div class="gear-display">
-                <div class="gear-value" id="gear">N</div>
-                <div class="gear-label">GEAR</div>
-                <div class="gear-sub" id="gear-rpm">0 RPM</div>
-            </div>
-
-            <!-- Speed Display -->
+    <div class="dashboard">
+        <!-- トップエリア -->
+        <div class="top-area">
+            <!-- 速度 -->
             <div class="speed-display">
                 <div class="speed-value" id="speed">0</div>
                 <div class="speed-unit">km/h</div>
             </div>
-        </div>
 
-        <!-- RPM Bar -->
-        <div class="rpm-container">
-            <div class="rpm-text" id="rpm-text">0 RPM</div>
-            <div class="rpm-bar" id="rpm-bar"></div>
-        </div>
-
-        <!-- Pedals -->
-        <div class="pedals">
-            <div class="pedal brake">
-                <span class="pedal-label">BRAKE</span>
-                <div class="pedal-fill" id="brake-bar"></div>
+            <!-- RPM・ギア -->
+            <div class="rpm-gear-display">
+                <div class="gear-display">
+                    <div class="gear-value" id="gear">N</div>
+                    <div class="gear-label">GEAR</div>
+                </div>
+                <div class="rpm-container">
+                    <div class="rpm-bar-bg">
+                        <div class="rpm-bar" id="rpm-bar"></div>
+                    </div>
+                    <div class="rpm-text" id="rpm-text">0 RPM</div>
+                </div>
             </div>
+        </div>
+
+        <!-- 左タイヤ -->
+        <div class="tyres-area">
+            <div class="tyre">
+                <svg class="tyre-svg" viewBox="0 0 200 200">
+                    <!-- タイヤ外枠 -->
+                    <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
+                    <!-- タイヤ溝 -->
+                    <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
+                    <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
+                    <!-- タイヤ内側 -->
+                    <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
+                    <!-- 温度円 -->
+                    <circle id="fl-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
+                </svg>
+                <div class="tyre-center">
+                    <div class="tyre-position">FL</div>
+                    <div class="tyre-temp" id="fl-temp">--</div>
+                    <div class="tyre-temp-unit">°C</div>
+                    <div class="tyre-pressure" id="fl-pressure">-- psi</div>
+                </div>
+            </div>
+
+            <div class="tyre">
+                <svg class="tyre-svg" viewBox="0 0 200 200">
+                    <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
+                    <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
+                    <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
+                    <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
+                    <circle id="fr-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
+                </svg>
+                <div class="tyre-center">
+                    <div class="tyre-position">FR</div>
+                    <div class="tyre-temp" id="fr-temp">--</div>
+                    <div class="tyre-temp-unit">°C</div>
+                    <div class="tyre-pressure" id="fr-pressure">-- psi</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 中央情報 -->
+        <div class="center-info">
+            <div class="status-row">
+                <div class="status-item">
+                    <div class="status-value" id="fuel">--</div>
+                    <div class="status-label">FUEL L</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value boost" id="boost">--</div>
+                    <div class="status-label">BOOST</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="max-speed">--</div>
+                    <div class="status-label">MAX SPEED</div>
+                </div>
+            </div>
+
+            <div class="info-row">
+                <span class="info-label">POS X</span>
+                <span class="info-value" id="pos-x">--</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">POS Y</span>
+                <span class="info-value" id="pos-y">--</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">POS Z</span>
+                <span class="info-value" id="pos-z">--</span>
+            </div>
+
+            <div class="status-row">
+                <div class="status-item">
+                    <div class="status-value" id="fl-susp">--</div>
+                    <div class="status-label">FL SUSP</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="fr-susp">--</div>
+                    <div class="status-label">FR SUSP</div>
+                </div>
+            </div>
+            <div class="status-row">
+                <div class="status-item">
+                    <div class="status-value" id="rl-susp">--</div>
+                    <div class="status-label">RL SUSP</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value" id="rr-susp">--</div>
+                    <div class="status-label">RR SUSP</div>
+                </div>
+            </div>
+
+            <div class="info-row">
+                <span class="info-label">CAR ID</span>
+                <span class="info-value" id="car-id">--</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">PACKETS</span>
+                <span class="info-value" id="packets">0</span>
+            </div>
+        </div>
+
+        <!-- 右タイヤ -->
+        <div class="tyres-area">
+            <div class="tyre">
+                <svg class="tyre-svg" viewBox="0 0 200 200">
+                    <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
+                    <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
+                    <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
+                    <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
+                    <circle id="rl-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
+                </svg>
+                <div class="tyre-center">
+                    <div class="tyre-position">RL</div>
+                    <div class="tyre-temp" id="rl-temp">--</div>
+                    <div class="tyre-temp-unit">°C</div>
+                    <div class="tyre-pressure" id="rl-pressure">-- psi</div>
+                </div>
+            </div>
+
+            <div class="tyre">
+                <svg class="tyre-svg" viewBox="0 0 200 200">
+                    <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
+                    <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
+                    <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
+                    <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
+                    <circle id="rr-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
+                </svg>
+                <div class="tyre-center">
+                    <div class="tyre-position">RR</div>
+                    <div class="tyre-temp" id="rr-temp">--</div>
+                    <div class="tyre-temp-unit">°C</div>
+                    <div class="tyre-pressure" id="rr-pressure">-- psi</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- パドル -->
+        <div class="pedals-area">
             <div class="pedal throttle">
-                <span class="pedal-label">THROTTLE</span>
-                <div class="pedal-fill" id="throttle-bar"></div>
-            </div>
-        </div>
-
-        <!-- Wheel Rotation Meters -->
-        <div class="wheel-meters">
-            <div class="wheel-meter">
-                <div class="wheel-circle"></div>
-                <div class="wheel-fill" id="wheel-fl"></div>
-                <div class="wheel-value" id="wheel-fl-val">0 rps</div>
-                <div class="wheel-label">FL</div>
-            </div>
-            <div class="wheel-meter">
-                <div class="wheel-circle"></div>
-                <div class="wheel-fill" id="wheel-fr"></div>
-                <div class="wheel-value" id="wheel-fr-val">0 rps</div>
-                <div class="wheel-label">FR</div>
-            </div>
-            <div class="wheel-meter">
-                <div class="wheel-circle"></div>
-                <div class="wheel-fill" id="wheel-rl"></div>
-                <div class="wheel-value" id="wheel-rl-val">0 rps</div>
-                <div class="wheel-label">RL</div>
-            </div>
-            <div class="wheel-meter">
-                <div class="wheel-circle"></div>
-                <div class="wheel-fill" id="wheel-rr"></div>
-                <div class="wheel-value" id="wheel-rr-val">0 rps</div>
-                <div class="wheel-label">RR</div>
-            </div>
-        </div>
-
-        <!-- Tyre Grid -->
-        <div class="tyre-grid">
-            <div class="tyre-card fl" id="tyre-fl">
-                <div class="tyre-header">
-                    <span class="tyre-position">FL</span>
+                <div class="pedal-label">THROTTLE</div>
+                <div class="pedal-bar-bg">
+                    <div class="pedal-bar" id="throttle-bar"></div>
                 </div>
-                <div class="tyre-data">
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">TEMP</div>
-                        <div class="tyre-data-value" id="tyre-fl-temp">--°C</div>
-                        <div class="temp-display"><div class="temp-bar" id="tyre-fl-temp-bar"></div></div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">SUSP</div>
-                        <div class="tyre-data-value" id="tyre-fl-susp">--mm</div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">WHEEL</div>
-                        <div class="tyre-data-value" id="tyre-fl-wheel">--rps</div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">RADIUS</div>
-                        <div class="tyre-data-value" id="tyre-fl-radius">--m</div>
-                    </div>
-                </div>
+                <div class="pedal-value" id="throttle-value">0%</div>
             </div>
-
-            <div class="tyre-card fr" id="tyre-fr">
-                <div class="tyre-header">
-                    <span class="tyre-position">FR</span>
+            <div class="pedal brake">
+                <div class="pedal-label">BRAKE</div>
+                <div class="pedal-bar-bg">
+                    <div class="pedal-bar" id="brake-bar"></div>
                 </div>
-                <div class="tyre-data">
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">TEMP</div>
-                        <div class="tyre-data-value" id="tyre-fr-temp">--°C</div>
-                        <div class="temp-display"><div class="temp-bar" id="tyre-fr-temp-bar"></div></div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">SUSP</div>
-                        <div class="tyre-data-value" id="tyre-fr-susp">--mm</div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">WHEEL</div>
-                        <div class="tyre-data-value" id="tyre-fr-wheel">--rps</div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">RADIUS</div>
-                        <div class="tyre-data-value" id="tyre-fr-radius">--m</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="tyre-card rl" id="tyre-rl">
-                <div class="tyre-header">
-                    <span class="tyre-position">RL</span>
-                </div>
-                <div class="tyre-data">
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">TEMP</div>
-                        <div class="tyre-data-value" id="tyre-rl-temp">--°C</div>
-                        <div class="temp-display"><div class="temp-bar" id="tyre-rl-temp-bar"></div></div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">SUSP</div>
-                        <div class="tyre-data-value" id="tyre-rl-susp">--mm</div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">WHEEL</div>
-                        <div class="tyre-data-value" id="tyre-rl-wheel">--rps</div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">RADIUS</div>
-                        <div class="tyre-data-value" id="tyre-rl-radius">--m</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="tyre-card rr" id="tyre-rr">
-                <div class="tyre-header">
-                    <span class="tyre-position">RR</span>
-                </div>
-                <div class="tyre-data">
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">TEMP</div>
-                        <div class="tyre-data-value" id="tyre-rr-temp">--°C</div>
-                        <div class="temp-display"><div class="temp-bar" id="tyre-rr-temp-bar"></div></div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">SUSP</div>
-                        <div class="tyre-data-value" id="tyre-rr-susp">--mm</div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">WHEEL</div>
-                        <div class="tyre-data-value" id="tyre-rr-wheel">--rps</div>
-                    </div>
-                    <div class="tyre-data-item">
-                        <div class="tyre-data-label">RADIUS</div>
-                        <div class="tyre-data-value" id="tyre-rr-radius">--m</div>
-                    </div>
-                </div>
+                <div class="pedal-value" id="brake-value">0%</div>
             </div>
         </div>
     </div>
 
-    <script src="ui_components.js"></script>
     <script>
-        // 現在のホストからWebSocket URLを構築
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsHost = window.location.host;
         const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws`);
 
+        const statusEl = document.getElementById('connection-status');
+        let packetCount = 0;
+        let maxSpeed = 0;
+
+        // 要素取得
+        const elements = {
+            speed: document.getElementById('speed'),
+            gear: document.getElementById('gear'),
+            rpmBar: document.getElementById('rpm-bar'),
+            rpmText: document.getElementById('rpm-text'),
+            throttleBar: document.getElementById('throttle-bar'),
+            throttleValue: document.getElementById('throttle-value'),
+            brakeBar: document.getElementById('brake-bar'),
+            brakeValue: document.getElementById('brake-value'),
+            fuel: document.getElementById('fuel'),
+            boost: document.getElementById('boost'),
+            maxX: document.getElementById('pos-x'),
+            maxY: document.getElementById('pos-y'),
+            maxZ: document.getElementById('pos-z'),
+            flTemp: document.getElementById('fl-temp'),
+            frTemp: document.getElementById('fr-temp'),
+            rlTemp: document.getElementById('rl-temp'),
+            rrTemp: document.getElementById('rr-temp'),
+            flPressure: document.getElementById('fl-pressure'),
+            frPressure: document.getElementById('fr-pressure'),
+            rlPressure: document.getElementById('rl-pressure'),
+            rrPressure: document.getElementById('rr-pressure'),
+            flSusp: document.getElementById('fl-susp'),
+            frSusp: document.getElementById('fr-susp'),
+            rlSusp: document.getElementById('rl-susp'),
+            rrSusp: document.getElementById('rr-susp'),
+            flTempCircle: document.getElementById('fl-temp-circle'),
+            frTempCircle: document.getElementById('fr-temp-circle'),
+            rlTempCircle: document.getElementById('rl-temp-circle'),
+            rrTempCircle: document.getElementById('rr-temp-circle'),
+            maxSpeed: document.getElementById('max-speed'),
+            carId: document.getElementById('car-id'),
+            packets: document.getElementById('packets')
+        };
+
         ws.onopen = () => {
             console.log('Connected to GT7 Bridge');
-            document.querySelector('.hud-container').style.opacity = '1';
+            statusEl.textContent = 'Connected';
+            statusEl.className = 'connected';
         };
 
         ws.onerror = (error) => {
@@ -192,28 +520,118 @@
 
         ws.onclose = () => {
             console.log('Disconnected from GT7 Bridge');
+            statusEl.textContent = 'Disconnected';
+            statusEl.className = 'disconnected';
         };
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
+            packetCount++;
 
-            // ギア表示
-            updateGearDisplay(data.gear, data.rpm);
+            // 速度
+            const speed = Math.round(data.speed_kmh || 0);
+            elements.speed.textContent = speed;
+            if (speed > maxSpeed) {
+                maxSpeed = speed;
+                elements.maxSpeed.textContent = maxSpeed;
+            }
 
-            // スピード表示
-            updateSpeedDisplay(data.speed_kmh);
+            // ギア
+            const gear = data.gear || 0;
+            elements.gear.textContent = gear === 0 ? 'R' : (gear === 1 ? 'N' : gear - 1);
 
-            // RPMバー
-            updateRpmBar(data.rpm, data.max_rpm);
+            // RPM
+            const rpm = Math.round(data.rpm || 0);
+            const maxRpm = data.max_rpm || 9000;
+            const rpmPct = Math.min((rpm / maxRpm) * 100, 100);
+            elements.rpmBar.style.width = rpmPct + '%';
+            elements.rpmText.textContent = rpm + ' RPM';
 
             // パドル
-            updatePedals(data.throttle_pct, data.brake_pct);
+            const throttle = Math.round(data.throttle_pct || 0);
+            const brake = Math.round(data.brake_pct || 0);
+            elements.throttleBar.style.width = throttle + '%';
+            elements.throttleValue.textContent = throttle + '%';
+            elements.brakeBar.style.width = brake + '%';
+            elements.brakeValue.textContent = brake + '%';
 
-            // ホイール回転
-            updateWheelMeters(data.wheel_rps);
+            // 燃料
+            const fuel = data.current_fuel || 0;
+            elements.fuel.textContent = fuel.toFixed(1);
 
-            // タイヤデータ
-            updateAllTyreData(data);
+            // ブースト
+            const boost = (data.boost || 0) * 100;
+            elements.boost.textContent = (boost > 0 ? '+' : '') + boost.toFixed(0);
+
+            // 位置
+            elements.maxX.textContent = (data.position_x || 0).toFixed(1);
+            elements.maxY.textContent = (data.position_y || 0).toFixed(1);
+            elements.maxZ.textContent = (data.position_z || 0).toFixed(1);
+
+            // サスペンション
+            if (data.susp_height) {
+                elements.flSusp.textContent = (data.susp_height[0] * 1000).toFixed(0);
+                elements.frSusp.textContent = (data.susp_height[1] * 1000).toFixed(0);
+                elements.rlSusp.textContent = (data.susp_height[2] * 1000).toFixed(0);
+                elements.rrSusp.textContent = (data.susp_height[3] * 1000).toFixed(0);
+            }
+
+            // タイヤ温度
+            if (data.tyre_temp) {
+                const temps = data.tyre_temp;
+                elements.flTemp.textContent = Math.round(temps[0]);
+                elements.frTemp.textContent = Math.round(temps[1]);
+                elements.rlTemp.textContent = Math.round(temps[2]);
+                elements.rrTemp.textContent = Math.round(temps[3]);
+
+                // 温度に応じて色を変更
+                const updateTyreColor = (temp, circle) => {
+                    let color, opacity;
+                    if (temp < 40) {
+                        color = '#44ffff';
+                        opacity = 0.3;
+                    } else if (temp < 80) {
+                        color = '#00ff88';
+                        opacity = 0.3;
+                    } else if (temp < 100) {
+                        color = '#ffff00';
+                        opacity = 0.4;
+                    } else {
+                        color = '#ff4444';
+                        opacity = 0.5;
+                    }
+                    circle.setAttribute('fill', color);
+                    circle.setAttribute('opacity', opacity);
+                };
+
+                updateTyreColor(temps[0], elements.flTempCircle);
+                updateTyreColor(temps[1], elements.frTempCircle);
+                updateTyreColor(temps[2], elements.rlTempCircle);
+                updateTyreColor(temps[3], elements.rrTempCircle);
+            }
+
+            // タイヤ圧（計算）
+            if (data.tyre_radius) {
+                // 簡易的な圧力計算（半径から推定）
+                const calcPressure = (radius) => {
+                    // 基準半径0.32mを30psiとして計算
+                    const baseRadius = 0.32;
+                    const psi = 30 + (baseRadius - radius) * 500;
+                    return Math.max(0, Math.round(psi));
+                };
+                elements.flPressure.textContent = calcPressure(data.tyre_radius[0]) + ' psi';
+                elements.frPressure.textContent = calcPressure(data.tyre_radius[1]) + ' psi';
+                elements.rlPressure.textContent = calcPressure(data.tyre_radius[2]) + ' psi';
+                elements.rrPressure.textContent = calcPressure(data.tyre_radius[3]) + ' psi';
+            }
+
+            // 車種ID
+            if (data.car_id) {
+                elements.carId.textContent = data.car_id;
+            }
+
+            // パケット数
+            elements.packets.textContent = packetCount;
         };
     </script>
 </body>
