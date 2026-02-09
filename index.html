@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GT7 Telemetry Dashboard</title>
+    <script src="/uplot.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -24,12 +25,12 @@
         /* メインエリア */
         .dashboard {
             display: grid;
-            grid-template-columns: 1fr 400px 1fr;
-            grid-template-rows: auto 1fr auto;
-            gap: 10px;
-            padding: 10px;
-            flex: 1;
-            height: 100%;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto 1fr auto;
+            gap: 8px;
+            padding: 8px;
+            height: 100vh;
+            overflow: hidden;
         }
 
         /* トップエリア - 速度・RPM・ギア */
@@ -38,7 +39,8 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 40px;
+            gap: 30px;
+            height: 100px;
         }
 
         /* 速度表示 */
@@ -47,15 +49,15 @@
         }
 
         .speed-value {
-            font-size: 120px;
+            font-size: 70px;
             font-weight: bold;
             color: #00ff88;
-            text-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
             line-height: 1;
         }
 
         .speed-unit {
-            font-size: 24px;
+            font-size: 16px;
             color: #888;
         }
 
@@ -71,21 +73,21 @@
         }
 
         .gear-value {
-            font-size: 100px;
+            font-size: 60px;
             font-weight: bold;
             color: #ffd700;
-            text-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
             line-height: 1;
         }
 
         .gear-label {
-            font-size: 16px;
+            font-size: 12px;
             color: #888;
         }
 
         /* RPMバー */
         .rpm-container {
-            width: 200px;
+            width: 150px;
         }
 
         .rpm-bar-bg {
@@ -103,23 +105,69 @@
         }
 
         .rpm-text {
-            font-size: 20px;
+            font-size: 14px;
             color: #fff;
             text-align: center;
-            margin-top: 5px;
+            margin-top: 3px;
+        }
+
+        /* チャートエリア */
+        .charts-area {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            height: 140px;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 5px;
+            position: relative;
+        }
+
+        .chart-title {
+            position: absolute;
+            top: 2px;
+            left: 8px;
+            font-size: 10px;
+            color: #888;
+            z-index: 10;
+        }
+
+        .chart {
+            width: 100%;
+            height: 100%;
         }
 
         /* タイヤエリア */
         .tyres-area {
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            gap: 30px;
+            gap: 15px;
+            padding: 10px 0;
+        }
+
+        .tyres-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .tyre-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
         }
 
         .tyre {
-            width: 180px;
-            height: 180px;
+            width: 350px;
+            height: 350px;
             position: relative;
         }
 
@@ -137,33 +185,30 @@
         }
 
         .tyre-position {
-            font-size: 32px;
+            font-size: 64px;
             font-weight: bold;
             color: #fff;
         }
 
         .tyre-temp {
-            font-size: 48px;
+            font-size: 110px;
             font-weight: bold;
             color: #00ff88;
+            line-height: 1;
         }
 
         .tyre-temp-unit {
-            font-size: 18px;
+            font-size: 36px;
             color: #888;
-        }
-
-        .tyre-pressure {
-            font-size: 24px;
-            color: #888;
-            margin-top: 5px;
         }
 
         /* 中央エリア - 追加情報 */
         .center-info {
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 8px;
+            overflow-y: auto;
+            padding: 5px;
         }
 
         .info-row {
@@ -171,17 +216,17 @@
             justify-content: space-between;
             align-items: center;
             background: rgba(255, 255, 255, 0.05);
-            padding: 10px 15px;
-            border-radius: 8px;
+            padding: 6px 10px;
+            border-radius: 5px;
         }
 
         .info-label {
-            font-size: 14px;
+            font-size: 11px;
             color: #888;
         }
 
         .info-value {
-            font-size: 24px;
+            font-size: 16px;
             font-weight: bold;
             color: #00ff88;
         }
@@ -191,25 +236,26 @@
             grid-column: 1 / -1;
             display: flex;
             justify-content: center;
-            gap: 50px;
+            gap: 30px;
+            height: 50px;
         }
 
         .pedal {
-            width: 300px;
+            width: 200px;
         }
 
         .pedal-label {
-            font-size: 16px;
+            font-size: 12px;
             color: #888;
             text-align: center;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .pedal-bar-bg {
             width: 100%;
-            height: 40px;
+            height: 25px;
             background: rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
+            border-radius: 12px;
             overflow: hidden;
         }
 
@@ -227,9 +273,9 @@
 
         .pedal-value {
             text-align: center;
-            font-size: 20px;
+            font-size: 14px;
             color: #fff;
-            margin-top: 5px;
+            margin-top: 3px;
         }
 
         /* 状態表示 */
@@ -237,9 +283,9 @@
             display: flex;
             justify-content: space-between;
             background: rgba(255, 255, 255, 0.05);
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-top: 10px;
+            padding: 6px 10px;
+            border-radius: 5px;
+            margin-top: 5px;
         }
 
         .status-item {
@@ -247,12 +293,12 @@
         }
 
         .status-value {
-            font-size: 28px;
+            font-size: 18px;
             font-weight: bold;
         }
 
         .status-label {
-            font-size: 12px;
+            font-size: 10px;
             color: #888;
         }
 
@@ -261,14 +307,72 @@
         .status-value.cold { color: #44ffff; }
         .status-value.boost { color: #ff8800; }
 
+        /* ラップ履歴 */
+        .lap-history {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+            padding: 6px;
+            margin-top: 5px;
+        }
+
+        .lap-history-title {
+            font-size: 10px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .lap-list {
+            max-height: 80px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .lap-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+
+        .lap-item.best-lap {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+        }
+
+        .lap-number {
+            color: #888;
+            font-weight: bold;
+        }
+
+        .lap-time {
+            color: #00ff88;
+            font-weight: bold;
+            font-family: 'Orbitron', monospace;
+        }
+
+        .lap-delta-pos {
+            color: #00ff88;
+            font-size: 10px;
+        }
+
+        .lap-delta-neg {
+            color: #ff4444;
+            font-size: 10px;
+        }
+
         /* 接続状態 */
         #connection-status {
             position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 8px 15px;
-            border-radius: 5px;
-            font-size: 14px;
+            top: 5px;
+            right: 5px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
         }
 
         #connection-status.connected {
@@ -280,7 +384,13 @@
             background: #ff4444;
             color: #fff;
         }
+
+        /* uPlot basic styles */
+        .u-tooltip {
+            display: none !important;
+        }
     </style>
+    <link rel="stylesheet" href="/uplot.min.css">
 </head>
 <body>
     <div id="connection-status" class="disconnected">Disconnected</div>
@@ -309,47 +419,135 @@
             </div>
         </div>
 
+        <!-- チャートエリア -->
+        <div class="charts-area">
+            <div class="chart-container">
+                <div class="chart-title">SPEED (km/h)</div>
+                <div id="speed-chart" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">RPM</div>
+                <div id="rpm-chart" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">THROTTLE %</div>
+                <div id="throttle-chart" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">BRAKE %</div>
+                <div id="brake-chart" class="chart"></div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">FUEL L</div>
+                <div id="fuel-chart" class="chart"></div>
+            </div>
+        </div>
+
         <!-- 左タイヤ -->
         <div class="tyres-area">
-            <div class="tyre">
-                <svg class="tyre-svg" viewBox="0 0 200 200">
-                    <!-- タイヤ外枠 -->
-                    <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
-                    <!-- タイヤ溝 -->
-                    <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
-                    <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
-                    <!-- タイヤ内側 -->
-                    <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
-                    <!-- 温度円 -->
-                    <circle id="fl-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
-                </svg>
-                <div class="tyre-center">
-                    <div class="tyre-position">FL</div>
-                    <div class="tyre-temp" id="fl-temp">--</div>
-                    <div class="tyre-temp-unit">°C</div>
-                    <div class="tyre-pressure" id="fl-pressure">-- psi</div>
+            <div class="tyres-row">
+                <div class="tyre-wrapper">
+                    <div class="tyre">
+                        <svg class="tyre-svg" viewBox="0 0 200 200">
+                            <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
+                            <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
+                            <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
+                            <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
+                            <circle id="fl-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
+                        </svg>
+                        <div class="tyre-center">
+                            <div class="tyre-position">FL</div>
+                            <div class="tyre-temp" id="fl-temp">--</div>
+                            <div class="tyre-temp-unit">°C</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tyre-wrapper">
+                    <div class="tyre">
+                        <svg class="tyre-svg" viewBox="0 0 200 200">
+                            <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
+                            <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
+                            <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
+                            <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
+                            <circle id="fr-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
+                        </svg>
+                        <div class="tyre-center">
+                            <div class="tyre-position">FR</div>
+                            <div class="tyre-temp" id="fr-temp">--</div>
+                            <div class="tyre-temp-unit">°C</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="tyre">
-                <svg class="tyre-svg" viewBox="0 0 200 200">
-                    <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
-                    <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
-                    <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
-                    <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
-                    <circle id="fr-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
-                </svg>
-                <div class="tyre-center">
-                    <div class="tyre-position">FR</div>
-                    <div class="tyre-temp" id="fr-temp">--</div>
-                    <div class="tyre-temp-unit">°C</div>
-                    <div class="tyre-pressure" id="fr-pressure">-- psi</div>
+            <div class="tyres-row">
+                <div class="tyre-wrapper">
+                    <div class="tyre">
+                        <svg class="tyre-svg" viewBox="0 0 200 200">
+                            <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
+                            <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
+                            <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
+                            <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
+                            <circle id="rl-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
+                        </svg>
+                        <div class="tyre-center">
+                            <div class="tyre-position">RL</div>
+                            <div class="tyre-temp" id="rl-temp">--</div>
+                            <div class="tyre-temp-unit">°C</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tyre-wrapper">
+                    <div class="tyre">
+                        <svg class="tyre-svg" viewBox="0 0 200 200">
+                            <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
+                            <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
+                            <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
+                            <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
+                            <circle id="rr-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
+                        </svg>
+                        <div class="tyre-center">
+                            <div class="tyre-position">RR</div>
+                            <div class="tyre-temp" id="rr-temp">--</div>
+                            <div class="tyre-temp-unit">°C</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- 中央情報 -->
         <div class="center-info">
+            <!-- ラップ情報 -->
+            <div class="status-row">
+                <div class="status-item">
+                    <div class="status-value" id="current-lap">--</div>
+                    <div class="status-label">LAP</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value optimal" id="current-lap-time">--:--.---</div>
+                    <div class="status-label">CURRENT</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-value optimal" id="best-lap-time">--:--.---</div>
+                    <div class="status-label">BEST</div>
+                </div>
+            </div>
+
+            <!-- デルタ情報 -->
+            <div class="info-row">
+                <span class="info-label">DELTA VS BEST</span>
+                <span class="info-value" id="lap-delta">--:--.---</span>
+            </div>
+
+            <!-- ラップ履歴 -->
+            <div class="lap-history">
+                <div class="lap-history-title">LAP HISTORY</div>
+                <div id="lap-list" class="lap-list"></div>
+            </div>
+
             <div class="status-row">
                 <div class="status-item">
                     <div class="status-value" id="fuel">--</div>
@@ -409,41 +607,6 @@
             </div>
         </div>
 
-        <!-- 右タイヤ -->
-        <div class="tyres-area">
-            <div class="tyre">
-                <svg class="tyre-svg" viewBox="0 0 200 200">
-                    <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
-                    <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
-                    <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
-                    <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
-                    <circle id="rl-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
-                </svg>
-                <div class="tyre-center">
-                    <div class="tyre-position">RL</div>
-                    <div class="tyre-temp" id="rl-temp">--</div>
-                    <div class="tyre-temp-unit">°C</div>
-                    <div class="tyre-pressure" id="rl-pressure">-- psi</div>
-                </div>
-            </div>
-
-            <div class="tyre">
-                <svg class="tyre-svg" viewBox="0 0 200 200">
-                    <circle cx="100" cy="100" r="95" fill="none" stroke="#333" stroke-width="8"/>
-                    <circle cx="100" cy="100" r="85" fill="none" stroke="#222" stroke-width="2"/>
-                    <circle cx="100" cy="100" r="75" fill="none" stroke="#222" stroke-width="2"/>
-                    <circle cx="100" cy="100" r="65" fill="#1a1a2e"/>
-                    <circle id="rr-temp-circle" cx="100" cy="100" r="60" fill="#00ff88" opacity="0.3"/>
-                </svg>
-                <div class="tyre-center">
-                    <div class="tyre-position">RR</div>
-                    <div class="tyre-temp" id="rr-temp">--</div>
-                    <div class="tyre-temp-unit">°C</div>
-                    <div class="tyre-pressure" id="rr-pressure">-- psi</div>
-                </div>
-            </div>
-        </div>
-
         <!-- パドル -->
         <div class="pedals-area">
             <div class="pedal throttle">
@@ -464,6 +627,115 @@
     </div>
 
     <script>
+        // uPlotチャート設定
+        const CHART_POINTS = 3600; // 60秒 @ 60fps
+        const UPDATE_INTERVAL = 1; // 全フレーム更新
+
+        // データバッファ
+        let timeData = new Array(CHART_POINTS).fill(0);
+        let speedData = new Array(CHART_POINTS).fill(0);
+        let rpmData = new Array(CHART_POINTS).fill(0);
+        let throttleData = new Array(CHART_POINTS).fill(0);
+        let brakeData = new Array(CHART_POINTS).fill(0);
+        let fuelData = new Array(CHART_POINTS).fill(0);
+
+        // uPlotオプション
+        const chartOptions = {
+            width: 0,
+            height: 0,
+            pxAlign: 0,
+            pxSnap: true,
+            plugins: [],
+            scales: {
+                x: {
+                    time: false,
+                    min: 0,
+                    max: CHART_POINTS - 1,
+                },
+                y: {
+                    auto: true,
+                }
+            },
+            axes: [
+                {},
+                {
+                    show: false,
+                }
+            ],
+            series: [
+                {},
+                {
+                    stroke: '#00ff88',
+                    width: 2,
+                    fill: 'rgba(0, 255, 136, 0.1)',
+                }
+            ],
+            cursor: {
+                show: false,
+            },
+            legend: {
+                show: false,
+            },
+            padding: [0, 0, 0, 0],
+        };
+
+        // チャート作成
+        let speedChart, rpmChart, throttleChart, brakeChart, fuelChart;
+        let speedChartCtx, rpmChartCtx, throttleChartCtx, brakeChartCtx, fuelChartCtx;
+
+        function initCharts() {
+            // 速度チャート
+            speedChartCtx = uPlot.new(
+                { ...chartOptions, series: [{}, { stroke: '#00ff88', width: 2, fill: 'rgba(0, 255, 136, 0.1)' }] },
+                [timeData, speedData],
+                document.getElementById('speed-chart')
+            );
+
+            // RPMチャート
+            rpmChartCtx = uPlot.new(
+                { ...chartOptions, series: [{}, { stroke: '#ffd700', width: 2, fill: 'rgba(255, 215, 0, 0.1)' }] },
+                [timeData, rpmData],
+                document.getElementById('rpm-chart')
+            );
+
+            // スロットルチャート
+            throttleChartCtx = uPlot.new(
+                { ...chartOptions, series: [{}, { stroke: '#00ff88', width: 2, fill: 'rgba(0, 255, 136, 0.3)', scales: { y: { min: 0, max: 100 } } }] },
+                [timeData, throttleData],
+                document.getElementById('throttle-chart')
+            );
+
+            // ブレーキチャート
+            brakeChartCtx = uPlot.new(
+                { ...chartOptions, series: [{}, { stroke: '#ff4444', width: 2, fill: 'rgba(255, 68, 68, 0.3)', scales: { y: { min: 0, max: 100 } } }] },
+                [timeData, brakeData],
+                document.getElementById('brake-chart')
+            );
+
+            // 燃料チャート
+            fuelChartCtx = uPlot.new(
+                { ...chartOptions, series: [{}, { stroke: '#ff8800', width: 2, fill: 'rgba(255, 136, 0, 0.2)', scales: { y: { min: 0, max: 100 } } }] },
+                [timeData, fuelData],
+                document.getElementById('fuel-chart')
+            );
+
+            // チャートサイズ調整
+            const resizeCharts = () => {
+                const containers = document.querySelectorAll('.chart-container');
+                containers.forEach(container => {
+                    const chart = container.querySelector('.chart');
+                    const u = chart.querySelector('canvas');
+                    if (u && u._uPlot) {
+                        u._uPlot.setSize({ width: container.clientWidth - 10, height: container.clientHeight - 20 });
+                    }
+                });
+            };
+
+            window.addEventListener('resize', resizeCharts);
+            setTimeout(resizeCharts, 100);
+        }
+
+        // WebSocketとデータ更新
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsHost = window.location.host;
         const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws`);
@@ -471,6 +743,18 @@
         const statusEl = document.getElementById('connection-status');
         let packetCount = 0;
         let maxSpeed = 0;
+        let timeCounter = 0;
+
+        // ラップ追跡
+        let currentLapNumber = 0;
+        let lastLapNumber = 0;
+        let currentLapStartTime = 0;
+        let bestLapTime = Infinity;
+        let bestLapNumber = 0;
+        let lapTimes = [];
+        let currentLapData = [];
+        let bestLapData = [];
+        let lastLapTimeDisplay = '--:--.---';
 
         // 要素取得
         const elements = {
@@ -491,10 +775,6 @@
             frTemp: document.getElementById('fr-temp'),
             rlTemp: document.getElementById('rl-temp'),
             rrTemp: document.getElementById('rr-temp'),
-            flPressure: document.getElementById('fl-pressure'),
-            frPressure: document.getElementById('fr-pressure'),
-            rlPressure: document.getElementById('rl-pressure'),
-            rrPressure: document.getElementById('rr-pressure'),
             flSusp: document.getElementById('fl-susp'),
             frSusp: document.getElementById('fr-susp'),
             rlSusp: document.getElementById('rl-susp'),
@@ -505,13 +785,68 @@
             rrTempCircle: document.getElementById('rr-temp-circle'),
             maxSpeed: document.getElementById('max-speed'),
             carId: document.getElementById('car-id'),
-            packets: document.getElementById('packets')
+            packets: document.getElementById('packets'),
+            currentLap: document.getElementById('current-lap'),
+            currentLapTime: document.getElementById('current-lap-time'),
+            bestLapTime: document.getElementById('best-lap-time'),
+            lapDelta: document.getElementById('lap-delta'),
+            lapList: document.getElementById('lap-list')
         };
+
+        // ラップタイムをフォーマット
+        function formatLapTime(ms) {
+            if (ms === -1 || ms === undefined || ms === null) return '--:--.---';
+            const minutes = Math.floor(ms / 60000);
+            const seconds = Math.floor((ms % 60000) / 1000);
+            const millis = ms % 1000;
+            return `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+        }
+
+        // ラップ履歴を更新
+        function updateLapList() {
+            lapList.innerHTML = '';
+            lapTimes.forEach((lap, index) => {
+                const lapItem = document.createElement('div');
+                lapItem.className = 'lap-item' + (lap.number === bestLapNumber ? ' best-lap' : '');
+
+                const delta = lap.time - bestLapTime;
+                const deltaSign = delta > 0 ? '+' : '';
+                const deltaClass = delta === 0 ? '' : (delta < 0 ? ' lap-delta-pos' : ' lap-delta-neg');
+
+                lapItem.innerHTML = `
+                    <span class="lap-number">LAP ${lap.number}</span>
+                    <span class="lap-time">${formatLapTime(lap.time)}</span>
+                    <span class="${delta > 0 ? 'lap-delta-neg' : 'lap-delta-pos'}">${deltaSign}${(delta / 1000).toFixed(3)}s</span>
+                `;
+                lapList.appendChild(lapItem);
+            });
+        }
+
+        // ラップデータを追加
+        function addLapData(lapNumber, lapTime) {
+            const lapIndex = lapTimes.findIndex(l => l.number === lapNumber);
+            if (lapIndex >= 0) {
+                lapTimes[lapIndex] = { number: lapNumber, time: lapTime };
+            } else {
+                lapTimes.push({ number: lapNumber, time: lapTime });
+            }
+
+            // ベストラップ更新
+            if (lapTime > 0 && lapTime < bestLapTime) {
+                bestLapTime = lapTime;
+                bestLapNumber = lapNumber;
+                bestLapData = [...currentLapData];
+            }
+
+            updateLapList();
+            elements.bestLapTime.textContent = formatLapTime(bestLapTime);
+        }
 
         ws.onopen = () => {
             console.log('Connected to GT7 Bridge');
             statusEl.textContent = 'Connected';
             statusEl.className = 'connected';
+            initCharts();
         };
 
         ws.onerror = (error) => {
@@ -528,8 +863,57 @@
             const data = JSON.parse(event.data);
             packetCount++;
 
+            // ラップ検出
+            currentLapNumber = data.lap_count || 1;
+            elements.currentLap.textContent = `${currentLapNumber}/${data.total_laps || '--'}`;
+
+            // ラップ変更検出
+            if (currentLapNumber > lastLapNumber && lastLapNumber > 0) {
+                // 前のラップが完了
+                const lastTime = data.last_laptime;
+                if (lastTime > 0) {
+                    addLapData(lastLapNumber, lastTime);
+                    lastLapTimeDisplay = formatLapTime(lastTime);
+                    elements.currentLapTime.textContent = lastLapTimeDisplay;
+                }
+                currentLapData = []; // 新しいラップのデータを開始
+            }
+
+            // 最初のラップ開始
+            if (lastLapNumber === 0 && currentLapNumber === 1) {
+                currentLapStartTime = Date.now();
+            }
+
+            lastLapNumber = currentLapNumber;
+
+            // 現在のラップデータを保存
+            currentLapData.push({
+                time: timeCounter,
+                speed: data.speed_kmh || 0,
+                rpm: data.rpm || 0,
+                throttle: data.throttle_pct || 0,
+                brake: data.brake_pct || 0
+            });
+
+            // デルタ計算（ベストラップがある場合）
+            if (bestLapData.length > 0 && currentLapData.length > 0) {
+                const currentIndex = Math.min(currentLapData.length - 1, bestLapData.length - 1);
+                const currentSpeed = currentLapData[currentIndex].speed;
+                const bestSpeed = bestLapData[currentIndex].speed;
+                const delta = currentSpeed - bestSpeed;
+                const deltaSign = delta >= 0 ? '+' : '';
+                elements.lapDelta.textContent = `${deltaSign}${delta.toFixed(1)} km/h`;
+                elements.lapDelta.style.color = delta >= 0 ? '#00ff88' : '#ff4444';
+            }
+
+            // データをシフト
+            timeData.shift();
+            timeData.push(timeCounter++);
+
             // 速度
             const speed = Math.round(data.speed_kmh || 0);
+            speedData.shift();
+            speedData.push(speed);
             elements.speed.textContent = speed;
             if (speed > maxSpeed) {
                 maxSpeed = speed;
@@ -538,18 +922,25 @@
 
             // ギア
             const gear = data.gear || 0;
-            elements.gear.textContent = gear === 0 ? 'R' : (gear === 1 ? 'N' : gear - 1);
+            // ギア表示: 0=R, 1=1速, 2=2速, ...
+            elements.gear.textContent = gear === 0 ? 'R' : gear;
 
             // RPM
             const rpm = Math.round(data.rpm || 0);
             const maxRpm = data.max_rpm || 9000;
             const rpmPct = Math.min((rpm / maxRpm) * 100, 100);
+            rpmData.shift();
+            rpmData.push(rpm);
             elements.rpmBar.style.width = rpmPct + '%';
             elements.rpmText.textContent = rpm + ' RPM';
 
             // パドル
             const throttle = Math.round(data.throttle_pct || 0);
             const brake = Math.round(data.brake_pct || 0);
+            throttleData.shift();
+            throttleData.push(throttle);
+            brakeData.shift();
+            brakeData.push(brake);
             elements.throttleBar.style.width = throttle + '%';
             elements.throttleValue.textContent = throttle + '%';
             elements.brakeBar.style.width = brake + '%';
@@ -557,6 +948,8 @@
 
             // 燃料
             const fuel = data.current_fuel || 0;
+            fuelData.shift();
+            fuelData.push(fuel);
             elements.fuel.textContent = fuel.toFixed(1);
 
             // ブースト
@@ -610,21 +1003,6 @@
                 updateTyreColor(temps[3], elements.rrTempCircle);
             }
 
-            // タイヤ圧（計算）
-            if (data.tyre_radius) {
-                // 簡易的な圧力計算（半径から推定）
-                const calcPressure = (radius) => {
-                    // 基準半径0.32mを30psiとして計算
-                    const baseRadius = 0.32;
-                    const psi = 30 + (baseRadius - radius) * 500;
-                    return Math.max(0, Math.round(psi));
-                };
-                elements.flPressure.textContent = calcPressure(data.tyre_radius[0]) + ' psi';
-                elements.frPressure.textContent = calcPressure(data.tyre_radius[1]) + ' psi';
-                elements.rlPressure.textContent = calcPressure(data.tyre_radius[2]) + ' psi';
-                elements.rrPressure.textContent = calcPressure(data.tyre_radius[3]) + ' psi';
-            }
-
             // 車種ID
             if (data.car_id) {
                 elements.carId.textContent = data.car_id;
@@ -632,6 +1010,13 @@
 
             // パケット数
             elements.packets.textContent = packetCount;
+
+            // チャート更新
+            if (speedChartCtx) speedChartCtx.setData([timeData, speedData]);
+            if (rpmChartCtx) rpmChartCtx.setData([timeData, rpmData]);
+            if (throttleChartCtx) throttleChartCtx.setData([timeData, throttleData]);
+            if (brakeChartCtx) brakeChartCtx.setData([timeData, brakeData]);
+            if (fuelChartCtx) fuelChartCtx.setData([timeData, fuelData]);
         };
     </script>
 </body>

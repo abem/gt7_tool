@@ -151,6 +151,12 @@ class GT7Decoder:
             # パッケージID
             result["package_id"] = struct.unpack('i', decrypted_data[0x70:0x70 + 4])[0]
 
+            # ラップデータ
+            result["lap_count"] = struct.unpack('h', decrypted_data[0x74:0x74 + 2])[0]
+            result["total_laps"] = struct.unpack('h', decrypted_data[0x76:0x76 + 2])[0]
+            result["best_laptime"] = struct.unpack('i', decrypted_data[0x78:0x78 + 4])[0]
+            result["last_laptime"] = struct.unpack('i', decrypted_data[0x7C:0x7C + 4])[0]
+
             # 車種ID
             result["car_id"] = struct.unpack('i', decrypted_data[0x124:0x124 + 4])[0]
 

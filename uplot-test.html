@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>uPlot Test</title>
+    <script src="/uplot.min.js"></script>
+    <link rel="stylesheet" href="/uplot.min.css">
+    <style>
+        body { background: #0a0e1a; padding: 20px; }
+        .test-result { color: #fff; font-family: monospace; margin: 20px 0; }
+        #chart { width: 600px; height: 200px; }
+    </style>
+</head>
+<body>
+    <div class="test-result" id="result">Checking uPlot...</div>
+    <div id="chart"></div>
+
+    <script>
+        const result = document.getElementById('result');
+
+        // 1. uPlotが読み込まれているか確認
+        if (typeof uPlot === 'undefined') {
+            result.textContent = '❌ FAIL: uPlot is NOT loaded! Check /uplot.min.js';
+            result.style.color = 'red';
+        } else {
+            result.textContent = '✅ PASS: uPlot is loaded! Creating chart...';
+            result.style.color = '#00ff88';
+
+            // 2. グラフを作成
+            try {
+                const data = [
+                    [0, 1, 2, 3, 4, 5],
+                    [10, 20, 15, 25, 20, 30]
+                ];
+
+                const chart = new uPlot({
+                    width: 600,
+                    height: 200,
+                    scales: {
+                        x: { time: false },
+                        y: { auto: true }
+                    },
+                    series: [
+                        {},
+                        {
+                            stroke: '#00ff88',
+                            width: 2,
+                            fill: 'rgba(0, 255, 136, 0.3)'
+                        }
+                    ]
+                }, data, document.getElementById('chart'));
+
+                result.textContent += ' ✅ Chart created successfully!';
+            } catch (e) {
+                result.textContent = '❌ FAIL: Error creating chart: ' + e.message;
+                result.style.color = 'red';
+                console.error(e);
+            }
+        }
+    </script>
+</body>
+</html>
