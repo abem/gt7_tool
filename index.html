@@ -2,170 +2,509 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>GT7 Dashboard</title>
+    <title>GT7 Telemetry HUD</title>
     <style>
-        body { background: #111; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100vh; margin: 0; padding: 20px; overflow: auto; }
-        .dashboard { display: flex; gap: 40px; align-items: center; }
-        
-        /* Speed Meter */
-        .meter-box { text-align: center; }
-        .value { font-size: 80px; font-weight: bold; font-variant-numeric: tabular-nums; }
-        .label { font-size: 20px; color: #888; }
-        
-        /* RPM Bar */
-        .rpm-container { width: 80%; height: 30px; background: #333; margin-top: 20px; border-radius: 15px; overflow: hidden; position: relative; }
-        .rpm-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000); transition: width 0.05s linear; }
-        .rpm-val { position: absolute; top: 0; left: 50%; transform: translateX(-50%); line-height: 30px; font-weight: bold; text-shadow: 1px 1px 2px #000; }
-        
-        /* Pedals */
-        .pedals { display: flex; gap: 10px; height: 150px; align-items: flex-end; }
-        .pedal { width: 40px; background: #333; position: relative; border-radius: 4px; overflow: hidden; }
-        .pedal-fill { position: absolute; bottom: 0; width: 100%; transition: height 0.05s; }
-        .brake .pedal-fill { background: #ff3333; height: 0%; }
-        .throttle .pedal-fill { background: #33cc33; height: 0%; }
-        
-        .gear { font-size: 120px; font-weight: bold; color: yellow; min-width: 100px; text-align: center; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-        /* Tyre Section */
-        .tyre-section { margin-top: 30px; width: 100%; max-width: 900px; }
-        .tyre-section-title { font-size: 24px; color: #888; text-align: center; margin-bottom: 15px; }
-        .tyre-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .tyre-card { background: #222; padding: 15px; border-radius: 10px; border: 2px solid #444; }
-        .tyre-card.front { border-color: #4CAF50; }
-        .tyre-card.rear { border-color: #2196F3; }
-        .tyre-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .tyre-position { font-size: 20px; font-weight: bold; }
-        .tyre-position.fl { color: #4CAF50; }
-        .tyre-position.fr { color: #4CAF50; }
-        .tyre-position.rl { color: #2196F3; }
-        .tyre-position.rr { color: #2196F3; }
-        .tyre-data { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .tyre-data-item { background: #333; padding: 8px; border-radius: 5px; }
-        .tyre-data-label { font-size: 12px; color: #888; }
-        .tyre-data-value { font-size: 18px; font-weight: bold; }
-        .tyre-temp-display { width: 100%; height: 8px; background: #444; border-radius: 4px; margin-top: 5px; overflow: hidden; }
-        .tyre-temp-bar { height: 100%; transition: width 0.05s, background-color 0.05s; }
+        body {
+            background: #0a0a0f;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 100%);
+        }
+
+        /* HUD Container */
+        .hud-container {
+            width: 100%;
+            max-width: 1400px;
+            padding: 20px;
+        }
+
+        /* Main Gauge Area */
+        .gauge-area {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            margin-bottom: 30px;
+        }
+
+        /* Gear Display */
+        .gear-display {
+            text-align: center;
+            position: relative;
+        }
+
+        .gear-value {
+            font-size: 180px;
+            font-weight: bold;
+            color: #00ff88;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5),
+                         0 0 40px rgba(0, 255, 136, 0.3),
+                         0 0 60px rgba(0, 255, 136, 0.1);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 10px;
+        }
+
+        .gear-label {
+            font-size: 24px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            margin-top: 10px;
+        }
+
+        .gear-sub {
+            font-size: 16px;
+            color: #555;
+            margin-top: 5px;
+        }
+
+        /* Speed Display */
+        .speed-display {
+            text-align: center;
+            position: relative;
+        }
+
+        .speed-value {
+            font-size: 160px;
+            font-weight: bold;
+            color: #ffaa00;
+            text-shadow: 0 0 20px rgba(255, 170, 0, 0.5),
+                         0 0 40px rgba(255, 170, 0, 0.3);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .speed-unit {
+            font-size: 32px;
+            color: #ffaa00;
+            text-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+        }
+
+        /* RPM Bar */
+        .rpm-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .rpm-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #ffff00, #ff4444);
+            width: 0%;
+            transition: width 0.05s linear;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .rpm-text {
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 20px;
+            color: #ffff00;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+        }
+
+        /* Pedals */
+        .pedals {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 40px;
+        }
+
+        .pedal {
+            width: 50px;
+            height: 150px;
+            background: linear-gradient(180deg, #333 0%, #222 100%);
+            border-radius: 5px 5px 0 0;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .pedal-label {
+            position: absolute;
+            top: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+        }
+
+        .pedal-fill {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            transition: height 0.05s;
+            box-shadow: 0 0 20px currentColor;
+        }
+
+        .pedal.throttle .pedal-fill {
+            background: linear-gradient(180deg, #44ff44 0%, #22cc22 100%);
+            color: #44ff44;
+        }
+
+        .pedal.brake .pedal-fill {
+            background: linear-gradient(180deg, #ff4444 0%, #cc2222 100%);
+            color: #ff4444;
+        }
+
+        /* Wheel Rotation Meters */
+        .wheel-meters {
+            display: flex;
+            justify-content: center;
+            gap: 80px;
+            margin-bottom: 30px;
+        }
+
+        .wheel-meter {
+            position: relative;
+            width: 120px;
+            height: 120px;
+        }
+
+        .wheel-circle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 3px solid #333;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .wheel-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(#00aaff 0deg, #00ff88 180deg, #ff4444 360deg);
+            mask: radial-gradient(transparent 70%, black 71%);
+            -webkit-mask: radial-gradient(transparent 70%, black 71%);
+            transform: rotate(-90deg);
+            opacity: 0.8;
+        }
+
+        .wheel-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 14px;
+            color: #00aaff;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 170, 255, 0.5);
+        }
+
+        .wheel-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+        }
+
+        /* Tyre Grid */
+        .tyre-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .tyre-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tyre-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+        }
+
+        .tyre-card.fl::before { background: linear-gradient(90deg, #00ff88, #00aaff); }
+        .tyre-card.fr::before { background: linear-gradient(90deg, #00ff88, #00aaff); }
+        .tyre-card.rl::before { background: linear-gradient(90deg, #ff00ff, #aa00ff); }
+        .tyre-card.rr::before { background: linear-gradient(90deg, #ff00ff, #aa00ff); }
+
+        .tyre-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .tyre-position {
+            font-size: 16px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .tyre-card.fl .tyre-position { color: #00ff88; }
+        .tyre-card.fr .tyre-position { color: #00ff88; }
+        .tyre-card.rl .tyre-position { color: #ff00ff; }
+        .tyre-card.rr .tyre-position { color: #ff00ff; }
+
+        .tyre-data {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .tyre-data-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px;
+            border-radius: 8px;
+        }
+
+        .tyre-data-label {
+            font-size: 10px;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .tyre-data-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .tyre-card.fl .tyre-data-value { color: #00ff88; }
+        .tyre-card.fr .tyre-data-value { color: #00ff88; }
+        .tyre-card.rl .tyre-data-value { color: #ff00ff; }
+        .tyre-card.rr .tyre-data-value { color: #ff00ff; }
+
+        /* Temperature Display */
+        .temp-display {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .temp-bar {
+            height: 100%;
+            transition: width 0.05s, background-color 0.05s;
+        }
+
+        /* Warning Flash */
+        @keyframes warningFlash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .warning {
+            animation: warningFlash 0.5s infinite;
+        }
+
+        .tyre-card.hot .tyre-data-value {
+            color: #ff4444;
+            text-shadow: 0 0 10px rgba(255, 68, 68, 0.8);
+        }
+
+        .tyre-card.cold .tyre-data-value {
+            color: #44ffff;
+            text-shadow: 0 0 10px rgba(68, 255, 255, 0.8);
+        }
     </style>
 </head>
 <body>
 
-    <div class="dashboard">
-        <div class="meter-box">
-            <div class="gear" id="gear">-</div>
-            <div class="label">GEAR</div>
-        </div>
-        
-        <div class="meter-box">
-            <div class="value" id="speed">0</div>
-            <div class="label">km/h</div>
+    <div class="hud-container">
+        <!-- Gauge Area -->
+        <div class="gauge-area">
+            <!-- Gear Display -->
+            <div class="gear-display">
+                <div class="gear-value" id="gear">N</div>
+                <div class="gear-label">GEAR</div>
+                <div class="gear-sub" id="gear-rpm">0 RPM</div>
+            </div>
+
+            <!-- Speed Display -->
+            <div class="speed-display">
+                <div class="speed-value" id="speed">0</div>
+                <div class="speed-unit">km/h</div>
+            </div>
         </div>
 
+        <!-- RPM Bar -->
+        <div class="rpm-container">
+            <div class="rpm-text" id="rpm-text">0 RPM</div>
+            <div class="rpm-bar" id="rpm-bar"></div>
+        </div>
+
+        <!-- Pedals -->
         <div class="pedals">
-            <div class="pedal brake"><div class="pedal-fill" id="brake-bar"></div></div>
-            <div class="pedal throttle"><div class="pedal-fill" id="throttle-bar"></div></div>
+            <div class="pedal brake">
+                <span class="pedal-label">BRAKE</span>
+                <div class="pedal-fill" id="brake-bar"></div>
+            </div>
+            <div class="pedal throttle">
+                <span class="pedal-label">THROTTLE</span>
+                <div class="pedal-fill" id="throttle-bar"></div>
+            </div>
         </div>
-    </div>
 
-    <div class="rpm-container">
-        <div class="rpm-bar" id="rpm-bar"></div>
-        <div class="rpm-val" id="rpm-text">0 RPM</div>
-    </div>
+        <!-- Wheel Rotation Meters -->
+        <div class="wheel-meters">
+            <div class="wheel-meter">
+                <div class="wheel-circle"></div>
+                <div class="wheel-fill" id="wheel-fl"></div>
+                <div class="wheel-value" id="wheel-fl-val">0 rps</div>
+                <div class="wheel-label">FL</div>
+            </div>
+            <div class="wheel-meter">
+                <div class="wheel-circle"></div>
+                <div class="wheel-fill" id="wheel-fr"></div>
+                <div class="wheel-value" id="wheel-fr-val">0 rps</div>
+                <div class="wheel-label">FR</div>
+            </div>
+            <div class="wheel-meter">
+                <div class="wheel-circle"></div>
+                <div class="wheel-fill" id="wheel-rl"></div>
+                <div class="wheel-value" id="wheel-rl-val">0 rps</div>
+                <div class="wheel-label">RL</div>
+            </div>
+            <div class="wheel-meter">
+                <div class="wheel-circle"></div>
+                <div class="wheel-fill" id="wheel-rr"></div>
+                <div class="wheel-value" id="wheel-rr-val">0 rps</div>
+                <div class="wheel-label">RR</div>
+            </div>
+        </div>
 
-    <div class="tyre-section">
-        <div class="tyre-section-title">タイヤ状態</div>
+        <!-- Tyre Grid -->
         <div class="tyre-grid">
-            <div class="tyre-card front" id="tyre-fl">
+            <div class="tyre-card fl" id="tyre-fl">
                 <div class="tyre-header">
-                    <span class="tyre-position fl">FL (前左)</span>
+                    <span class="tyre-position">FL</span>
                 </div>
                 <div class="tyre-data">
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">温度</div>
+                        <div class="tyre-data-label">TEMP</div>
                         <div class="tyre-data-value" id="tyre-fl-temp">--°C</div>
-                        <div class="tyre-temp-display"><div class="tyre-temp-bar" id="tyre-fl-temp-bar"></div></div>
+                        <div class="temp-display"><div class="temp-bar" id="tyre-fl-temp-bar"></div></div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">サスペンション</div>
+                        <div class="tyre-data-label">SUSP</div>
                         <div class="tyre-data-value" id="tyre-fl-susp">--mm</div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">回転数</div>
-                        <div class="tyre-data-value" id="tyre-fl-rps">--rps</div>
+                        <div class="tyre-data-label">WHEEL</div>
+                        <div class="tyre-data-value" id="tyre-fl-wheel">--rps</div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">タイヤ半径</div>
+                        <div class="tyre-data-label">RADIUS</div>
                         <div class="tyre-data-value" id="tyre-fl-radius">--m</div>
                     </div>
                 </div>
             </div>
-            <div class="tyre-card front" id="tyre-fr">
+
+            <div class="tyre-card fr" id="tyre-fr">
                 <div class="tyre-header">
-                    <span class="tyre-position fr">FR (前右)</span>
+                    <span class="tyre-position">FR</span>
                 </div>
                 <div class="tyre-data">
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">温度</div>
+                        <div class="tyre-data-label">TEMP</div>
                         <div class="tyre-data-value" id="tyre-fr-temp">--°C</div>
-                        <div class="tyre-temp-display"><div class="tyre-temp-bar" id="tyre-fr-temp-bar"></div></div>
+                        <div class="temp-display"><div class="temp-bar" id="tyre-fr-temp-bar"></div></div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">サスペンション</div>
+                        <div class="tyre-data-label">SUSP</div>
                         <div class="tyre-data-value" id="tyre-fr-susp">--mm</div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">回転数</div>
-                        <div class="tyre-data-value" id="tyre-fr-rps">--rps</div>
+                        <div class="tyre-data-label">WHEEL</div>
+                        <div class="tyre-data-value" id="tyre-fr-wheel">--rps</div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">タイヤ半径</div>
+                        <div class="tyre-data-label">RADIUS</div>
                         <div class="tyre-data-value" id="tyre-fr-radius">--m</div>
                     </div>
                 </div>
             </div>
-            <div class="tyre-card rear" id="tyre-rl">
+
+            <div class="tyre-card rl" id="tyre-rl">
                 <div class="tyre-header">
-                    <span class="tyre-position rl">RL (後左)</span>
+                    <span class="tyre-position">RL</span>
                 </div>
                 <div class="tyre-data">
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">温度</div>
+                        <div class="tyre-data-label">TEMP</div>
                         <div class="tyre-data-value" id="tyre-rl-temp">--°C</div>
-                        <div class="tyre-temp-display"><div class="tyre-temp-bar" id="tyre-rl-temp-bar"></div></div>
+                        <div class="temp-display"><div class="temp-bar" id="tyre-rl-temp-bar"></div></div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">サスペンション</div>
+                        <div class="tyre-data-label">SUSP</div>
                         <div class="tyre-data-value" id="tyre-rl-susp">--mm</div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">回転数</div>
-                        <div class="tyre-data-value" id="tyre-rl-rps">--rps</div>
+                        <div class="tyre-data-label">WHEEL</div>
+                        <div class="tyre-data-value" id="tyre-rl-wheel">--rps</div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">タイヤ半径</div>
+                        <div class="tyre-data-label">RADIUS</div>
                         <div class="tyre-data-value" id="tyre-rl-radius">--m</div>
                     </div>
                 </div>
             </div>
-            <div class="tyre-card rear" id="tyre-rr">
+
+            <div class="tyre-card rr" id="tyre-rr">
                 <div class="tyre-header">
-                    <span class="tyre-position rr">RR (後右)</span>
+                    <span class="tyre-position">RR</span>
                 </div>
                 <div class="tyre-data">
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">温度</div>
+                        <div class="tyre-data-label">TEMP</div>
                         <div class="tyre-data-value" id="tyre-rr-temp">--°C</div>
-                        <div class="tyre-temp-display"><div class="tyre-temp-bar" id="tyre-rr-temp-bar"></div></div>
+                        <div class="temp-display"><div class="temp-bar" id="tyre-rr-temp-bar"></div></div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">サスペンション</div>
+                        <div class="tyre-data-label">SUSP</div>
                         <div class="tyre-data-value" id="tyre-rr-susp">--mm</div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">回転数</div>
-                        <div class="tyre-data-value" id="tyre-rr-rps">--rps</div>
+                        <div class="tyre-data-label">WHEEL</div>
+                        <div class="tyre-data-value" id="tyre-rr-wheel">--rps</div>
                     </div>
                     <div class="tyre-data-item">
-                        <div class="tyre-data-label">タイヤ半径</div>
+                        <div class="tyre-data-label">RADIUS</div>
                         <div class="tyre-data-value" id="tyre-rr-radius">--m</div>
                     </div>
                 </div>
@@ -174,29 +513,36 @@
     </div>
 
     <script>
-        // DockerホストのIPを指定（ローカルならlocalhost）
         const ws = new WebSocket('ws://localhost:8080');
 
         ws.onopen = () => console.log('Connected to GT7 Bridge');
-        
+
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
-            // Speed
+
+            // Gear Display
+            const gear = data.gear;
+            const gearElement = document.getElementById('gear');
+            gearElement.innerText = gear === 0 ? 'R' : (gear === 1 ? 'N' : gear - 1);
+            document.getElementById('gear-rpm').innerText = Math.round(data.rpm) + ' RPM';
+
+            // Speed Display
             document.getElementById('speed').innerText = Math.round(data.speed_kmh);
-            
-            // RPM
+
+            // RPM Bar
             const rpmPct = (data.rpm / (data.max_rpm || 9000)) * 100;
             document.getElementById('rpm-bar').style.width = rpmPct + '%';
             document.getElementById('rpm-text').innerText = Math.round(data.rpm) + ' RPM';
-            
-            // Gear
-            let g = data.gear; 
-            document.getElementById('gear').innerText = g === 0 ? 'R' : (g === 1 ? 'N' : g - 1);
 
             // Pedals
-            document.getElementById('throttle-bar').style.height = data.throttle_pct + '%';
-            document.getElementById('brake-bar').style.height = data.brake_pct + '%';
+            document.getElementById('throttle-bar').style.height = (data.throttle_pct || 0) + '%';
+            document.getElementById('brake-bar').style.height = (data.brake_pct || 0) + '%';
+
+            // Wheel Rotation
+            updateWheelMeter('fl', data.wheel_rps && data.wheel_rps[0]);
+            updateWheelMeter('fr', data.wheel_rps && data.wheel_rps[1]);
+            updateWheelMeter('rl', data.wheel_rps && data.wheel_rps[2]);
+            updateWheelMeter('rr', data.wheel_rps && data.wheel_rps[3]);
 
             // Tyre Data
             updateTyreData('fl', data, 0);
@@ -205,46 +551,76 @@
             updateTyreData('rr', data, 3);
         };
 
+        function updateWheelMeter(position, rps) {
+            const fill = document.getElementById('wheel-' + position);
+            const value = document.getElementById('wheel-' + position + '-val');
+            const maxRps = 20; // 最大値を設定
+
+            if (rps !== undefined) {
+                const pct = Math.min((rps / maxRps) * 100, 100);
+                fill.style.opacity = 0.8 * (pct / 100);
+                value.innerText = rps.toFixed(2) + ' rps';
+            } else {
+                fill.style.opacity = 0;
+                value.innerText = '-- rps';
+            }
+        }
+
         function updateTyreData(position, data, index) {
-            // Tyre Temperature (Celsius)
-            if (data.tyre_temp && data.tyre_temp[index] !== undefined) {
-                const temp = data.tyre_temp[index];
-                document.getElementById(`tyre-${position}-temp`).innerText = temp.toFixed(1) + '°C';
-                
-                // Temperature color (Blue: cold -> Green: optimal -> Red: hot)
-                const tempPct = Math.min(Math.max((temp - 20) / 80, 0), 1);
-                document.getElementById(`tyre-${position}-temp-bar`).style.width = (tempPct * 100) + '%';
-                
-                let tempColor;
+            const temp = data.tyre_temp && data.tyre_temp[index];
+            const susp = data.susp_height && data.susp_height[index];
+            const wheel = data.wheel_rps && data.wheel_rps[index];
+            const radius = data.tyre_radius && data.tyre_radius[index];
+
+            // Temperature
+            if (temp !== undefined) {
+                const tempElement = document.getElementById('tyre-' + position + '-temp');
+                const tempBar = document.getElementById('tyre-' + position + '-temp-bar');
+                const tempCard = document.getElementById('tyre-' + position);
+
+                tempElement.innerText = temp.toFixed(1) + '°C';
+
+                // Temperature color
+                let tempPct = Math.min(Math.max((temp - 20) / 80, 0), 1);
+                let color;
+                let tempState;
+
                 if (temp < 40) {
-                    // Cold (blue to cyan)
-                    tempColor = `rgb(${Math.round(tempPct * 100)}, 255, 255)`;
+                    // Cold
+                    color = '#44ffff';
+                    tempState = 'cold';
                 } else if (temp < 80) {
-                    // Optimal (green to yellow)
-                    tempColor = `rgb(255, 255, ${Math.round(255 - tempPct * 255)})`;
+                    // Optimal
+                    color = '#00ff88';
+                    tempState = 'optimal';
                 } else {
-                    // Hot (yellow to red)
-                    tempColor = `rgb(255, ${Math.round(255 - tempPct * 255)}, 0)`;
+                    // Hot
+                    color = '#ff4444';
+                    tempState = 'hot';
                 }
-                document.getElementById(`tyre-${position}-temp-bar`).style.backgroundColor = tempColor;
+
+                tempBar.style.width = (tempPct * 100) + '%';
+                tempBar.style.backgroundColor = color;
+                tempElement.style.color = color;
+                tempElement.style.textShadow = `0 0 10px ${color}`;
+
+                // Card state
+                tempCard.className = 'tyre-card ' + position + ' ' + tempState;
             }
 
-            // Suspension Height (mm)
-            if (data.susp_height && data.susp_height[index] !== undefined) {
-                const susp = data.susp_height[index];
-                document.getElementById(`tyre-${position}-susp`).innerText = susp.toFixed(1) + 'mm';
+            // Suspension
+            if (susp !== undefined) {
+                document.getElementById('tyre-' + position + '-susp').innerText = susp.toFixed(1) + 'mm';
             }
 
-            // Wheel RPS
-            if (data.wheel_rps && data.wheel_rps[index] !== undefined) {
-                const rps = data.wheel_rps[index];
-                document.getElementById(`tyre-${position}-rps`).innerText = rps.toFixed(2) + ' rps';
+            // Wheel
+            if (wheel !== undefined) {
+                document.getElementById('tyre-' + position + '-wheel').innerText = wheel.toFixed(2) + ' rps';
             }
 
-            // Tyre Radius (m)
-            if (data.tyre_radius && data.tyre_radius[index] !== undefined) {
-                const radius = data.tyre_radius[index];
-                document.getElementById(`tyre-${position}-radius`).innerText = radius.toFixed(3) + 'm';
+            // Radius
+            if (radius !== undefined) {
+                document.getElementById('tyre-' + position + '-radius').innerText = radius.toFixed(3) + 'm';
             }
         }
     </script>
