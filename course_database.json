@@ -224,15 +224,27 @@
     ],
     "known_courses": [
         {
-            "id": "unknown_default",
-            "name": "未知のコース（デフォルト）",
-            "name_en": "Unknown Track (Default)",
-            "name_ja": "未知のコース",
+            "id": "tokyo_expressway_east",
+            "name": "東京インター（東ルート）",
+            "name_en": "Tokyo Expressway East",
+            "name_ja": "東京インター（東ルート）",
             "bounds": {
-                "min_x": -99999,
-                "max_x": 99999,
-                "min_z": -99999,
-                "max_z": 99999
+                "min_x": -500,
+                "max_x": 300,
+                "min_z": -400,
+                "max_z": 400
+            }
+        },
+        {
+            "id": "tokyo_expressway_west",
+            "name": "東京インター（西ルート）",
+            "name_en": "Tokyo Expressway West",
+            "name_ja": "東京インター（西ルート）",
+            "bounds": {
+                "min_x": -400,
+                "max_x": 500,
+                "min_z": -400,
+                "max_z": 400
             }
         }
     ],
