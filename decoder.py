@@ -7,18 +7,176 @@ gt7dashboardの実装を参考にしています。
 
 import struct
 import json
+import os
 from Crypto.Cipher import Salsa20
+
+
+class CourseEstimator:
+    """位置座標からコースを推定するクラス"""
+
+    def __init__(self, db_file='course_database.json'):
+        """
+        コース推定器を初期化します
+
+        Args:
+            db_file: コースデータベースファイルのパス
+        """
+        self.courses = []
+        self.load_database(db_file)
+
+    def load_database(self, db_file):
+        """
+        コースデータベースを読み込みます
+
+        Args:
+            db_file: コースデータベースファイルのパス
+        """
+        try:
+            if os.path.exists(db_file):
+                with open(db_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # 既存のコースと既知のコースの両方を読み込む
+                    self.courses = data.get('courses', [])
+                    self.known_courses = data.get('known_courses', [])
+                    self.test_mode = data.get('test_mode', {})
+                print(f"[COURSE_DB] Loaded {len(self.courses)} auto-generated courses from {db_file}")
+                print(f"[COURSE_DB] Loaded {len(self.known_courses)} known courses")
+            else:
+                print(f"[COURSE_DB] Database file not found: {db_file}")
+                self.courses = []
+                self.known_courses = []
+                self.test_mode = {}
+        except Exception as e:
+            print(f"[COURSE_DB] Error loading database: {e}")
+            self.courses = []
+            self.known_courses = []
+            self.test_mode = {}
+
+    def estimate_course(self, x, z):
+        """
+        位置座標からコースを推定します
+
+        Args:
+            x: X座標
+            z: Z座標
+
+        Returns:
+            推定されたコース情報（辞書形式）
+        """
+        # まず既知のコースをチェック
+        if self.known_courses:
+            for course in self.known_courses:
+                bounds = course.get('bounds', {})
+                min_x = bounds.get('min_x', -99999)
+                max_x = bounds.get('max_x', 99999)
+                min_z = bounds.get('min_z', -99999)
+                max_z = bounds.get('max_z', 99999)
+
+                if min_x <= x <= max_x and min_z <= z <= max_z:
+                    return {
+                        "id": course.get('id', 'unknown'),
+                        "name": course.get('name', 'Unknown'),
+                        "name_en": course.get('name_en', ''),
+                        "name_ja": course.get('name_ja', ''),
+                        "confidence": 1.0
+                    }
+
+        # 次に自動生成コースをチェック
+        if self.courses:
+            for course in self.courses:
+                bounds = course.get('bounds', {})
+                min_x = bounds.get('min_x', -99999)
+                max_x = bounds.get('max_x', 99999)
+                min_z = bounds.get('min_z', -99999)
+                max_z = bounds.get('max_z', 99999)
+
+                if min_x <= x <= max_x and min_z <= z <= max_z:
+                    return {
+                        "id": course.get('id', 'unknown'),
+                        "name": course.get('name', 'Unknown'),
+                        "description": course.get('description', ''),
+                        "confidence": 0.8
+                    }
+
+        # マッチするコースがない場合
+        return {"id": "unknown", "name": "Unknown Track", "confidence": 0}
+
+    def update_database_from_data(self, data_points, course_id, course_name):
+        """
+        テレメトリーデータからコースデータベースを更新します
+
+        Args:
+            data_points: 位置座標のリスト [{'x': ..., 'z': ...}, ...]
+            course_id: コースID
+            course_name: コース名
+        """
+        if not data_points:
+            return
+
+        x_values = [p['x'] for p in data_points]
+        z_values = [p['z'] for p in data_points]
+
+        # 既存のコースを探す
+        existing_course = None
+        for course in self.courses:
+            if course.get('id') == course_id:
+                existing_course = course
+                break
+
+        bounds = {
+            'min_x': min(x_values),
+            'max_x': max(x_values),
+            'min_z': min(z_values),
+            'max_z': max(z_values)
+        }
+
+        if existing_course:
+            # 既存のコースを更新
+            existing_course['bounds'] = bounds
+            print(f"[COURSE_DB] Updated course: {course_name}")
+        else:
+            # 新しいコースを追加
+            new_course = {
+                'id': course_id,
+                'name': course_name,
+                'bounds': bounds
+            }
+            self.courses.append(new_course)
+            print(f"[COURSE_DB] Added new course: {course_name}")
+
+    def save_database(self, db_file='course_database.json'):
+        """
+        コースデータベースを保存します
+
+        Args:
+            db_file: 保存先ファイルパス
+        """
+        try:
+            data = {
+                'courses': self.courses,
+                'metadata': {
+                    'version': '1.0.0',
+                    'description': 'GT7コースデータベース - 位置座標(x, z)からコースを推定',
+                    'note': '座標範囲は実際のテレメトリーデータから収集して更新してください'
+                }
+            }
+            with open(db_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            print(f"[COURSE_DB] Saved {len(self.courses)} courses to {db_file}")
+        except Exception as e:
+            print(f"[COURSE_DB] Error saving database: {e}")
 
 
 class GT7Decoder:
     """GT7テレメトリーパケットの復号と解析"""
 
-    def __init__(self, def_file='packet_def.json'):
+    def __init__(self, def_file='packet_def.json', course_db='course_database.json'):
         """
         デコーダーを初期化します
 
         Args:
             def_file: パケット定義ファイルのパス
+            course_db: コースデータベースファイルのパス
         """
         self.key = b'Simulator Interface Packet GT7 ver 0.0'
         # packet_def.jsonがあれば読み込む
@@ -28,8 +186,12 @@ class GT7Decoder:
         except:
             self.definition = {"fields": {}}
 
+        # コース推定器を初期化
+        self.course_estimator = CourseEstimator(course_db)
+
         # ログ制御用
         self.parse_count = 0
+        self.last_course = None
 
     def decrypt(self, data: bytes) -> bytes:
         """
@@ -141,6 +303,13 @@ class GT7Decoder:
             result["position_y"] = struct.unpack('f', decrypted_data[0x08:0x08 + 4])[0]
             result["position_z"] = struct.unpack('f', decrypted_data[0x0C:0x0C + 4])[0]
 
+            # コース推定
+            course_info = self.course_estimator.estimate_course(
+                result["position_x"],
+                result["position_z"]
+            )
+            result["course"] = course_info
+
             # 燃料
             result["current_fuel"] = struct.unpack('f', decrypted_data[0x44:0x44 + 4])[0]
             result["fuel_capacity"] = struct.unpack('f', decrypted_data[0x48:0x48 + 4])[0]
@@ -162,8 +331,16 @@ class GT7Decoder:
 
             # 最初の数回のみログ
             self.parse_count += 1
+
+            # コース情報が変わったらログ
+            current_course = result["course"]["name"]
+            if self.last_course != current_course:
+                if self.parse_count <= 3:
+                    print(f"[PARSE] Course detected: {current_course}")
+                self.last_course = current_course
+
             if self.parse_count <= 3:
-                print(f"[PARSE] Success! Speed: {result['speed_kmh']:.1f} km/h, RPM: {result['rpm']:.0f}, Gear: {result['gear']}")
+                print(f"[PARSE] Success! Speed: {result['speed_kmh']:.1f} km/h, RPM: {result['rpm']:.0f}, Gear: {result['gear']}, Course: {current_course}")
             elif self.parse_count == 4:
                 print("[PARSE] Receiving data... (suppressing further logs)")
 
