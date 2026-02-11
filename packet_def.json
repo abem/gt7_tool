@@ -14,5 +14,14 @@
         "wheel_rps":  {"offset": "0x1A0", "type": "array_float", "length": 4},
         "tyre_radius": {"offset": "0x1C0", "type": "array_float", "length": 4},
         "brake_temp": {"offset": "0x1E0", "type": "array_float", "length": 4}
+    },
+    "course_detection": {
+        "method": "position_based",
+        "description": "コースIDはテレメトリーパケットに含まれていないため、位置座標(x, z)から推定します",
+        "database_file": "course_database.json",
+        "notes": [
+            "コースデータベースには各コースの座標範囲を登録してください",
+            "実際のテレメトリーデータを収集してコースを学習させることができます"
+        ]
     }
 }

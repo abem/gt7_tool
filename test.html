@@ -2,144 +2,236 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>GT7 Telemetry Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEST MODE - GT7 Dashboard</title>
     <style>
         body {
-            font-family: monospace;
-            background: #1a1a2e;
-            color: #eee;
+            background: #0a0e1a;
+            color: #fff;
+            font-family: sans-serif;
             padding: 20px;
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #00ff88;
         }
         .status {
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
         }
-        .connected { background: #2ecc71; }
-        .disconnected { background: #e74c3c; }
-        .data-container {
+        #test-mode-btn {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            background: #444;
+            border: 2px solid #ffd700;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 20px;
+        }
+        #test-mode-btn:hover {
+            background: rgba(255, 215, 0, 0.3);
+        }
+        #test-mode-btn.active {
+            background: #ffd700;
+            color: #000;
+        }
+        .info {
+            font-size: 14px;
+            color: #888;
+            margin: 10px 0;
+        }
+        .data-display {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 10px;
             margin-top: 20px;
         }
-        .data-box {
-            background: #16213e;
+        .data-item {
+            background: rgba(255, 255, 255, 0.05);
             padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-        }
-        .data-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #0f3460;
+            border-radius: 8px;
         }
         .data-label {
             font-size: 12px;
             color: #888;
         }
-        #speed-box .data-value { color: #e94560; font-size: 48px; }
-        #rpm-box .data-value { color: #0f3460; }
-        #gear-box .data-value { color: #ffd700; font-size: 72px; }
+        .data-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+        #course-canvas {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin: 20px auto;
+        }
     </style>
 </head>
 <body>
-    <h1>GT7 Telemetry Test</h1>
-    <div id="status" class="status disconnected">Disconnected</div>
+    <div class="container">
+        <h1>GT7 TEST MODE</h1>
 
-    <div class="data-container">
-        <div class="data-box" id="speed-box">
-            <div class="data-value" id="speed">0</div>
-            <div class="data-label">km/h</div>
+        <div class="status">
+            <div id="connection-status" style="color: #ff4444;">● Disconnected (Test Mode Standalone)</div>
+            <div class="info">PS5がなくてもテストできます</div>
         </div>
-        <div class="data-box" id="rpm-box">
-            <div class="data-value" id="rpm">0</div>
-            <div class="data-label">RPM</div>
-        </div>
-        <div class="data-box" id="gear-box">
-            <div class="data-value" id="gear">N</div>
-            <div class="data-label">GEAR</div>
-        </div>
-        <div class="data-box">
-            <div class="data-value" id="throttle">0</div>
-            <div class="data-label">THROTTLE %</div>
-        </div>
-        <div class="data-box">
-            <div class="data-value" id="brake">0</div>
-            <div class="data-label">BRAKE %</div>
-        </div>
-        <div class="data-box">
-            <div class="data-value" id="fl-temp">0</div>
-            <div class="data-label">FL TEMP °C</div>
-        </div>
-        <div class="data-box">
-            <div class="data-value" id="fr-temp">0</div>
-            <div class="data-label">FR TEMP °C</div>
-        </div>
-        <div class="data-box">
-            <div class="data-value" id="rl-temp">0</div>
-            <div class="data-label">RL TEMP °C</div>
-        </div>
-    </div>
 
-    <div style="margin-top: 20px;">
-        <h3>Raw Data (last update)</h3>
-        <pre id="raw-data" style="background: #000; padding: 10px; border-radius: 5px;">No data</pre>
+        <button id="test-mode-btn">TEST MODE 開始</button>
+
+        <div class="data-display">
+            <div class="data-item">
+                <div class="data-label">SPEED</div>
+                <div class="data-value" id="speed">0</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">RPM</div>
+                <div class="data-value" id="rpm">0</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">GEAR</div>
+                <div class="data-value" id="gear">N</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">COURSE</div>
+                <div class="data-value" id="course" style="font-size: 14px;">--</div>
+            </div>
+        </div>
+
+        <canvas id="course-canvas" width="600" height="400"></canvas>
+
+        <div class="info">
+            <div id="position-info">Position: X: -- Z: --</div>
+        </div>
     </div>
 
     <script>
-        const statusEl = document.getElementById('status');
-        const rawEl = document.getElementById('raw-data');
+        let testModeActive = false;
+        let testInterval = null;
+        let trajectoryIndex = 0;
 
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsHost = window.location.host;
-        const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws`);
+        const demoTrajectory = [
+            {x: 0, z: -300, speed: 80}, {x: 50, z: -280, speed: 120}, {x: 100, z: -240, speed: 160},
+            {x: 150, z: -180, speed: 200}, {x: 200, z: -100, speed: 220}, {x: 240, z: -20, speed: 200},
+            {x: 260, z: 60, speed: 180}, {x: 250, z: 140, speed: 150}, {x: 220, z: 200, speed: 120},
+            {x: 170, z: 230, speed: 100}, {x: 110, z: 240, speed: 90}, {x: 50, z: 230, speed: 100},
+            {x: -20, z: 200, speed: 130}, {x: -80, z: 150, speed: 170}, {x: -120, z: 80, speed: 200},
+            {x: -140, z: 0, speed: 190}, {x: -130, z: -80, speed: 160}, {x: -90, z: -150, speed: 130},
+            {x: -40, z: -220, speed: 110}, {x: 0, z: -280, speed: 90}
+        ];
 
-        ws.onopen = () => {
-            console.log('Connected to GT7 Bridge');
-            statusEl.textContent = 'Connected';
-            statusEl.className = 'status connected';
-        };
+        const canvas = document.getElementById('course-canvas');
+        const ctx = canvas.getContext('2d');
+        let trajectory = [];
 
-        ws.onerror = (error) => {
-            console.error('WebSocket Error:', error);
-            statusEl.textContent = 'Error: ' + error;
-            statusEl.className = 'status disconnected';
-        };
+        function drawCourseMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        ws.onclose = () => {
-            console.log('Disconnected from GT7 Bridge');
-            statusEl.textContent = 'Disconnected';
-            statusEl.className = 'status disconnected';
-        };
+            // Draw background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.02)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log('Received:', data);
-
-                // 更新表示
-                document.getElementById('speed').textContent = Math.round(data.speed_kmh || 0);
-                document.getElementById('rpm').textContent = Math.round(data.rpm || 0);
-
-                const gear = data.gear || 0;
-                document.getElementById('gear').textContent = gear === 0 ? 'R' : (gear === 1 ? 'N' : gear - 1);
-
-                document.getElementById('throttle').textContent = Math.round(data.throttle_pct || 0);
-                document.getElementById('brake').textContent = Math.round(data.brake_pct || 0);
-
-                if (data.tyre_temp) {
-                    document.getElementById('fl-temp').textContent = Math.round(data.tyre_temp[0]);
-                    document.getElementById('fr-temp').textContent = Math.round(data.tyre_temp[1]);
-                    document.getElementById('rl-temp').textContent = Math.round(data.tyre_temp[2]);
-                }
-
-                rawEl.textContent = JSON.stringify(data, null, 2);
-            } catch (e) {
-                console.error('Parse error:', e);
-                rawEl.textContent = 'Parse error: ' + e + '\nRaw: ' + event.data;
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
             }
-        };
+            for (let y = 0; y < canvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Draw trajectory
+            if (trajectory.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(trajectory[0].canvasX, trajectory[0].canvasZ);
+                for (let i = 1; i < trajectory.length; i++) {
+                    ctx.lineTo(trajectory[i].canvasX, trajectory[i].canvasZ);
+                }
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Draw current position
+            if (trajectory.length > 0) {
+                const last = trajectory[trajectory.length - 1];
+                ctx.fillStyle = '#00ff88';
+                ctx.beginPath();
+                ctx.arc(last.canvasX, last.canvasZ, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function gameToCanvas(x, z) {
+            // Simple mapping: center is (300, 200), scale is 0.5
+            return {
+                x: 300 + x * 0.5,
+                z: 200 + z * 0.5
+            };
+        }
+
+        const testModeBtn = document.getElementById('test-mode-btn');
+        testModeBtn.addEventListener('click', () => {
+            testModeActive = !testModeActive;
+            testModeBtn.classList.toggle('active', testModeActive);
+            testModeBtn.textContent = testModeActive ? 'TEST MODE 停止' : 'TEST MODE 開始';
+
+            if (testModeActive) {
+                document.getElementById('connection-status').innerHTML = '<span style="color: #ffd700;">● TEST MODE 実行中</span>';
+                document.getElementById('course').textContent = 'スズカ';
+                trajectory = [];
+                trajectoryIndex = 0;
+
+                testInterval = setInterval(() => {
+                    if (!testModeActive) {
+                        clearInterval(testInterval);
+                        return;
+                    }
+
+                    const point = demoTrajectory[trajectoryIndex % demoTrajectory.length];
+                    trajectoryIndex++;
+
+                    // Update display
+                    document.getElementById('speed').textContent = Math.round(point.speed);
+                    document.getElementById('rpm').textContent = Math.round(3000 + Math.random() * 4000);
+                    document.getElementById('gear').textContent = Math.floor(Math.random() * 6) + 1;
+
+                    const canvasPos = gameToCanvas(point.x, point.z);
+                    trajectory.push({ canvasX: canvasPos.x, canvasZ: canvasPos.z });
+                    if (trajectory.length > 50) trajectory.shift();
+
+                    document.getElementById('position-info').textContent =
+                        `Position: X: ${point.x.toFixed(1)} Z: ${point.z.toFixed(1)}`;
+
+                    drawCourseMap();
+
+                }, 200);
+
+            } else {
+                clearInterval(testInterval);
+                document.getElementById('connection-status').innerHTML = '<span style="color: #ff4444;">● Stopped</span>';
+                trajectory = [];
+                drawCourseMap();  // Clear canvas after stopping
+            }
+        });
+
+        // Initial draw
+        drawCourseMap();
     </script>
 </body>
 </html>
