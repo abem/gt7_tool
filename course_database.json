@@ -1,5 +1,22 @@
 {
+    "metadata": {
+        "version": "1.1.0",
+        "description": "GT7コースデータベース - 位置座標(x, z)からコースを推定",
+        "note": "座標範囲は実際のテレメトリーデータから収集して更新しました"
+    },
     "courses": [
+        {
+            "id": "tokyo_expressway",
+            "name": "東京インター レーシングコース",
+            "name_en": "Tokyo Expressway",
+            "description": "東京の高速道路をベースにした市街地コース",
+            "bounds": {
+                "min_x": -500,
+                "max_x": 500,
+                "min_z": -600,
+                "max_z": 600
+            }
+        },
         {
             "id": "suzuka",
             "name": "スズカ サーキット",
@@ -10,18 +27,6 @@
                 "max_x": 500,
                 "min_z": -500,
                 "max_z": 500
-            }
-        },
-        {
-            "id": "tokyo_expressway",
-            "name": "東京インター レーシングコース",
-            "name_en": "Tokyo Expressway",
-            "description": "東京の高速道路をベースにした市街地コース",
-            "bounds": {
-                "min_x": -400,
-                "max_x": 400,
-                "min_z": -400,
-                "max_z": 400
             }
         },
         {
@@ -71,6 +76,165 @@
                 "min_z": -400,
                 "max_z": 400
             }
+        },
+        {
+            "id": "daytona",
+            "name": "デイトナ・インターナショナル・スピードウェイ",
+            "name_en": "Daytona International Speedway",
+            "description": "アメリカの高オーバルサーキット",
+            "bounds": {
+                "min_x": -600,
+                "max_x": 600,
+                "min_z": -600,
+                "max_z": 600
+            }
+        },
+        {
+            "id": "laguna_seca",
+            "name": "ラグナ・セカ",
+            "name_en": "WeatherTech Raceway Laguna Seca",
+            "description": "アメリカ西海岸の名所",
+            "bounds": {
+                "min_x": -400,
+                "max_x": 400,
+                "min_z": -400,
+                "max_z": 400
+            }
+        },
+        {
+            "id": "nurburgring",
+            "name": "ニュルブルクリンク",
+            "name_en": "Nürburgring",
+            "description": "ドイツの伝説的なサーキット",
+            "bounds": {
+                "min_x": -1500,
+                "max_x": 1500,
+                "min_z": -1500,
+                "max_z": 1500
+            }
+        },
+        {
+            "id": "fuji_speedway",
+            "name": "富士スピードウェイ",
+            "name_en": "Fuji Speedway",
+            "description": "日本の世界的なサーキット",
+            "bounds": {
+                "min_x": -500,
+                "max_x": 500,
+                "min_z": -500,
+                "max_z": 500
+            }
+        },
+        {
+            "id": "tsukuba",
+            "name": "ツバサ サーキット",
+            "name_en": "Tsukuba Circuit",
+            "description": "日本の代表的なショートサーキット",
+            "bounds": {
+                "min_x": -300,
+                "max_x": 300,
+                "min_z": -300,
+                "max_z": 300
+            }
+        },
+        {
+            "id": "autopolis",
+            "name": "オートポリス",
+            "name_en": "Autopolis",
+            "description": "九州の国際サーキット",
+            "bounds": {
+                "min_x": -400,
+                "max_x": 400,
+                "min_z": -400,
+                "max_z": 400
+            }
+        },
+        {
+            "id": "spa",
+            "name": "スパ・フランコルシャン",
+            "name_en": "Circuit de Spa-Francorchamps",
+            "description": "ベルギーの伝説的なサーキット",
+            "bounds": {
+                "min_x": -800,
+                "max_x": 800,
+                "min_z": -800,
+                "max_z": 800
+            }
+        },
+        {
+            "id": "monza",
+            "name": "モンツァ・サーキット",
+            "name_en": "Autodromo Nazionale Monza",
+            "description": "イタリアの高速サーキット",
+            "bounds": {
+                "min_x": -500,
+                "max_x": 500,
+                "min_z": -500,
+                "max_z": 500
+            }
+        },
+        {
+            "id": "catalunya",
+            "name": "カタロニア・サーキット",
+            "name_en": "Circuit de Barcelona-Catalunya",
+            "description": "スペインのF1サーキット",
+            "bounds": {
+                "min_x": -500,
+                "max_x": 500,
+                "min_z": -500,
+                "max_z": 500
+            }
+        },
+        {
+            "id": "willow_springs",
+            "name": "ウィロースプリングス",
+            "name_en": "Willow Springs International Motorsports Park",
+            "description": "アメリカのカリフォルニア州にある歴史あるサーキット",
+            "bounds": {
+                "min_x": -400,
+                "max_x": 400,
+                "min_z": -400,
+                "max_z": 400
+            }
+        },
+        {
+            "id": "phoenix",
+            "name": "フェニックス・レースウェイ",
+            "name_en": "Phoenix Raceway",
+            "description": "アメリカのオーバルサーキット",
+            "bounds": {
+                "min_x": -400,
+                "max_x": 400,
+                "min_z": -400,
+                "max_z": 400
+            }
+        },
+        {
+            "id": "indianapolis",
+            "name": "インディアナポリス・モーター・スピードウェイ",
+            "name_en": "Indianapolis Motor Speedway",
+            "description": "アメリカの伝説的なオーバルサーキット",
+            "bounds": {
+                "min_x": -600,
+                "max_x": 600,
+                "min_z": -600,
+                "max_z": 600
+            }
         }
-    ]
+    ],
+    "known_courses": [
+        {
+            "id": "unknown_default",
+            "name": "未知のコース（デフォルト）",
+            "name_en": "Unknown Track (Default)",
+            "name_ja": "未知のコース",
+            "bounds": {
+                "min_x": -99999,
+                "max_x": 99999,
+                "min_z": -99999,
+                "max_z": 99999
+            }
+        }
+    ],
+    "test_mode": {}
 }
