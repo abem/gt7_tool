@@ -191,7 +191,6 @@ class GT7Decoder:
 
         # ログ制御用
         self.parse_count = 0
-        self.last_course = None
 
     def decrypt(self, data: bytes) -> bytes:
         """
@@ -274,6 +273,14 @@ class GT7Decoder:
                 struct.unpack('f', decrypted_data[0x6C:0x6C + 4])[0],  # RR
             ]
 
+            # タイヤ圧（byte値をbarに変換）
+            result["tyre_pressure"] = [
+                struct.unpack('B', decrypted_data[0x94:0x94 + 1])[0] / 4.0,  # FL
+                struct.unpack('B', decrypted_data[0x95:0x95 + 1])[0] / 4.0,  # FR
+                struct.unpack('B', decrypted_data[0x96:0x96 + 1])[0] / 4.0,  # RL
+                struct.unpack('B', decrypted_data[0x97:0x97 + 1])[0] / 4.0,  # RR
+            ]
+
             # サスペンション高さ
             result["susp_height"] = [
                 struct.unpack('f', decrypted_data[0xC4:0xC4 + 4])[0],  # FL
@@ -298,17 +305,16 @@ class GT7Decoder:
                 struct.unpack('f', decrypted_data[0xB0:0xB0 + 4])[0],  # RR
             ]
 
+            # 加速度 - GT7テレメトリにはリアルタイム加速度データが含まれていないようです
+            # 速度から計算可能ですが、実装していません
+            # result["accel_x"] = 0.0  # 前後
+            # result["accel_y"] = 0.0  # 左右
+            # result["accel_z"] = 0.0  # 上下
+
             # 位置情報
             result["position_x"] = struct.unpack('f', decrypted_data[0x04:0x04 + 4])[0]
             result["position_y"] = struct.unpack('f', decrypted_data[0x08:0x08 + 4])[0]
             result["position_z"] = struct.unpack('f', decrypted_data[0x0C:0x0C + 4])[0]
-
-            # コース推定
-            course_info = self.course_estimator.estimate_course(
-                result["position_x"],
-                result["position_z"]
-            )
-            result["course"] = course_info
 
             # 燃料
             result["current_fuel"] = struct.unpack('f', decrypted_data[0x44:0x44 + 4])[0]
@@ -332,15 +338,8 @@ class GT7Decoder:
             # 最初の数回のみログ
             self.parse_count += 1
 
-            # コース情報が変わったらログ
-            current_course = result["course"]["name"]
-            if self.last_course != current_course:
-                if self.parse_count <= 3:
-                    print(f"[PARSE] Course detected: {current_course}")
-                self.last_course = current_course
-
             if self.parse_count <= 3:
-                print(f"[PARSE] Success! Speed: {result['speed_kmh']:.1f} km/h, RPM: {result['rpm']:.0f}, Gear: {result['gear']}, Course: {current_course}")
+                print(f"[PARSE] Success! Speed: {result['speed_kmh']:.1f} km/h, RPM: {result['rpm']:.0f}, Gear: {result['gear']}")
             elif self.parse_count == 4:
                 print("[PARSE] Receiving data... (suppressing further logs)")
 

@@ -407,7 +407,9 @@
             const minutes = Math.floor(ms / 60000);
             const seconds = Math.floor((ms % 60000) / 1000);
             const millis = ms % 1000;
-            return `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+            const secondsStr = String(seconds).padStart(2, '0');
+            const millisStr = String(millis).padStart(3, '0');
+            return `${minutes}:${secondsStr}.${millisStr}`;
         }
 
         function updateTestModeTyres(speed) {

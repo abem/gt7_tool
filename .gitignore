@@ -24,3 +24,7 @@ Thumbs.db
 
 # Docker
 .env
+
+# Course data (local, auto-generated from driving data)
+course_database.json
+*.json.backup

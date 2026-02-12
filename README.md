@@ -217,8 +217,17 @@ docker compose restart
 
 ## ドキュメント
 
-- **[APIドキュメント](docs/API.md)**: HTTP/WebSocket API、Pythonモジュールの詳細
+### ユーザー向け
+
+- **[ドキュメントトップ](docs/index.md)**: ドキュメントの目次
 - **[ユーザーガイド](docs/USER_GUIDE.md)**: 詳細な使い方、トラブルシューティング、FAQ
+- **[一般的な問題](docs/common-issues.md)**: トラブルシューティング
+- **[TEST MODEガイド](docs/test-mode.md)**: テストモードの使い方
+
+### 技術者向け
+
+- **[APIドキュメント](docs/API.md)**: HTTP/WebSocket API、Pythonモジュールの詳細
+- **[システムアーキテクチャ](docs/architecture.md)**: システム構成とデータフロー
 
 ## カスタマイズ方法
 

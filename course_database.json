@@ -220,6 +220,18 @@
                 "min_z": -600,
                 "max_z": 600
             }
+        },
+        {
+            "id": "grand_valley",
+            "name": "グランバレー・スピードウェイ",
+            "name_en": "Grand Valley Speedway",
+            "description": "GTシリーズの伝統的なサーキット",
+            "bounds": {
+                "min_x": -800,
+                "max_x": 800,
+                "min_z": -800,
+                "max_z": 800
+            }
         }
     ],
     "known_courses": [
@@ -236,6 +248,18 @@
             }
         },
         {
+            "id": "grand_valley",
+            "name": "グランバレー・スピードウェイ",
+            "name_en": "Grand Valley Speedway",
+            "name_ja": "グランバレー・スピードウェイ",
+            "bounds": {
+                "min_x": -200,
+                "max_x": 300,
+                "min_z": 1000,
+                "max_z": 1500
+            }
+        },
+        {
             "id": "tokyo_expressway_west",
             "name": "東京インター（西ルート）",
             "name_en": "Tokyo Expressway West",
@@ -246,7 +270,42 @@
                 "min_z": -400,
                 "max_z": 400
             }
+        },
+        {
+            "id": "real_track",
+            "name": "実走コース（デフォルト）",
+            "name_en": "Current Track",
+            "bounds": {
+                "min_x": -10000,
+                "max_x": 10000,
+                "min_z": -10000,
+                "max_z": 10000
+            }
         }
     ],
-    "test_mode": {}
+    "test_mode": {
+        "description": "TEST MODE用デモトラジェクトリデータ",
+        "suzuka_demo": {
+            "course_id": "suzuka",
+            "course_name": "スズカ サーキット (Demo)",
+            "total_points": 52,
+            "lap_time_target": 95000,
+            "sectors": {
+                "sector_1_end": 17,
+                "sector_2_end": 35,
+                "sector_3_end": 52
+            },
+            "bounds": {
+                "min_x": -300,
+                "max_x": 300,
+                "min_z": -300,
+                "max_z": 250
+            },
+            "notes": [
+                "リアルなスズカサーキットのレイアウトを再現",
+                "Degner Curve, Hairpin, Spoon Curve, 130R, Casio Triangleを含む",
+                "GT車両でのラップタイム: 約1:35.000"
+            ]
+        }
+    }
 }
