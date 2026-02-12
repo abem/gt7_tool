@@ -41,6 +41,11 @@ current_lap_number = 0
 last_lap_ticks = 0
 log_dir = "gt7data"
 
+# 燃費追跡用
+last_fuel = None
+total_fuel_consumed = 0.0
+refuel_lap_count = 0
+refuel_timestamp = None
 
 def ensure_log_dir():
     """ログディレクトリが存在することを確認"""
@@ -132,6 +137,45 @@ async def telemetry_background_task():
 
                             last_speed_kmh = parsed_data["speed_kmh"]
                             last_time = current_time
+
+                            # 燃料消費を計算
+                            global last_fuel, total_fuel_consumed, refuel_lap_count, refuel_timestamp
+                            current_fuel = parsed_data.get("current_fuel", 0)
+                            fuel_capacity = parsed_data.get("fuel_capacity", 100)
+
+                            if current_fuel is not None and fuel_capacity > 0:
+                                if last_fuel is not None:
+                                    # 前回の燃料との差を計算
+                                    fuel_consumed = last_fuel - current_fuel
+
+                                    # ラップが始まって燃料が減っている場合のみカウント
+                                    if fuel_consumed > 0:
+                                        total_fuel_consumed += fuel_consumed
+                                        refuel_lap_count += 1
+
+                                        # 給給油とみなす
+                                        if fuel_consumed > fuel_capacity * 0.5:
+                                            refuel_timestamp = datetime.now()
+                                            total_fuel_consumed = 0
+                                            refuel_lap_count = 0
+
+                                # 今回のラップでの燃費を計算
+                                laps_since_refuel = current_lap_number - refuel_lap_count
+
+                                if laps_since_refuel > 0:
+                                    fuel_per_lap = total_fuel_consumed / laps_since_refuel
+                                    fuel_consumption_rate = (total_fuel_consumed / fuel_capacity) * 100
+                                else:
+                                    fuel_per_lap = 0
+                                    fuel_consumption_rate = 0
+
+                                parsed_data["fuel_consumed"] = round(fuel_consumed, 2) if last_fuel is not None else 0
+                                parsed_data["fuel_per_lap"] = round(fuel_per_lap, 2) if laps_since_refuel > 0 else 0
+                                parsed_data["fuel_consumption_rate"] = round(fuel_consumption_rate, 1) if fuel_consumption_rate > 0 else 0
+                                parsed_data["laps_since_refuel"] = laps_since_refuel
+                                parsed_data["fuel_laps_remaining"] = round((current_fuel / fuel_per_lap), 1) if fuel_per_lap > 0 else 0
+
+                            last_fuel = current_fuel
 
                             # ラップデータを収集
                             current_lap_data.append(parsed_data)
