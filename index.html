@@ -1521,145 +1521,464 @@
         let testModeLastLapTime = 95000; // 1:35.000
         let testModeCurrentLap = 1;
 
-        // Enhanced demo trajectory with more realistic data
-        const demoTrajectory = [
-            {x: 0, z: -300, speed: 80, gear: 2, rpm: 4500, throttle: 60, brake: 0},
-            {x: 50, z: -280, speed: 120, gear: 3, rpm: 5500, throttle: 80, brake: 0},
-            {x: 100, z: -240, speed: 160, gear: 4, rpm: 6500, throttle: 95, brake: 0},
-            {x: 150, z: -180, speed: 200, gear: 5, rpm: 7500, throttle: 100, brake: 0},
-            {x: 200, z: -100, speed: 220, gear: 6, rpm: 8200, throttle: 100, brake: 0},
-            {x: 240, z: -20, speed: 180, gear: 4, rpm: 6800, throttle: 30, brake: 40},
-            {x: 260, z: 60, speed: 150, gear: 3, rpm: 5500, throttle: 50, brake: 0},
-            {x: 250, z: 140, speed: 130, gear: 3, rpm: 4800, throttle: 70, brake: 0},
-            {x: 220, z: 200, speed: 100, gear: 2, rpm: 5200, throttle: 30, brake: 10},
-            {x: 170, z: 230, speed: 90, gear: 2, rpm: 4500, throttle: 60, brake: 0},
-            {x: 110, z: 240, speed: 95, gear: 2, rpm: 5000, throttle: 80, brake: 0},
-            {x: 50, z: 230, speed: 110, gear: 3, rpm: 5800, throttle: 90, brake: 0},
-            {x: -20, z: 200, speed: 140, gear: 4, rpm: 6500, throttle: 100, brake: 0},
-            {x: -80, z: 150, speed: 180, gear: 5, rpm: 7200, throttle: 100, brake: 0},
-            {x: -120, z: 80, speed: 200, gear: 5, rpm: 7800, throttle: 100, brake: 0},
-            {x: -140, z: 0, speed: 160, gear: 4, rpm: 6200, throttle: 20, brake: 50},
-            {x: -130, z: -80, speed: 130, gear: 3, rpm: 5000, throttle: 40, brake: 0},
-            {x: -90, z: -150, speed: 110, gear: 3, rpm: 4500, throttle: 60, brake: 0},
-            {x: -40, z: -220, speed: 95, gear: 2, rpm: 4800, throttle: 70, brake: 0},
-            {x: 0, z: -280, speed: 85, gear: 2, rpm: 4200, throttle: 50, brake: 10}
+        // ============================================
+        // TEST MODE - SUZUKA CIRCUIT DEMO TRAJECTORY
+        // ============================================
+        // Based on actual Suzuka Circuit layout with realistic
+        // corner sequences, speed variations, and gear changes.
+        // The circuit includes famous sections: Degner Curve,
+        // Hairpin, Spoon Curve, 130R, and the Casio Triangle.
+        // ============================================
+
+        const SUZUKA_DEMO_TRAJECTORY = [
+            // Start/Finish straight (high speed section)
+            {x: 0, z: -300, speed: 280, gear: 6, rpm: 8500, throttle: 100, brake: 0, sector: 1},
+            {x: 80, z: -280, speed: 285, gear: 6, rpm: 8800, throttle: 100, brake: 0, sector: 1},
+            {x: 150, z: -240, speed: 275, gear: 6, rpm: 8600, throttle: 100, brake: 0, sector: 1},
+            {x: 210, z: -180, speed: 265, gear: 6, rpm: 8400, throttle: 100, brake: 0, sector: 1},
+            // Turn 1 - First corner (medium speed, braking zone)
+            {x: 260, z: -100, speed: 180, gear: 4, rpm: 7200, throttle: 30, brake: 60, sector: 1},
+            {x: 280, z: -20, speed: 140, gear: 3, rpm: 5800, throttle: 40, brake: 20, sector: 1},
+            {x: 270, z: 60, speed: 155, gear: 4, rpm: 6200, throttle: 70, brake: 0, sector: 1},
+            {x: 230, z: 120, speed: 170, gear: 4, rpm: 6800, throttle: 85, brake: 0, sector: 1},
+            // The "S" curves - Degner 1 & 2 (complex left-right transitions)
+            {x: 170, z: 160, speed: 145, gear: 4, rpm: 6100, throttle: 60, brake: 10, sector: 1},
+            {x: 110, z: 180, speed: 130, gear: 3, rpm: 5600, throttle: 50, brake: 15, sector: 1},
+            {x: 60, z: 175, speed: 140, gear: 4, rpm: 5900, throttle: 70, brake: 0, sector: 1},
+            {x: 20, z: 155, speed: 150, gear: 4, rpm: 6300, throttle: 80, brake: 0, sector: 1},
+            // Degner Curve (right-left chicane)
+            {x: -25, z: 120, speed: 135, gear: 3, rpm: 5700, throttle: 55, brake: 10, sector: 1},
+            {x: -55, z: 80, speed: 125, gear: 3, rpm: 5300, throttle: 45, brake: 15, sector: 1},
+            {x: -65, z: 40, speed: 140, gear: 4, rpm: 5900, throttle: 75, brake: 0, sector: 1},
+            // Back straight leading to Hairpin
+            {x: -50, z: -20, speed: 200, gear: 5, rpm: 7800, throttle: 100, brake: 0, sector: 2},
+            {x: -10, z: -80, speed: 230, gear: 5, rpm: 8200, throttle: 100, brake: 0, sector: 2},
+            {x: 40, z: -130, speed: 245, gear: 6, rpm: 8500, throttle: 100, brake: 0, sector: 2},
+            {x: 90, z: -165, speed: 250, gear: 6, rpm: 8600, throttle: 100, brake: 0, sector: 2},
+            // Hairpin (heavy braking zone)
+            {x: 110, z: -190, speed: 155, gear: 3, rpm: 6200, throttle: 20, brake: 80, sector: 2},
+            {x: 100, z: -210, speed: 85, gear: 2, rpm: 4200, throttle: 30, brake: 40, sector: 2},
+            {x: 70, z: -215, speed: 75, gear: 2, rpm: 3800, throttle: 50, brake: 0, sector: 2},
+            {x: 40, z: -205, speed: 95, gear: 2, rpm: 4500, throttle: 80, brake: 0, sector: 2},
+            // Exit from Hairpin
+            {x: 10, z: -180, speed: 140, gear: 4, rpm: 5800, throttle: 100, brake: 0, sector: 2},
+            {x: -30, z: -145, speed: 180, gear: 4, rpm: 7200, throttle: 100, brake: 0, sector: 2},
+            {x: -80, z: -100, speed: 210, gear: 5, rpm: 7800, throttle: 100, brake: 0, sector: 2},
+            // Spoon Curve approach (high speed section)
+            {x: -130, z: -70, speed: 225, gear: 5, rpm: 8200, throttle: 100, brake: 0, sector: 2},
+            {x: -180, z: -50, speed: 215, gear: 5, rpm: 8000, throttle: 95, brake: 0, sector: 2},
+            // Spoon Curve (double apex left-hander)
+            {x: -220, z: -40, speed: 160, gear: 4, rpm: 6800, throttle: 40, brake: 50, sector: 2},
+            {x: -245, z: -30, speed: 135, gear: 3, rpm: 5700, throttle: 45, brake: 20, sector: 2},
+            {x: -260, z: -10, speed: 145, gear: 4, rpm: 6000, throttle: 70, brake: 0, sector: 2},
+            {x: -255, z: 20, speed: 155, gear: 4, rpm: 6400, throttle: 80, brake: 0, sector: 2},
+            // Exit from Spoon Curve
+            {x: -230, z: 50, speed: 190, gear: 5, rpm: 7400, throttle: 100, brake: 0, sector: 3},
+            {x: -195, z: 90, speed: 220, gear: 5, rpm: 8100, throttle: 100, brake: 0, sector: 3},
+            {x: -150, z: 130, speed: 240, gear: 6, rpm: 8500, throttle: 100, brake: 0, sector: 3},
+            {x: -100, z: 160, speed: 255, gear: 6, rpm: 8700, throttle: 100, brake: 0, sector: 3},
+            // 130R approach (the legendary fast corner)
+            {x: -50, z: 180, speed: 265, gear: 6, rpm: 8800, throttle: 100, brake: 0, sector: 3},
+            {x: 10, z: 195, speed: 270, gear: 6, rpm: 8900, throttle: 100, brake: 0, sector: 3},
+            // 130R (very high speed right-hander)
+            {x: 70, z: 200, speed: 245, gear: 6, rpm: 8400, throttle: 85, brake: 20, sector: 3},
+            {x: 130, z: 190, speed: 230, gear: 5, rpm: 8000, throttle: 75, brake: 10, sector: 3},
+            {x: 185, z: 165, speed: 245, gear: 6, rpm: 8300, throttle: 95, brake: 0, sector: 3},
+            // Casio Triangle (final chicane)
+            {x: 235, z: 125, speed: 180, gear: 4, rpm: 7200, throttle: 30, brake: 65, sector: 3},
+            {x: 260, z: 85, speed: 120, gear: 3, rpm: 5100, throttle: 25, brake: 35, sector: 3},
+            {x: 265, z: 45, speed: 95, gear: 2, rpm: 4200, throttle: 40, brake: 15, sector: 3},
+            {x: 250, z: 10, speed: 110, gear: 3, rpm: 4700, throttle: 70, brake: 0, sector: 3},
+            {x: 220, z: -20, speed: 150, gear: 4, rpm: 6200, throttle: 100, brake: 0, sector: 3},
+            // Final approach to Start/Finish
+            {x: 170, z: -50, speed: 200, gear: 5, rpm: 7600, throttle: 100, brake: 0, sector: 3},
+            {x: 110, z: -80, speed: 230, gear: 5, rpm: 8200, throttle: 100, brake: 0, sector: 3},
+            {x: 50, z: -110, speed: 255, gear: 6, rpm: 8600, throttle: 100, brake: 0, sector: 3},
+            {x: 0, z: -150, speed: 270, gear: 6, rpm: 8800, throttle: 100, brake: 0, sector: 3},
+            {x: -30, z: -200, speed: 275, gear: 6, rpm: 8900, throttle: 100, brake: 0, sector: 3},
+            {x: -20, z: -260, speed: 280, gear: 6, rpm: 9000, throttle: 100, brake: 0, sector: 3},
+            // Complete lap
+            {x: 20, z: -290, speed: 282, gear: 6, rpm: 9000, throttle: 100, brake: 0, sector: 1}
         ];
 
-        // Test mode helper functions
-        function generateDemoTyreTemp(baseTemp, variation) {
-            return baseTemp + (Math.random() - 0.5) * variation;
+        // Demo trajectory fallback for smoother interpolation
+        const demoTrajectory = SUZUKA_DEMO_TRAJECTORY;
+
+        // ============================================
+        // TEST MODE HELPER FUNCTIONS
+        // ============================================
+
+        /**
+         * Generate realistic tyre temperature based on driving conditions
+         * @param {number} baseTemp - Base temperature
+         * @param {number} variation - Temperature variation range
+         * @param {number} speed - Current speed for load calculation
+         * @param {number} lateralG - Lateral G-force (estimated from corner)
+         * @returns {number} Calculated tyre temperature
+         */
+        function generateDemoTyreTemp(baseTemp, variation, speed = 150, lateralG = 0) {
+            // Temperature increases with speed and lateral load
+            const speedFactor = speed / 280; // Normalized speed factor
+            const loadFactor = 1 + (lateralG * 0.1); // Load increases temperature
+            const calculatedTemp = baseTemp * speedFactor * loadFactor;
+
+            // Add realistic variation
+            return calculatedTemp + (Math.random() - 0.5) * variation;
         }
 
-        function generateDemoSuspension(baseHeight, compression) {
-            return baseHeight + (Math.random() - 0.5) * compression;
+        /**
+         * Generate realistic suspension height
+         * @param {number} baseHeight - Base suspension height
+         * @param {number} compression - Brake compression effect
+         * @param {number} acceleration - Acceleration squat effect
+         * @param {number} speed - Speed for aero downforce effect
+         * @returns {number} Calculated suspension height
+         */
+        function generateDemoSuspension(baseHeight, compression = 0, acceleration = 0, speed = 150) {
+            // Aero downforce lowers suspension at speed (approximately 5mm at 280 km/h)
+            const aeroCompression = (speed / 280) * 5;
+
+            // Total compression
+            const totalCompression = compression + acceleration + aeroCompression;
+
+            // Add realistic variation
+            return baseHeight - totalCompression + (Math.random() - 0.5) * 3;
         }
 
+        /**
+         * Get lateral G-force estimate based on speed and sector
+         * @param {number} speed - Current speed
+         * @param {number} throttle - Throttle percentage
+         * @param {number} brake - Brake percentage
+         * @param {number} sector - Current sector (affects corner severity)
+         * @returns {number} Estimated lateral G-force
+         */
+        function estimateLateralG(speed, throttle, brake, sector) {
+            // High lateral G when braking into corners
+            if (brake > 30) {
+                return 0.5 + (brake / 100) * 1.5;
+            }
+            // Medium lateral G when accelerating out of corners
+            if (throttle > 80 && speed < 180) {
+                return 0.3 + (throttle / 100) * 0.5;
+            }
+            // Base lateral G for normal cornering
+            return 0.3;
+        }
+
+        /**
+         * Update chart data with validation and error handling
+         * @param {Object} demoData - Current demo telemetry data
+         */
         function updateTestModeCharts(demoData) {
-            // Update chart data arrays
+            // Validate chart data arrays
+            if (!window.timeData || !window.speedData || !window.rpmData ||
+                !window.throttleData || !window.brakeData) {
+                console.error('[TEST_MODE_CHARTS] Data arrays not initialized');
+                return;
+            }
+
+            // Ensure arrays have correct length
+            if (window.timeData.length !== CHART_POINTS ||
+                window.speedData.length !== CHART_POINTS ||
+                window.rpmData.length !== CHART_POINTS ||
+                window.throttleData.length !== CHART_POINTS ||
+                window.brakeData.length !== CHART_POINTS) {
+                console.error('[TEST_MODE_CHARTS] Data arrays have incorrect length, reinitializing...');
+                window.timeData = new Array(CHART_POINTS).fill(0);
+                window.speedData = new Array(CHART_POINTS).fill(0);
+                window.rpmData = new Array(CHART_POINTS).fill(0);
+                window.throttleData = new Array(CHART_POINTS).fill(0);
+                window.brakeData = new Array(CHART_POINTS).fill(0);
+            }
+
+            // Update chart data arrays with validation
             window.timeData.shift();
             window.timeData.push(testModeTimeCounter++);
 
-            const speed = Math.round(demoData.speed_kmh);
+            const speed = Math.round(Math.max(0, Math.min(350, demoData.speed_kmh)));
             window.speedData.shift();
             window.speedData.push(speed);
 
-            const rpm = Math.round(demoData.rpm);
+            const rpm = Math.round(Math.max(0, Math.min(10000, demoData.rpm)));
             window.rpmData.shift();
             window.rpmData.push(rpm);
 
-            const throttle = Math.round(demoData.throttle_pct);
+            const throttle = Math.round(Math.max(0, Math.min(100, demoData.throttle_pct)));
             window.throttleData.shift();
             window.throttleData.push(throttle);
 
-            const brake = Math.round(demoData.brake_pct);
+            const brake = Math.round(Math.max(0, Math.min(100, demoData.brake_pct)));
             window.brakeData.shift();
             window.brakeData.push(brake);
 
-            // Update charts
-            if (window.speedChart) window.speedChart.setData([window.timeData, window.speedData]);
-            if (window.rpmChart) window.rpmChart.setData([window.timeData, window.rpmData]);
-            if (window.throttleChart) window.throttleChart.setData([window.timeData, window.throttleData]);
-            if (window.brakeChart) window.brakeChart.setData([window.timeData, window.brakeData]);
+            // Update charts with existence check
+            try {
+                if (window.speedChart && typeof window.speedChart.setData === 'function') {
+                    window.speedChart.setData([window.timeData, window.speedData]);
+                }
+                if (window.rpmChart && typeof window.rpmChart.setData === 'function') {
+                    window.rpmChart.setData([window.timeData, window.rpmData]);
+                }
+                if (window.throttleChart && typeof window.throttleChart.setData === 'function') {
+                    window.throttleChart.setData([window.timeData, window.throttleData]);
+                }
+                if (window.brakeChart && typeof window.brakeChart.setData === 'function') {
+                    window.brakeChart.setData([window.timeData, window.brakeData]);
+                }
+            } catch (e) {
+                console.error('[TEST_MODE_CHARTS] Chart update error:', e);
+            }
         }
 
+        /**
+         * Update lap time with realistic progression
+         * Simulates sector-by-sector timing and lap completion
+         */
         function updateTestModeLapTime() {
-            testModeLapTime += 200; // Add 200ms per update
+            // Time increment based on update frequency (100ms = 0.1s)
+            testModeLapTime += 100;
 
             const minutes = Math.floor(testModeLapTime / 60000);
             const seconds = Math.floor((testModeLapTime % 60000) / 1000);
             const millis = testModeLapTime % 1000;
 
-            elements.currentLapTime.textContent =
-                `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+            if (elements.currentLapTime) {
+                elements.currentLapTime.textContent =
+                    `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+            }
 
-            // Simulate lap completion
+            // Simulate lap completion when reaching target time
             if (testModeLapTime >= testModeLastLapTime) {
+                // Save the completed lap
+                const completedLapTime = testModeLastLapTime;
+                const completedLapNumber = testModeCurrentLap;
+
+                // Reset for new lap
                 testModeLapTime = 0;
                 testModeCurrentLap++;
 
+                // Loop back to lap 1 after completing 3 laps
                 if (testModeCurrentLap > 3) {
                     testModeCurrentLap = 1;
                 }
 
-                elements.currentLap.textContent = `${testModeCurrentLap}/3`;
-                addLapData(testModeCurrentLap - 1, testModeLastLapTime);
+                // Update lap display
+                if (elements.currentLap) {
+                    elements.currentLap.textContent = `${testModeCurrentLap}/3`;
+                }
 
-                // Vary lap times slightly
-                testModeLastLapTime = 94000 + Math.floor(Math.random() * 2000);
+                // Add completed lap to history
+                addLapData(completedLapNumber, completedLapTime);
+
+                // Generate realistic lap time variation for next lap
+                // Realistic Suzuka GT lap times: 1:34.000 - 1:37.000 (94-97 seconds)
+                // Add slight random variation (±1.5 seconds)
+                const baseLapTime = 95000; // 1:35.000 baseline
+                const lapVariation = Math.floor((Math.random() - 0.5) * 3000); // ±1.5 seconds
+                testModeLastLapTime = baseLapTime + lapVariation;
+
+                // Ensure lap time stays within realistic bounds
+                testModeLastLapTime = Math.max(90000, Math.min(100000, testModeLastLapTime));
+
+                debugLog('TEST_MODE', 'Lap completed', {
+                    lap: completedLapNumber,
+                    time: formatLapTime(completedLapTime),
+                    next_target: formatLapTime(testModeLastLapTime)
+                });
             }
         }
 
+        /**
+         * Update tyre temperatures and pressures with realistic simulation
+         * @param {Object} demoData - Current demo telemetry data
+         */
         function updateTestModeTyres(demoData) {
-            // Generate realistic tyre temperatures based on speed and load
-            const baseTemp = 75 + (demoData.speed_kmh / 220) * 30; // 75-105°C
-            const tempVariation = 8;
+            // Calculate lateral G-force for tyre load simulation
+            const lateralG = estimateLateralG(
+                demoData.speed_kmh,
+                demoData.throttle_pct,
+                demoData.brake_pct,
+                demoData.sector
+            );
 
-            const flTemp = generateDemoTyreTemp(baseTemp, tempVariation);
-            const frTemp = generateDemoTyreTemp(baseTemp, tempVariation);
-            const rlTemp = generateDemoTyreTemp(baseTemp - 5, tempVariation);
-            const rrTemp = generateDemoTyreTemp(baseTemp - 5, tempVariation);
+            // Base temperature increases with speed and lap count (tyres warm up)
+            const lapWarmupFactor = 1 + (testModeCurrentLap - 1) * 0.05; // 5% warmer each lap
+            const speedTempFactor = (demoData.speed_kmh / 280) * 35; // Speed contribution (up to 35°C)
 
-            elements.flTemp.textContent = Math.round(flTemp);
-            elements.frTemp.textContent = Math.round(frTemp);
-            elements.rlTemp.textContent = Math.round(rlTemp);
-            elements.rrTemp.textContent = Math.round(rrTemp);
+            // Front tyres run hotter due to braking and engine heat
+            const frontBaseTemp = 70 + speedTempFactor + (demoData.brake_pct * 0.1);
+            const frontTempVariation = 6;
 
-            elements.flTemp.style.color = getTyreTempColor(flTemp);
-            elements.frTemp.style.color = getTyreTempColor(frTemp);
-            elements.rlTemp.style.color = getTyreTempColor(rlTemp);
-            elements.rrTemp.style.color = getTyreTempColor(rrTemp);
+            // Rear tyres run cooler but heat up under acceleration
+            const rearBaseTemp = 65 + speedTempFactor + (demoData.throttle_pct * 0.08);
+            const rearTempVariation = 6;
 
-            // Tyre pressures (slight variation)
-            const basePressure = 2.0;
-            const pressureVariation = 0.15;
-            elements.flPressure.textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1);
-            elements.frPressure.textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1);
-            elements.rlPressure.textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1);
-            elements.rrPressure.textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1);
+            // Generate individual tyre temperatures with realistic variation
+            const flTemp = generateDemoTyreTemp(frontBaseTemp, frontTempVariation, demoData.speed_kmh, lateralG) * lapWarmupFactor;
+            const frTemp = generateDemoTyreTemp(frontBaseTemp, frontTempVariation, demoData.speed_kmh, lateralG * 0.9) * lapWarmupFactor;
+            const rlTemp = generateDemoTyreTemp(rearBaseTemp, rearTempVariation, demoData.speed_kmh, lateralG * 0.8) * lapWarmupFactor;
+            const rrTemp = generateDemoTyreTemp(rearBaseTemp, rearTempVariation, demoData.speed_kmh, lateralG * 0.85) * lapWarmupFactor;
+
+            // Update UI with null checks
+            if (elements.flTemp) {
+                elements.flTemp.textContent = Math.round(flTemp);
+                elements.flTemp.style.color = getTyreTempColor(flTemp);
+            }
+            if (elements.frTemp) {
+                elements.frTemp.textContent = Math.round(frTemp);
+                elements.frTemp.style.color = getTyreTempColor(frTemp);
+            }
+            if (elements.rlTemp) {
+                elements.rlTemp.textContent = Math.round(rlTemp);
+                elements.rlTemp.style.color = getTyreTempColor(rlTemp);
+            }
+            if (elements.rrTemp) {
+                elements.rrTemp.textContent = Math.round(rrTemp);
+                elements.rrTemp.style.color = getTyreTempColor(rrTemp);
+            }
+
+            // Tyre pressures increase with temperature (ideal gas law: P ∝ T)
+            const basePressure = 2.0; // 2.0 bar at 20°C
+            const tempCorrection = 0.005; // 0.5% pressure increase per °C above 20°C
+            const avgTemp = (flTemp + frTemp + rlTemp + rrTemp) / 4;
+            const pressureIncrease = (avgTemp - 20) * tempCorrection;
+            const basePressureCorrected = basePressure + pressureIncrease;
+
+            // Add realistic pressure variation (±0.08 bar)
+            const pressureVariation = 0.08;
+
+            if (elements.flPressure) elements.flPressure.textContent = (basePressureCorrected + (Math.random() - 0.5) * pressureVariation).toFixed(1);
+            if (elements.frPressure) elements.frPressure.textContent = (basePressureCorrected + (Math.random() - 0.5) * pressureVariation).toFixed(1);
+            if (elements.rlPressure) elements.rlPressure.textContent = (basePressureCorrected + (Math.random() - 0.5) * pressureVariation).toFixed(1);
+            if (elements.rrPressure) elements.rrPressure.textContent = (basePressureCorrected + (Math.random() - 0.5) * pressureVariation).toFixed(1);
         }
 
+        /**
+         * Update suspension heights with realistic physics simulation
+         * @param {Object} demoData - Current demo telemetry data
+         */
         function updateTestModeSuspension(demoData) {
-            // Generate suspension heights (in mm)
-            const baseHeight = 80;
-            const brakeCompression = demoData.brake_pct > 0 ? 15 : 0;
-            const accelSquat = demoData.throttle_pct > 80 ? 10 : 0;
+            // Base suspension height (in mm from ride height sensor)
+            const baseHeight = 85; // Typical GT car ride height
 
-            const variation = 5;
-            elements.flSusp.textContent = Math.round(generateDemoSuspension(baseHeight - brakeCompression, variation));
-            elements.frSusp.textContent = Math.round(generateDemoSuspension(baseHeight - brakeCompression, variation));
-            elements.rlSusp.textContent = Math.round(generateDemoSuspension(baseHeight + accelSquat, variation));
-            elements.rrSusp.textContent = Math.round(generateDemoSuspension(baseHeight + accelSquat, variation));
+            // Brake compression (front dives under braking)
+            // Maximum 20mm compression at 100% brake
+            const brakeCompression = (demoData.brake_pct / 100) * 20;
+
+            // Acceleration squat (rear squats under acceleration)
+            // Maximum 12mm squat at 100% throttle
+            const accelSquat = (demoData.throttle_pct / 100) * 12;
+
+            // Aero downforce compresses suspension at speed
+            // Approximate 8mm compression at 280 km/h
+            const aeroCompression = (demoData.speed_kmh / 280) * 8;
+
+            // Calculate suspension heights with null checks
+            const flHeight = generateDemoSuspension(
+                baseHeight,
+                brakeCompression * 0.5, // Front left brake effect
+                -accelSquat * 0.2,     // Minimal accel effect on front
+                demoData.speed_kmh
+            );
+
+            const frHeight = generateDemoSuspension(
+                baseHeight,
+                brakeCompression * 0.5, // Front right brake effect
+                -accelSquat * 0.2,     // Minimal accel effect on front
+                demoData.speed_kmh
+            );
+
+            const rlHeight = generateDemoSuspension(
+                baseHeight,
+                -brakeCompression * 0.3, // Front lifts rear under braking
+                accelSquat,              // Rear squats under acceleration
+                demoData.speed_kmh
+            );
+
+            const rrHeight = generateDemoSuspension(
+                baseHeight,
+                -brakeCompression * 0.3, // Front lifts rear under braking
+                accelSquat,              // Rear squats under acceleration
+                demoData.speed_kmh
+            );
+
+            // Update UI with null checks
+            if (elements.flSusp) elements.flSusp.textContent = Math.round(flHeight);
+            if (elements.frSusp) elements.frSusp.textContent = Math.round(frHeight);
+            if (elements.rlSusp) elements.rlSusp.textContent = Math.round(rlHeight);
+            if (elements.rrSusp) elements.rrSusp.textContent = Math.round(rrHeight);
+        }
+
+        // ============================================
+        // TEST MODE ERROR HANDLING & VALIDATION
+        // ============================================
+
+        const TEST_MODE_ERRORS = {
+            INVALID_STATE: 'Invalid test mode state',
+            TRAJECTORY_EMPTY: 'Demo trajectory is empty or invalid',
+            CANVAS_NOT_FOUND: 'Course map canvas not found',
+            CHART_NOT_INITIALIZED: 'Chart not properly initialized',
+            ELEMENT_NOT_FOUND: 'Required DOM element not found'
+        };
+
+        /**
+         * Validate test mode prerequisites
+         * @throws {Error} If prerequisites are not met
+         */
+        function validateTestModePrerequisites() {
+            if (!demoTrajectory || !Array.isArray(demoTrajectory) || demoTrajectory.length === 0) {
+                throw new Error(TEST_MODE_ERRORS.TRAJECTORY_EMPTY);
+            }
+
+            if (!courseMapState.canvas) {
+                throw new Error(TEST_MODE_ERRORS.CANVAS_NOT_FOUND);
+            }
+
+            // Validate critical DOM elements
+            const criticalElements = [
+                'speed', 'gear', 'rpm-bar', 'throttle-bar', 'brake-bar',
+                'current-lap', 'best-lap-time', 'course-name'
+            ];
+
+            for (const id of criticalElements) {
+                if (!document.getElementById(id)) {
+                    console.error(`[TEST_MODE] Critical element not found: ${id}`);
+                }
+            }
+        }
+
+        /**
+         * Safely execute test mode operations with error handling
+         * @param {Function} operation - The operation to execute
+         * @param {string} operationName - Name for logging purposes
+         */
+        function safeExecuteTestModeOperation(operation, operationName) {
+            try {
+                return operation();
+            } catch (error) {
+                console.error(`[TEST_MODE_ERROR] ${operationName}:`, error.message);
+                debugLog('TEST_MODE_ERROR', operationName, error);
+                // Don't disable test mode on minor errors, log them instead
+                return null;
+            }
         }
 
         const testModeBtn = document.getElementById('test-mode-btn');
         if (testModeBtn) {
             testModeBtn.addEventListener('click', () => {
-                testModeActive = !testModeActive;
-                testModeBtn.classList.toggle('active', testModeActive);
-                testModeBtn.textContent = testModeActive ? 'STOP TEST' : 'TEST MODE';
+                try {
+                    // Validate prerequisites before starting test mode
+                    if (!testModeActive) {
+                        validateTestModePrerequisites();
+                    }
 
-                if (testModeActive) {
-                    debugLog('TEST', 'Test mode enabled');
+                    testModeActive = !testModeActive;
+                    testModeBtn.classList.toggle('active', testModeActive);
+                    testModeBtn.textContent = testModeActive ? 'STOP TEST' : 'TEST MODE';
+
+                    if (testModeActive) {
+                        debugLog('TEST', 'Test mode enabled - Validation passed');
                     // Reset test mode state
                     testTrajectoryIndex = 0;
                     testModeTimeCounter = 0;
@@ -1681,120 +2000,181 @@
                     courseMapState.currentPosition = { x: 0, y: 0, z: 0 };
                     courseMapState.initialized = false;
 
+                    // Clear and initialize chart data
+                    window.timeData = new Array(CHART_POINTS).fill(0);
+                    window.speedData = new Array(CHART_POINTS).fill(0);
+                    window.rpmData = new Array(CHART_POINTS).fill(0);
+                    window.throttleData = new Array(CHART_POINTS).fill(0);
+                    window.brakeData = new Array(CHART_POINTS).fill(0);
+
                     testModeInterval = setInterval(() => {
                         if (!testModeActive) {
                             clearInterval(testModeInterval);
                             return;
                         }
 
-                        const point = demoTrajectory[testTrajectoryIndex % demoTrajectory.length];
-                        testTrajectoryIndex++;
+                        safeExecuteTestModeOperation(() => {
+                            const point = demoTrajectory[testTrajectoryIndex % demoTrajectory.length];
+                            testTrajectoryIndex++;
 
-                        // Simulate telemetry data with more realistic values
-                        const speedVariation = (Math.random() - 0.5) * 10;
-                        const demoData = {
-                            position_x: point.x,
-                            position_y: 0,
-                            position_z: point.z,
-                            speed_kmh: point.speed + speedVariation,
-                            speed_ms: (point.speed + speedVariation) / 3.6,
-                            rpm: point.rpm + (Math.random() - 0.5) * 500,
-                            gear: point.gear,
-                            throttle_pct: point.throttle + (Math.random() - 0.5) * 10,
-                            brake_pct: point.brake + (Math.random() - 0.5) * 5,
-                            current_fuel: 50 - (testModeCurrentLap * 15),
-                            boost: 0,
-                            max_rpm: 9000,
-                            course: { name: 'スズカ サーキット (Demo)', id: 'suzuka', confidence: 1.0 },
-                            lap_count: testModeCurrentLap,
-                            total_laps: 3
-                        };
+                            // Validate trajectory point
+                            if (!point || typeof point.x !== 'number' || typeof point.z !== 'number') {
+                                console.error('[TEST_MODE] Invalid trajectory point:', point);
+                                return;
+                            }
 
-                        // Update UI directly
-                        const speed = Math.round(demoData.speed_kmh);
-                        elements.speed.textContent = speed;
-                        if (speed > maxSpeed) {
-                            maxSpeed = speed;
-                            elements.maxSpeed.textContent = maxSpeed;
-                        }
+                            // Simulate telemetry data with realistic variations
+                            const speedVariation = (Math.random() - 0.5) * 8; // ±4 km/h variation
+                            const rpmVariation = (Math.random() - 0.5) * 400; // ±200 RPM variation
+                            const pedalVariation = Math.max(-5, Math.min(5, (Math.random() - 0.5) * 8)); // ±4% variation
 
-                        elements.gear.textContent = demoData.gear;
+                            const demoData = {
+                                position_x: point.x,
+                                position_y: 0,
+                                position_z: point.z,
+                                speed_kmh: Math.max(50, point.speed + speedVariation), // Minimum 50 km/h
+                                speed_ms: Math.max(50, point.speed + speedVariation) / 3.6,
+                                rpm: Math.max(2000, Math.min(9500, point.rpm + rpmVariation)), // Clamp to realistic range
+                                gear: Math.max(1, Math.min(6, point.gear)), // Clamp gear to valid range
+                                throttle_pct: Math.max(0, Math.min(100, point.throttle + pedalVariation)),
+                                brake_pct: Math.max(0, Math.min(100, point.brake + pedalVariation * 0.5)),
+                                current_fuel: Math.max(5, 50 - (testModeCurrentLap * 12)), // Minimum 5L
+                                boost: 0,
+                                max_rpm: 9000,
+                                course: { name: 'スズカ サーキット (Demo)', id: 'suzuka', confidence: 1.0 },
+                                lap_count: testModeCurrentLap,
+                                total_laps: 3,
+                                sector: point.sector || 1
+                            };
 
-                        const rpm = Math.round(demoData.rpm);
-                        const rpmPct = Math.min((rpm / demoData.max_rpm) * 100, 100);
-                        elements.rpmBar.style.width = rpmPct + '%';
-                        elements.rpmText.textContent = rpm + ' RPM';
+                            // Update UI elements with null checks
+                            const speed = Math.round(demoData.speed_kmh);
+                            if (elements.speed) elements.speed.textContent = speed;
+                            if (speed > maxSpeed) {
+                                maxSpeed = speed;
+                                if (elements.maxSpeed) elements.maxSpeed.textContent = maxSpeed;
+                            }
 
-                        const throttle = Math.max(0, Math.min(100, Math.round(demoData.throttle_pct)));
-                        const brake = Math.max(0, Math.min(100, Math.round(demoData.brake_pct)));
-                        elements.throttleBar.style.width = throttle + '%';
-                        elements.throttleValue.textContent = throttle + '%';
-                        elements.brakeBar.style.width = brake + '%';
-                        elements.brakeValue.textContent = brake + '%';
+                            if (elements.gear) elements.gear.textContent = demoData.gear;
 
-                        elements.fuel.textContent = demoData.current_fuel.toFixed(1);
-                        elements.boost.textContent = '0';
+                            const rpm = Math.round(demoData.rpm);
+                            const rpmPct = Math.min((rpm / demoData.max_rpm) * 100, 100);
+                            if (elements.rpmBar) elements.rpmBar.style.width = rpmPct + '%';
+                            if (elements.rpmText) elements.rpmText.textContent = rpm + ' RPM';
 
-                        elements.maxX.textContent = point.x.toFixed(1);
-                        elements.maxY.textContent = '0.0';
-                        elements.maxZ.textContent = point.z.toFixed(1);
+                            const throttle = Math.max(0, Math.min(100, Math.round(demoData.throttle_pct)));
+                            const brake = Math.max(0, Math.min(100, Math.round(demoData.brake_pct)));
+                            if (elements.throttleBar) elements.throttleBar.style.width = throttle + '%';
+                            if (elements.throttleValue) elements.throttleValue.textContent = throttle + '%';
+                            if (elements.brakeBar) elements.brakeBar.style.width = brake + '%';
+                            if (elements.brakeValue) elements.brakeValue.textContent = brake + '%';
 
-                        // Update charts
-                        updateTestModeCharts(demoData);
+                            if (elements.fuel) elements.fuel.textContent = demoData.current_fuel.toFixed(1);
+                            if (elements.boost) elements.boost.textContent = '0';
 
-                        // Update tyres
-                        updateTestModeTyres(demoData);
+                            if (elements.maxX) elements.maxX.textContent = point.x.toFixed(1);
+                            if (elements.maxY) elements.maxY.textContent = '0.0';
+                            if (elements.maxZ) elements.maxZ.textContent = point.z.toFixed(1);
 
-                        // Update suspension
-                        updateTestModeSuspension(demoData);
+                            // Update charts with error handling
+                            try {
+                                updateTestModeCharts(demoData);
+                            } catch (e) {
+                                console.error('[TEST_MODE] Chart update error:', e);
+                            }
 
-                        // Update lap time
-                        updateTestModeLapTime();
+                            // Update tyres with error handling
+                            try {
+                                updateTestModeTyres(demoData);
+                            } catch (e) {
+                                console.error('[TEST_MODE] Tyre update error:', e);
+                            }
 
-                        // Update course map
-                        updateCourseMap(point.x, 0, point.z, demoData.speed_kmh);
+                            // Update suspension with error handling
+                            try {
+                                updateTestModeSuspension(demoData);
+                            } catch (e) {
+                                console.error('[TEST_MODE] Suspension update error:', e);
+                            }
 
-                        // Update course bounds visualization
-                        if (testTrajectoryIndex === 1) {
-                            updateCourseBounds('suzuka');
-                        }
+                            // Update lap time with error handling
+                            try {
+                                updateTestModeLapTime();
+                            } catch (e) {
+                                console.error('[TEST_MODE] Lap time update error:', e);
+                            }
 
-                        packetCount++;
-                        elements.packets.textContent = packetCount;
+                            // Update course map with error handling
+                            try {
+                                updateCourseMap(point.x, 0, point.z, demoData.speed_kmh);
+                            } catch (e) {
+                                console.error('[TEST_MODE] Course map update error:', e);
+                            }
 
-                    }, 200); // 5Hz demo update (slower, smoother)
+                            // Update course bounds visualization
+                            if (testTrajectoryIndex === 1) {
+                                try {
+                                    updateCourseBounds('suzuka');
+                                } catch (e) {
+                                    console.error('[TEST_MODE] Course bounds update error:', e);
+                                }
+                            }
+
+                            packetCount++;
+                            if (elements.packets) elements.packets.textContent = packetCount;
+
+                        }, 'test_mode_update');
+
+                    }, 100); // 10Hz demo update (smoother animation)
 
                 } else {
-                    debugLog('TEST', 'Test mode disabled');
-                    clearInterval(testModeInterval);
+                    debugLog('TEST', 'Test mode disabled - Cleaning up');
+
+                    // Clear interval with error handling
+                    if (testModeInterval) {
+                        clearInterval(testModeInterval);
+                        testModeInterval = null;
+                    }
+
+                    // Reset status display
                     statusEl.textContent = 'Connected';
                     statusEl.style.background = '';
                     statusEl.style.color = '';
+
+                    // Reset test mode state variables
                     testTrajectoryIndex = 0;
                     testModeTimeCounter = 0;
                     testModeLapTime = 0;
                     testModeCurrentLap = 1;
 
                     // Clear trajectory when stopping test mode
-                    if (typeof courseMapState !== 'undefined') {
-                        courseMapState.trajectory = [];
-                        courseMapState.currentPosition = { x: 0, y: 0, z: 0 };
-                        courseMapState.initialized = false;
-                        drawCourseMap();
-                    }
+                    safeExecuteTestModeOperation(() => {
+                        if (typeof courseMapState !== 'undefined') {
+                            courseMapState.trajectory = [];
+                            courseMapState.currentPosition = { x: 0, y: 0, z: 0 };
+                            courseMapState.initialized = false;
+                            drawCourseMap();
+                        }
+                    }, 'cleanup_course_map');
 
-                    // Reset charts to zeros
-                    window.speedData.fill(0);
-                    window.rpmData.fill(0);
-                    window.throttleData.fill(0);
-                    window.brakeData.fill(0);
+                    // Reset charts to zeros with error handling
+                    safeExecuteTestModeOperation(() => {
+                        window.speedData.fill(0);
+                        window.rpmData.fill(0);
+                        window.throttleData.fill(0);
+                        window.brakeData.fill(0);
 
-                    if (window.speedChart) window.speedChart.setData([window.timeData, window.speedData]);
-                    if (window.rpmChart) window.rpmChart.setData([window.timeData, window.rpmData]);
-                    if (window.throttleChart) window.throttleChart.setData([window.timeData, window.throttleData]);
-                    if (window.brakeChart) window.brakeChart.setData([window.timeData, window.brakeData]);
+                        if (window.speedChart) window.speedChart.setData([window.timeData, window.speedData]);
+                        if (window.rpmChart) window.rpmChart.setData([window.timeData, window.rpmData]);
+                        if (window.throttleChart) window.throttleChart.setData([window.timeData, window.throttleData]);
+                        if (window.brakeChart) window.brakeChart.setData([window.timeData, window.brakeData]);
+                    }, 'cleanup_charts');
+
+                    debugLog('TEST', 'Test mode cleanup completed');
                 }
             });
+        } else {
+            console.error('[TEST_MODE] Test mode button not found in DOM');
         }
 
         ws.onerror = (error) => {
