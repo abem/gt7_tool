@@ -8,88 +8,154 @@
         body {
             background: #0a0e1a;
             color: #fff;
-            font-family: sans-serif;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
             padding: 20px;
-            text-align: center;
+            margin: 0;
         }
         .container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
         }
         h1 {
             color: #00ff88;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #6b7280;
+            font-size: 14px;
+            margin-bottom: 20px;
         }
         .status {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             padding: 20px;
             border-radius: 10px;
             margin: 20px 0;
         }
         #test-mode-btn {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
             color: #fff;
-            background: #444;
+            background: rgba(255, 255, 255, 0.05);
             border: 2px solid #ffd700;
-            padding: 15px 30px;
+            padding: 15px 40px;
             border-radius: 8px;
             cursor: pointer;
             margin: 20px;
+            transition: all 0.2s;
         }
         #test-mode-btn:hover {
-            background: rgba(255, 215, 0, 0.3);
+            background: rgba(255, 215, 0, 0.2);
         }
         #test-mode-btn.active {
             background: #ffd700;
             color: #000;
         }
         .info {
-            font-size: 14px;
+            font-size: 13px;
             color: #888;
             margin: 10px 0;
         }
-        .data-display {
+        .data-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
             margin-top: 20px;
         }
         .data-item {
             background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             padding: 15px;
             border-radius: 8px;
         }
         .data-label {
-            font-size: 12px;
+            font-size: 11px;
             color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
         }
         .data-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+        .data-value.secondary {
+            font-size: 20px;
+            color: #fff;
+        }
+        #course-canvas {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            margin: 20px auto;
+            display: block;
+        }
+        .tyres-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .tyre-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .tyre-pos {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .tyre-temp {
             font-size: 24px;
             font-weight: bold;
             color: #00ff88;
         }
-        #course-canvas {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid #333;
-            border-radius: 8px;
-            margin: 20px auto;
+        .tyre-pressure {
+            font-size: 14px;
+            color: #44ffff;
+            margin-top: 3px;
+        }
+        .lap-info {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .lap-item {
+            text-align: center;
+        }
+        .lap-label {
+            font-size: 11px;
+            color: #888;
+        }
+        .lap-time {
+            font-size: 24px;
+            font-family: 'Segoe UI Mono', monospace;
+            color: #00ff88;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>GT7 TEST MODE</h1>
+        <div class="subtitle">デモデータ生成 - PS5なしでテスト可能</div>
 
         <div class="status">
-            <div id="connection-status" style="color: #ff4444;">● Disconnected (Test Mode Standalone)</div>
-            <div class="info">PS5がなくてもテストできます</div>
+            <div id="connection-status" style="color: #ff4444; font-weight: 600;">● Disconnected (Test Mode Standalone)</div>
+            <div class="info">PS5接続なしでテレメトリ表示を確認できます</div>
         </div>
 
-        <button id="test-mode-btn">TEST MODE 開始</button>
+        <div style="text-align: center;">
+            <button id="test-mode-btn">TEST MODE 開始</button>
+        </div>
 
-        <div class="data-display">
+        <div class="data-grid">
             <div class="data-item">
-                <div class="data-label">SPEED</div>
+                <div class="data-label">Speed</div>
                 <div class="data-value" id="speed">0</div>
             </div>
             <div class="data-item">
@@ -97,79 +163,206 @@
                 <div class="data-value" id="rpm">0</div>
             </div>
             <div class="data-item">
-                <div class="data-label">GEAR</div>
+                <div class="data-label">Gear</div>
                 <div class="data-value" id="gear">N</div>
             </div>
             <div class="data-item">
-                <div class="data-label">COURSE</div>
-                <div class="data-value" id="course" style="font-size: 14px;">--</div>
+                <div class="data-label">Throttle</div>
+                <div class="data-value secondary" id="throttle">0%</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">Brake</div>
+                <div class="data-value secondary" id="brake">0%</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">Fuel</div>
+                <div class="data-value secondary" id="fuel">--</div>
             </div>
         </div>
 
-        <canvas id="course-canvas" width="600" height="400"></canvas>
+        <canvas id="course-canvas" width="800" height="500"></canvas>
 
         <div class="info">
             <div id="position-info">Position: X: -- Z: --</div>
         </div>
+
+        <div class="data-item">
+            <div class="data-label">Tyres (Temperature / Pressure)</div>
+            <div class="tyres-grid">
+                <div class="tyre-item">
+                    <div class="tyre-pos">FL</div>
+                    <div class="tyre-temp" id="fl-temp">--</div>
+                    <div class="tyre-pressure" id="fl-pressure">-- bar</div>
+                </div>
+                <div class="tyre-item">
+                    <div class="tyre-pos">FR</div>
+                    <div class="tyre-temp" id="fr-temp">--</div>
+                    <div class="tyre-pressure" id="fr-pressure">-- bar</div>
+                </div>
+                <div class="tyre-item">
+                    <div class="tyre-pos">RL</div>
+                    <div class="tyre-temp" id="rl-temp">--</div>
+                    <div class="tyre-pressure" id="rl-pressure">-- bar</div>
+                </div>
+                <div class="tyre-item">
+                    <div class="tyre-pos">RR</div>
+                    <div class="tyre-temp" id="rr-temp">--</div>
+                    <div class="tyre-pressure" id="rr-pressure">-- bar</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="data-item">
+            <div class="data-label">Suspension Height</div>
+            <div class="tyres-grid">
+                <div class="tyre-item">
+                    <div class="tyre-pos">FL</div>
+                    <div class="data-value secondary" id="fl-susp">--</div>
+                </div>
+                <div class="tyre-item">
+                    <div class="tyre-pos">FR</div>
+                    <div class="data-value secondary" id="fr-susp">--</div>
+                </div>
+                <div class="tyre-item">
+                    <div class="tyre-pos">RL</div>
+                    <div class="data-value secondary" id="rl-susp">--</div>
+                </div>
+                <div class="tyre-item">
+                    <div class="tyre-pos">RR</div>
+                    <div class="data-value secondary" id="rr-susp">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lap-info">
+            <div class="lap-item">
+                <div class="lap-label">LAP</div>
+                <div class="lap-time" id="current-lap">--</div>
+            </div>
+            <div class="lap-item">
+                <div class="lap-label">CURRENT LAP TIME</div>
+                <div class="lap-time" id="current-lap-time">--:--.---</div>
+            </div>
+            <div class="lap-item">
+                <div class="lap-label">BEST LAP TIME</div>
+                <div class="lap-time" id="best-lap-time">--:--.---</div>
+            </div>
+        </div>
+
+        <div class="data-item">
+            <div class="data-label">Course</div>
+            <div id="course" style="font-size: 18px; color: #44ffff;">スズカ サーキット (Demo)</div>
+        </div>
     </div>
 
     <script>
+        // Test Mode State
         let testModeActive = false;
         let testInterval = null;
         let trajectoryIndex = 0;
+        let testModeTimeCounter = 0;
+        let testModeLapTime = 0;
+        let testModeLastLapTime = 95000; // 1:35.000
+        let testModeCurrentLap = 1;
+        let bestLapTime = testModeLastLapTime;
 
+        // Enhanced demo trajectory with realistic data
         const demoTrajectory = [
-            {x: 0, z: -300, speed: 80}, {x: 50, z: -280, speed: 120}, {x: 100, z: -240, speed: 160},
-            {x: 150, z: -180, speed: 200}, {x: 200, z: -100, speed: 220}, {x: 240, z: -20, speed: 200},
-            {x: 260, z: 60, speed: 180}, {x: 250, z: 140, speed: 150}, {x: 220, z: 200, speed: 120},
-            {x: 170, z: 230, speed: 100}, {x: 110, z: 240, speed: 90}, {x: 50, z: 230, speed: 100},
-            {x: -20, z: 200, speed: 130}, {x: -80, z: 150, speed: 170}, {x: -120, z: 80, speed: 200},
-            {x: -140, z: 0, speed: 190}, {x: -130, z: -80, speed: 160}, {x: -90, z: -150, speed: 130},
-            {x: -40, z: -220, speed: 110}, {x: 0, z: -280, speed: 90}
+            {x: 0, z: -300, speed: 80, gear: 2, rpm: 4500, throttle: 60, brake: 0},
+            {x: 50, z: -280, speed: 120, gear: 3, rpm: 5500, throttle: 80, brake: 0},
+            {x: 100, z: -240, speed: 160, gear: 4, rpm: 6500, throttle: 95, brake: 0},
+            {x: 150, z: -180, speed: 200, gear: 5, rpm: 7500, throttle: 100, brake: 0},
+            {x: 200, z: -100, speed: 220, gear: 6, rpm: 8200, throttle: 100, brake: 0},
+            {x: 240, z: -20, speed: 180, gear: 4, rpm: 6800, throttle: 30, brake: 40},
+            {x: 260, z: 60, speed: 150, gear: 3, rpm: 5500, throttle: 50, brake: 0},
+            {x: 250, z: 140, speed: 130, gear: 3, rpm: 4800, throttle: 70, brake: 0},
+            {x: 220, z: 200, speed: 100, gear: 2, rpm: 5200, throttle: 30, brake: 10},
+            {x: 170, z: 230, speed: 90, gear: 2, rpm: 4500, throttle: 60, brake: 0},
+            {x: 110, z: 240, speed: 95, gear: 2, rpm: 5000, throttle: 80, brake: 0},
+            {x: 50, z: 230, speed: 110, gear: 3, rpm: 5800, throttle: 90, brake: 0},
+            {x: -20, z: 200, speed: 140, gear: 4, rpm: 6500, throttle: 100, brake: 0},
+            {x: -80, z: 150, speed: 180, gear: 5, rpm: 7200, throttle: 100, brake: 0},
+            {x: -120, z: 80, speed: 200, gear: 5, rpm: 7800, throttle: 100, brake: 0},
+            {x: -140, z: 0, speed: 160, gear: 4, rpm: 6200, throttle: 20, brake: 50},
+            {x: -130, z: -80, speed: 130, gear: 3, rpm: 5000, throttle: 40, brake: 0},
+            {x: -90, z: -150, speed: 110, gear: 3, rpm: 4500, throttle: 60, brake: 0},
+            {x: -40, z: -220, speed: 95, gear: 2, rpm: 4800, throttle: 70, brake: 0},
+            {x: 0, z: -280, speed: 85, gear: 2, rpm: 4200, throttle: 50, brake: 10}
         ];
 
         const canvas = document.getElementById('course-canvas');
         const ctx = canvas.getContext('2d');
         let trajectory = [];
 
+        // Canvas bounds for auto-scaling
+        let canvasBounds = {
+            minX: -200,
+            maxX: 300,
+            minZ: -350,
+            maxZ: 280
+        };
+
+        function getSpeedColor(speed) {
+            if (speed < 60) return '#ff4444';
+            if (speed < 120) return '#ffff00';
+            return '#00ff88';
+        }
+
         function drawCourseMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // Draw background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.02)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             // Draw grid
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
             ctx.lineWidth = 1;
-            for (let x = 0; x < canvas.width; x += 50) {
+            const gridSize = 50;
+            for (let x = 0; x < canvas.width; x += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(x, 0);
                 ctx.lineTo(x, canvas.height);
                 ctx.stroke();
             }
-            for (let y = 0; y < canvas.height; y += 50) {
+            for (let y = 0; y < canvas.height; y += gridSize) {
                 ctx.beginPath();
                 ctx.moveTo(0, y);
                 ctx.lineTo(canvas.width, y);
                 ctx.stroke();
             }
 
-            // Draw trajectory
+            // Draw trajectory with speed-based coloring
             if (trajectory.length > 1) {
-                ctx.beginPath();
-                ctx.moveTo(trajectory[0].canvasX, trajectory[0].canvasZ);
                 for (let i = 1; i < trajectory.length; i++) {
-                    ctx.lineTo(trajectory[i].canvasX, trajectory[i].canvasZ);
+                    const prev = trajectory[i - 1];
+                    const curr = trajectory[i];
+                    ctx.beginPath();
+                    ctx.moveTo(prev.canvasX, prev.canvasZ);
+                    ctx.lineTo(curr.canvasX, curr.canvasZ);
+                    ctx.strokeStyle = getSpeedColor(curr.speed);
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
                 }
-                ctx.strokeStyle = '#00ff88';
-                ctx.lineWidth = 2;
-                ctx.stroke();
             }
 
-            // Draw current position
+            // Draw current position with glow
             if (trajectory.length > 0) {
                 const last = trajectory[trajectory.length - 1];
+
+                // Glow effect
+                const gradient = ctx.createRadialGradient(
+                    last.canvasX, last.canvasZ, 0,
+                    last.canvasX, last.canvasZ, 20
+                );
+                gradient.addColorStop(0, 'rgba(0, 255, 136, 0.4)');
+                gradient.addColorStop(1, 'rgba(0, 255, 136, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(last.canvasX, last.canvasZ, 20, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Car marker
                 ctx.fillStyle = '#00ff88';
                 ctx.beginPath();
                 ctx.arc(last.canvasX, last.canvasZ, 8, 0, Math.PI * 2);
@@ -178,11 +371,106 @@
         }
 
         function gameToCanvas(x, z) {
-            // Simple mapping: center is (300, 200), scale is 0.5
+            const rangeX = canvasBounds.maxX - canvasBounds.minX;
+            const rangeZ = canvasBounds.maxZ - canvasBounds.minZ;
+            const padding = 40;
+
+            const availableWidth = canvas.width - 2 * padding;
+            const availableHeight = canvas.height - 2 * padding;
+
+            const scaleX = availableWidth / rangeX;
+            const scaleZ = availableHeight / rangeZ;
+            const scale = Math.min(scaleX, scaleZ);
+
+            const offsetX = padding + (availableWidth - rangeX * scale) / 2;
+            const offsetY = padding + (availableHeight - rangeZ * scale) / 2;
+
             return {
-                x: 300 + x * 0.5,
-                z: 200 + z * 0.5
+                x: offsetX + (x - canvasBounds.minX) * scale,
+                z: offsetY + (z - canvasBounds.minZ) * scale
             };
+        }
+
+        function getTyreTempColor(temp) {
+            if (temp < 40) return '#44ffff';
+            if (temp < 80) return '#00ff88';
+            if (temp < 100) return '#ffff00';
+            return '#ff4444';
+        }
+
+        function generateDemoTyreTemp(baseTemp, variation) {
+            return baseTemp + (Math.random() - 0.5) * variation;
+        }
+
+        function formatLapTime(ms) {
+            if (ms === -1 || ms === undefined || ms === null) return '--:--.---';
+            const minutes = Math.floor(ms / 60000);
+            const seconds = Math.floor((ms % 60000) / 1000);
+            const millis = ms % 1000;
+            return `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+        }
+
+        function updateTestModeTyres(speed) {
+            const baseTemp = 75 + (speed / 220) * 30;
+            const tempVariation = 8;
+
+            const flTemp = generateDemoTyreTemp(baseTemp, tempVariation);
+            const frTemp = generateDemoTyreTemp(baseTemp, tempVariation);
+            const rlTemp = generateDemoTyreTemp(baseTemp - 5, tempVariation);
+            const rrTemp = generateDemoTyreTemp(baseTemp - 5, tempVariation);
+
+            document.getElementById('fl-temp').textContent = Math.round(flTemp);
+            document.getElementById('fr-temp').textContent = Math.round(frTemp);
+            document.getElementById('rl-temp').textContent = Math.round(rlTemp);
+            document.getElementById('rr-temp').textContent = Math.round(rrTemp);
+
+            document.getElementById('fl-temp').style.color = getTyreTempColor(flTemp);
+            document.getElementById('fr-temp').style.color = getTyreTempColor(frTemp);
+            document.getElementById('rl-temp').style.color = getTyreTempColor(rlTemp);
+            document.getElementById('rr-temp').style.color = getTyreTempColor(rrTemp);
+
+            const basePressure = 2.0;
+            const pressureVariation = 0.15;
+            document.getElementById('fl-pressure').textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1) + ' bar';
+            document.getElementById('fr-pressure').textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1) + ' bar';
+            document.getElementById('rl-pressure').textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1) + ' bar';
+            document.getElementById('rr-pressure').textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1) + ' bar';
+        }
+
+        function updateTestModeSuspension(throttle, brake) {
+            const baseHeight = 80;
+            const brakeCompression = brake > 0 ? 15 : 0;
+            const accelSquat = throttle > 80 ? 10 : 0;
+
+            const variation = 5;
+            document.getElementById('fl-susp').textContent = Math.round(baseHeight - brakeCompression + (Math.random() - 0.5) * variation);
+            document.getElementById('fr-susp').textContent = Math.round(baseHeight - brakeCompression + (Math.random() - 0.5) * variation);
+            document.getElementById('rl-susp').textContent = Math.round(baseHeight + accelSquat + (Math.random() - 0.5) * variation);
+            document.getElementById('rr-susp').textContent = Math.round(baseHeight + accelSquat + (Math.random() - 0.5) * variation);
+        }
+
+        function updateTestModeLapTime() {
+            testModeLapTime += 200;
+
+            document.getElementById('current-lap-time').textContent = formatLapTime(testModeLapTime);
+
+            if (testModeLapTime >= testModeLastLapTime) {
+                testModeLapTime = 0;
+                testModeCurrentLap++;
+
+                if (testModeCurrentLap > 3) {
+                    testModeCurrentLap = 1;
+                }
+
+                document.getElementById('current-lap').textContent = `${testModeCurrentLap}/3`;
+
+                if (testModeLastLapTime < bestLapTime) {
+                    bestLapTime = testModeLastLapTime;
+                    document.getElementById('best-lap-time').textContent = formatLapTime(bestLapTime);
+                }
+
+                testModeLastLapTime = 94000 + Math.floor(Math.random() * 2000);
+            }
         }
 
         const testModeBtn = document.getElementById('test-mode-btn');
@@ -193,9 +481,16 @@
 
             if (testModeActive) {
                 document.getElementById('connection-status').innerHTML = '<span style="color: #ffd700;">● TEST MODE 実行中</span>';
-                document.getElementById('course').textContent = 'スズカ';
+                document.getElementById('course').textContent = 'スズカ サーキット (Demo)';
+
                 trajectory = [];
                 trajectoryIndex = 0;
+                testModeTimeCounter = 0;
+                testModeLapTime = 0;
+                testModeCurrentLap = 1;
+
+                document.getElementById('current-lap').textContent = '1/3';
+                document.getElementById('best-lap-time').textContent = formatLapTime(bestLapTime);
 
                 testInterval = setInterval(() => {
                     if (!testModeActive) {
@@ -206,17 +501,33 @@
                     const point = demoTrajectory[trajectoryIndex % demoTrajectory.length];
                     trajectoryIndex++;
 
-                    // Update display
-                    document.getElementById('speed').textContent = Math.round(point.speed);
-                    document.getElementById('rpm').textContent = Math.round(3000 + Math.random() * 4000);
-                    document.getElementById('gear').textContent = Math.floor(Math.random() * 6) + 1;
+                    const speedVariation = (Math.random() - 0.5) * 10;
+                    const speed = point.speed + speedVariation;
+                    const rpm = point.rpm + (Math.random() - 0.5) * 500;
+                    const throttle = Math.max(0, Math.min(100, point.throttle + (Math.random() - 0.5) * 10));
+                    const brake = Math.max(0, Math.min(100, point.brake + (Math.random() - 0.5) * 5));
+
+                    document.getElementById('speed').textContent = Math.round(speed);
+                    document.getElementById('rpm').textContent = Math.round(rpm);
+                    document.getElementById('gear').textContent = point.gear;
+                    document.getElementById('throttle').textContent = Math.round(throttle) + '%';
+                    document.getElementById('brake').textContent = Math.round(brake) + '%';
+                    document.getElementById('fuel').textContent = (50 - (testModeCurrentLap * 15)).toFixed(1) + ' L';
 
                     const canvasPos = gameToCanvas(point.x, point.z);
-                    trajectory.push({ canvasX: canvasPos.x, canvasZ: canvasPos.z });
-                    if (trajectory.length > 50) trajectory.shift();
+                    trajectory.push({
+                        canvasX: canvasPos.x,
+                        canvasZ: canvasPos.z,
+                        speed: speed
+                    });
+                    if (trajectory.length > 100) trajectory.shift();
 
                     document.getElementById('position-info').textContent =
-                        `Position: X: ${point.x.toFixed(1)} Z: ${point.z.toFixed(1)}`;
+                        `Position: X: ${point.x.toFixed(1)} Z: ${point.z.toFixed(1)} | Speed: ${Math.round(speed)} km/h`;
+
+                    updateTestModeTyres(speed);
+                    updateTestModeSuspension(throttle, brake);
+                    updateTestModeLapTime();
 
                     drawCourseMap();
 
@@ -226,7 +537,11 @@
                 clearInterval(testInterval);
                 document.getElementById('connection-status').innerHTML = '<span style="color: #ff4444;">● Stopped</span>';
                 trajectory = [];
-                drawCourseMap();  // Clear canvas after stopping
+                testModeTimeCounter = 0;
+                testModeLapTime = 0;
+                testModeCurrentLap = 1;
+
+                drawCourseMap();
             }
         });
 

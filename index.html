@@ -1015,8 +1015,26 @@
             initialized: false,
             canvas: null,
             ctx: null,
-            sampleCount: 0
+            sampleCount: 0,
+            courseDatabase: null,
+            currentCourseBounds: null
         };
+
+        async function loadCourseDatabase() {
+            try {
+                const response = await fetch('/course_database.json');
+                if (response.ok) {
+                    const data = await response.json();
+                    courseMapState.courseDatabase = data;
+                    debugLog('COURSE_DB', 'Loaded', {
+                        courses: data.courses?.length || 0,
+                        known_courses: data.known_courses?.length || 0
+                    });
+                }
+            } catch (e) {
+                console.error('[COURSE_DB] Failed to load:', e);
+            }
+        }
 
         function initCourseMap() {
             const canvas = document.getElementById('course-map');
@@ -1041,6 +1059,9 @@
             });
             resizeObserver.observe(container);
 
+            // Load course database
+            loadCourseDatabase();
+
             debugLog('COURSE_MAP', 'Initialized', { width: canvas.width, height: canvas.height });
         }
 
@@ -1059,6 +1080,45 @@
                 courseMapState.bounds.maxX = Math.max(courseMapState.bounds.maxX, x + padding);
                 courseMapState.bounds.minZ = Math.min(courseMapState.bounds.minZ, z - padding);
                 courseMapState.bounds.maxZ = Math.max(courseMapState.bounds.maxZ, z + padding);
+            }
+        }
+
+        function findCourseBounds(courseId) {
+            if (!courseMapState.courseDatabase) return null;
+
+            // Check known_courses first
+            if (courseMapState.courseDatabase.known_courses) {
+                for (const course of courseMapState.courseDatabase.known_courses) {
+                    if (course.id === courseId) {
+                        return course.bounds;
+                    }
+                }
+            }
+
+            // Check courses
+            if (courseMapState.courseDatabase.courses) {
+                for (const course of courseMapState.courseDatabase.courses) {
+                    if (course.id === courseId) {
+                        return course.bounds;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        function updateCourseBounds(courseId) {
+            const bounds = findCourseBounds(courseId);
+            if (bounds) {
+                courseMapState.currentCourseBounds = bounds;
+                // Use course bounds as the map bounds for better visualization
+                courseMapState.bounds = {
+                    minX: bounds.min_x,
+                    maxX: bounds.max_x,
+                    minZ: bounds.min_z,
+                    maxZ: bounds.max_z
+                };
+                debugLog('COURSE_MAP', 'Using course bounds', bounds);
             }
         }
 
@@ -1118,6 +1178,34 @@
                 ctx.moveTo(0, y);
                 ctx.lineTo(canvas.width, y);
                 ctx.stroke();
+            }
+
+            // Draw course bounds rectangle if available
+            if (courseMapState.currentCourseBounds && courseMapState.initialized) {
+                const bounds = courseMapState.currentCourseBounds;
+                const topLeft = gameToCanvas(bounds.min_x, bounds.min_z);
+                const bottomRight = gameToCanvas(bounds.max_x, bounds.max_z);
+
+                // Draw bounds rectangle
+                ctx.strokeStyle = 'rgba(68, 255, 255, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(
+                    topLeft.x,
+                    topLeft.y,
+                    bottomRight.x - topLeft.x,
+                    bottomRight.y - topLeft.y
+                );
+                ctx.setLineDash([]);
+
+                // Fill with transparent color
+                ctx.fillStyle = 'rgba(68, 255, 255, 0.05)';
+                ctx.fillRect(
+                    topLeft.x,
+                    topLeft.y,
+                    bottomRight.x - topLeft.x,
+                    bottomRight.y - topLeft.y
+                );
             }
 
             if (!courseMapState.initialized) {
@@ -1428,16 +1516,140 @@
         let testModeActive = false;
         let testModeInterval = null;
         let testTrajectoryIndex = 0;
+        let testModeTimeCounter = 0;
+        let testModeLapTime = 0;
+        let testModeLastLapTime = 95000; // 1:35.000
+        let testModeCurrentLap = 1;
 
+        // Enhanced demo trajectory with more realistic data
         const demoTrajectory = [
-            {x: 0, z: -300, speed: 80}, {x: 50, z: -280, speed: 120}, {x: 100, z: -240, speed: 160},
-            {x: 150, z: -180, speed: 200}, {x: 200, z: -100, speed: 220}, {x: 240, z: -20, speed: 200},
-            {x: 260, z: 60, speed: 180}, {x: 250, z: 140, speed: 150}, {x: 220, z: 200, speed: 120},
-            {x: 170, z: 230, speed: 100}, {x: 110, z: 240, speed: 90}, {x: 50, z: 230, speed: 100},
-            {x: -20, z: 200, speed: 130}, {x: -80, z: 150, speed: 170}, {x: -120, z: 80, speed: 200},
-            {x: -140, z: 0, speed: 190}, {x: -130, z: -80, speed: 160}, {x: -90, z: -150, speed: 130},
-            {x: -40, z: -220, speed: 110}, {x: 0, z: -280, speed: 90}
+            {x: 0, z: -300, speed: 80, gear: 2, rpm: 4500, throttle: 60, brake: 0},
+            {x: 50, z: -280, speed: 120, gear: 3, rpm: 5500, throttle: 80, brake: 0},
+            {x: 100, z: -240, speed: 160, gear: 4, rpm: 6500, throttle: 95, brake: 0},
+            {x: 150, z: -180, speed: 200, gear: 5, rpm: 7500, throttle: 100, brake: 0},
+            {x: 200, z: -100, speed: 220, gear: 6, rpm: 8200, throttle: 100, brake: 0},
+            {x: 240, z: -20, speed: 180, gear: 4, rpm: 6800, throttle: 30, brake: 40},
+            {x: 260, z: 60, speed: 150, gear: 3, rpm: 5500, throttle: 50, brake: 0},
+            {x: 250, z: 140, speed: 130, gear: 3, rpm: 4800, throttle: 70, brake: 0},
+            {x: 220, z: 200, speed: 100, gear: 2, rpm: 5200, throttle: 30, brake: 10},
+            {x: 170, z: 230, speed: 90, gear: 2, rpm: 4500, throttle: 60, brake: 0},
+            {x: 110, z: 240, speed: 95, gear: 2, rpm: 5000, throttle: 80, brake: 0},
+            {x: 50, z: 230, speed: 110, gear: 3, rpm: 5800, throttle: 90, brake: 0},
+            {x: -20, z: 200, speed: 140, gear: 4, rpm: 6500, throttle: 100, brake: 0},
+            {x: -80, z: 150, speed: 180, gear: 5, rpm: 7200, throttle: 100, brake: 0},
+            {x: -120, z: 80, speed: 200, gear: 5, rpm: 7800, throttle: 100, brake: 0},
+            {x: -140, z: 0, speed: 160, gear: 4, rpm: 6200, throttle: 20, brake: 50},
+            {x: -130, z: -80, speed: 130, gear: 3, rpm: 5000, throttle: 40, brake: 0},
+            {x: -90, z: -150, speed: 110, gear: 3, rpm: 4500, throttle: 60, brake: 0},
+            {x: -40, z: -220, speed: 95, gear: 2, rpm: 4800, throttle: 70, brake: 0},
+            {x: 0, z: -280, speed: 85, gear: 2, rpm: 4200, throttle: 50, brake: 10}
         ];
+
+        // Test mode helper functions
+        function generateDemoTyreTemp(baseTemp, variation) {
+            return baseTemp + (Math.random() - 0.5) * variation;
+        }
+
+        function generateDemoSuspension(baseHeight, compression) {
+            return baseHeight + (Math.random() - 0.5) * compression;
+        }
+
+        function updateTestModeCharts(demoData) {
+            // Update chart data arrays
+            window.timeData.shift();
+            window.timeData.push(testModeTimeCounter++);
+
+            const speed = Math.round(demoData.speed_kmh);
+            window.speedData.shift();
+            window.speedData.push(speed);
+
+            const rpm = Math.round(demoData.rpm);
+            window.rpmData.shift();
+            window.rpmData.push(rpm);
+
+            const throttle = Math.round(demoData.throttle_pct);
+            window.throttleData.shift();
+            window.throttleData.push(throttle);
+
+            const brake = Math.round(demoData.brake_pct);
+            window.brakeData.shift();
+            window.brakeData.push(brake);
+
+            // Update charts
+            if (window.speedChart) window.speedChart.setData([window.timeData, window.speedData]);
+            if (window.rpmChart) window.rpmChart.setData([window.timeData, window.rpmData]);
+            if (window.throttleChart) window.throttleChart.setData([window.timeData, window.throttleData]);
+            if (window.brakeChart) window.brakeChart.setData([window.timeData, window.brakeData]);
+        }
+
+        function updateTestModeLapTime() {
+            testModeLapTime += 200; // Add 200ms per update
+
+            const minutes = Math.floor(testModeLapTime / 60000);
+            const seconds = Math.floor((testModeLapTime % 60000) / 1000);
+            const millis = testModeLapTime % 1000;
+
+            elements.currentLapTime.textContent =
+                `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+
+            // Simulate lap completion
+            if (testModeLapTime >= testModeLastLapTime) {
+                testModeLapTime = 0;
+                testModeCurrentLap++;
+
+                if (testModeCurrentLap > 3) {
+                    testModeCurrentLap = 1;
+                }
+
+                elements.currentLap.textContent = `${testModeCurrentLap}/3`;
+                addLapData(testModeCurrentLap - 1, testModeLastLapTime);
+
+                // Vary lap times slightly
+                testModeLastLapTime = 94000 + Math.floor(Math.random() * 2000);
+            }
+        }
+
+        function updateTestModeTyres(demoData) {
+            // Generate realistic tyre temperatures based on speed and load
+            const baseTemp = 75 + (demoData.speed_kmh / 220) * 30; // 75-105°C
+            const tempVariation = 8;
+
+            const flTemp = generateDemoTyreTemp(baseTemp, tempVariation);
+            const frTemp = generateDemoTyreTemp(baseTemp, tempVariation);
+            const rlTemp = generateDemoTyreTemp(baseTemp - 5, tempVariation);
+            const rrTemp = generateDemoTyreTemp(baseTemp - 5, tempVariation);
+
+            elements.flTemp.textContent = Math.round(flTemp);
+            elements.frTemp.textContent = Math.round(frTemp);
+            elements.rlTemp.textContent = Math.round(rlTemp);
+            elements.rrTemp.textContent = Math.round(rrTemp);
+
+            elements.flTemp.style.color = getTyreTempColor(flTemp);
+            elements.frTemp.style.color = getTyreTempColor(frTemp);
+            elements.rlTemp.style.color = getTyreTempColor(rlTemp);
+            elements.rrTemp.style.color = getTyreTempColor(rrTemp);
+
+            // Tyre pressures (slight variation)
+            const basePressure = 2.0;
+            const pressureVariation = 0.15;
+            elements.flPressure.textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1);
+            elements.frPressure.textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1);
+            elements.rlPressure.textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1);
+            elements.rrPressure.textContent = (basePressure + (Math.random() - 0.5) * pressureVariation).toFixed(1);
+        }
+
+        function updateTestModeSuspension(demoData) {
+            // Generate suspension heights (in mm)
+            const baseHeight = 80;
+            const brakeCompression = demoData.brake_pct > 0 ? 15 : 0;
+            const accelSquat = demoData.throttle_pct > 80 ? 10 : 0;
+
+            const variation = 5;
+            elements.flSusp.textContent = Math.round(generateDemoSuspension(baseHeight - brakeCompression, variation));
+            elements.frSusp.textContent = Math.round(generateDemoSuspension(baseHeight - brakeCompression, variation));
+            elements.rlSusp.textContent = Math.round(generateDemoSuspension(baseHeight + accelSquat, variation));
+            elements.rrSusp.textContent = Math.round(generateDemoSuspension(baseHeight + accelSquat, variation));
+        }
 
         const testModeBtn = document.getElementById('test-mode-btn');
         if (testModeBtn) {
@@ -1448,12 +1660,26 @@
 
                 if (testModeActive) {
                     debugLog('TEST', 'Test mode enabled');
-                    // Start demo data
+                    // Reset test mode state
                     testTrajectoryIndex = 0;
+                    testModeTimeCounter = 0;
+                    testModeLapTime = 0;
+                    testModeCurrentLap = 1;
+
                     statusEl.textContent = 'TEST MODE';
                     statusEl.style.background = 'var(--accent-yellow)';
                     statusEl.style.color = '#000';
                     elements.courseName.textContent = 'スズカ サーキット (Demo)';
+                    elements.carId.textContent = '0';
+
+                    // Initialize lap display
+                    elements.currentLap.textContent = '1/3';
+                    elements.bestLapTime.textContent = formatLapTime(testModeLastLapTime);
+
+                    // Reset course map for test mode
+                    courseMapState.trajectory = [];
+                    courseMapState.currentPosition = { x: 0, y: 0, z: 0 };
+                    courseMapState.initialized = false;
 
                     testModeInterval = setInterval(() => {
                         if (!testModeActive) {
@@ -1464,37 +1690,74 @@
                         const point = demoTrajectory[testTrajectoryIndex % demoTrajectory.length];
                         testTrajectoryIndex++;
 
-                        // Simulate telemetry data
+                        // Simulate telemetry data with more realistic values
+                        const speedVariation = (Math.random() - 0.5) * 10;
                         const demoData = {
                             position_x: point.x,
                             position_y: 0,
                             position_z: point.z,
-                            speed_kmh: point.speed,
-                            speed_ms: point.speed / 3.6,
-                            rpm: 3000 + Math.random() * 4000,
-                            gear: Math.floor(Math.random() * 6) + 1,
-                            throttle_pct: Math.random() * 100,
-                            brake_pct: Math.random() * 30,
-                            course: { name: 'スズカ サーキット (Demo)', confidence: 1.0 },
-                            lap_count: 1,
+                            speed_kmh: point.speed + speedVariation,
+                            speed_ms: (point.speed + speedVariation) / 3.6,
+                            rpm: point.rpm + (Math.random() - 0.5) * 500,
+                            gear: point.gear,
+                            throttle_pct: point.throttle + (Math.random() - 0.5) * 10,
+                            brake_pct: point.brake + (Math.random() - 0.5) * 5,
+                            current_fuel: 50 - (testModeCurrentLap * 15),
+                            boost: 0,
+                            max_rpm: 9000,
+                            course: { name: 'スズカ サーキット (Demo)', id: 'suzuka', confidence: 1.0 },
+                            lap_count: testModeCurrentLap,
                             total_laps: 3
                         };
 
                         // Update UI directly
-                        elements.speed.textContent = Math.round(point.speed);
+                        const speed = Math.round(demoData.speed_kmh);
+                        elements.speed.textContent = speed;
+                        if (speed > maxSpeed) {
+                            maxSpeed = speed;
+                            elements.maxSpeed.textContent = maxSpeed;
+                        }
+
                         elements.gear.textContent = demoData.gear;
-                        elements.rpmBar.style.width = (demoData.rpm / 9000 * 100) + '%';
-                        elements.rpmText.textContent = Math.round(demoData.rpm) + ' RPM';
-                        elements.throttleBar.style.width = demoData.throttle_pct + '%';
-                        elements.throttleValue.textContent = Math.round(demoData.throttle_pct) + '%';
-                        elements.brakeBar.style.width = demoData.brake_pct + '%';
-                        elements.brakeValue.textContent = Math.round(demoData.brake_pct) + '%';
+
+                        const rpm = Math.round(demoData.rpm);
+                        const rpmPct = Math.min((rpm / demoData.max_rpm) * 100, 100);
+                        elements.rpmBar.style.width = rpmPct + '%';
+                        elements.rpmText.textContent = rpm + ' RPM';
+
+                        const throttle = Math.max(0, Math.min(100, Math.round(demoData.throttle_pct)));
+                        const brake = Math.max(0, Math.min(100, Math.round(demoData.brake_pct)));
+                        elements.throttleBar.style.width = throttle + '%';
+                        elements.throttleValue.textContent = throttle + '%';
+                        elements.brakeBar.style.width = brake + '%';
+                        elements.brakeValue.textContent = brake + '%';
+
+                        elements.fuel.textContent = demoData.current_fuel.toFixed(1);
+                        elements.boost.textContent = '0';
+
                         elements.maxX.textContent = point.x.toFixed(1);
                         elements.maxY.textContent = '0.0';
                         elements.maxZ.textContent = point.z.toFixed(1);
 
+                        // Update charts
+                        updateTestModeCharts(demoData);
+
+                        // Update tyres
+                        updateTestModeTyres(demoData);
+
+                        // Update suspension
+                        updateTestModeSuspension(demoData);
+
+                        // Update lap time
+                        updateTestModeLapTime();
+
                         // Update course map
-                        updateCourseMap(point.x, 0, point.z, point.speed);
+                        updateCourseMap(point.x, 0, point.z, demoData.speed_kmh);
+
+                        // Update course bounds visualization
+                        if (testTrajectoryIndex === 1) {
+                            updateCourseBounds('suzuka');
+                        }
 
                         packetCount++;
                         elements.packets.textContent = packetCount;
@@ -1508,12 +1771,28 @@
                     statusEl.style.background = '';
                     statusEl.style.color = '';
                     testTrajectoryIndex = 0;
+                    testModeTimeCounter = 0;
+                    testModeLapTime = 0;
+                    testModeCurrentLap = 1;
+
                     // Clear trajectory when stopping test mode
                     if (typeof courseMapState !== 'undefined') {
                         courseMapState.trajectory = [];
                         courseMapState.currentPosition = { x: 0, y: 0, z: 0 };
+                        courseMapState.initialized = false;
                         drawCourseMap();
                     }
+
+                    // Reset charts to zeros
+                    window.speedData.fill(0);
+                    window.rpmData.fill(0);
+                    window.throttleData.fill(0);
+                    window.brakeData.fill(0);
+
+                    if (window.speedChart) window.speedChart.setData([window.timeData, window.speedData]);
+                    if (window.rpmChart) window.rpmChart.setData([window.timeData, window.rpmData]);
+                    if (window.throttleChart) window.throttleChart.setData([window.timeData, window.throttleData]);
+                    if (window.brakeChart) window.brakeChart.setData([window.timeData, window.brakeData]);
                 }
             });
         }
@@ -1605,11 +1884,16 @@
                 // Update course name
                 if (data.course) {
                     const courseName = data.course.name || 'Unknown Track';
+                    const courseId = data.course.id || 'unknown';
                     if (courseName !== currentCourseName) {
                         currentCourseName = courseName;
                         elements.courseName.textContent = courseName;
                         elements.courseName.title = courseName;
                         debugLog('COURSE', 'Course changed to:', courseName);
+                        // Update course bounds visualization
+                        if (courseId !== 'unknown') {
+                            updateCourseBounds(courseId);
+                        }
                     }
                 }
 
@@ -1658,10 +1942,15 @@
                 // Update course name
                 if (data.course && data.course.name) {
                     const courseName = data.course.name;
+                    const courseId = data.course.id || 'unknown';
                     if (courseName !== currentCourseName) {
                         currentCourseName = courseName;
                         elements.courseName.textContent = courseName;
                         debugLog('COURSE', 'Course detected:', courseName);
+                        // Update course bounds visualization
+                        if (courseId !== 'unknown') {
+                            updateCourseBounds(courseId);
+                        }
                     }
                 }
 
