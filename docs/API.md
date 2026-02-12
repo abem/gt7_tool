@@ -396,19 +396,17 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
 
 WebSocket接続後に、ダッシュボード上の「TEST MODE」ボタンをクリックすると、デモデータが表示されます。
 
-**デモデータ生成:**
+**デモデータ生成 (`test-mode.js`):**
 ```javascript
-const demoData = {
-    position_x: point.x,
-    position_y: 0,
-    position_z: point.z,
-    speed_kmh: point.speed,
-    rpm: 3000 + Math.random() * 4000,
-    gear: Math.floor(Math.random() * 6) + 1,
-    throttle_pct: Math.random() * 100,
-    brake_pct: Math.random() * 30,
-    course: { name: 'スズカ サーキット (Demo)', confidence: 1.0 }
-};
+var demoRpm = 3000 + Math.random() * 4000;
+var demoGear = Math.floor(Math.random() * 6) + 1;
+var demoThrottle = Math.random() * 100;
+var demoBrake = Math.random() * 30;
+
+elements.speed.textContent = Math.round(point.speed);
+elements.gear.textContent = demoGear;
+// ... UI要素を直接更新
+updateCourseMap(point.x, 0, point.z, point.speed);
 ```
 
 ## 実機テスト結果 (2026-02-11)

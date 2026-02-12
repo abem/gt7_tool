@@ -204,16 +204,30 @@ docker compose restart
 
 ## 構成
 
-- **`main.py`**: エントリーポイント。WebSocketサーバー (`asyncio` + `websockets`) を実行します。
+### バックエンド (Python)
+- **`main.py`**: エントリーポイント。WebSocketサーバー (`asyncio` + `aiohttp`) を実行します。
 - **`telemetry.py`**: PS5とのUDP通信（ハートビート `A` パケット送信など）を管理します。
 - **`decoder.py`**: Salsa20で暗号化されたパケットを復号し、`packet_def.json` に基づいてデータを解析します。コース推定機能も含みます。
+
+### フロントエンド (HTML/CSS/JS)
+- **`index.html`**: ダッシュボードのHTML構造のみ。
+- **`styles.css`**: 全スタイル定義（レスポンシブ対応）。
+- **`ui_components.js`**: 定数・設定・ユーティリティ関数・DOM要素キャッシュ。
+- **`charts.js`**: uPlotチャート初期化・加速度チャート管理。
+- **`course-map.js`**: コースマップCanvas描画ロジック。
+- **`websocket.js`**: WebSocket接続・テレメトリデータ処理・ラップ管理。
+- **`test-mode.js`**: テストモード（デモデータ生成）。
+- **`app.js`**: エントリーポイント（各モジュール初期化）。
+
+### 設定・データ
+- **`config.json`**: ネットワーク設定ファイル。
 - **`packet_def.json`**: テレメトリデータのメモリオフセットとデータ型を定義しています。
 - **`course_database.json`**: コースの座標範囲データベース。コース推定に使用されます。
-- **`config.json`**: ネットワーク設定ファイル。
-- **`index.html`**: ウェブブラウザ上のダッシュボード（CSS/JavaScript）。コースマップ、チャート表示を含みます。
-- **`test_course_detection.py`**: コース検出機能のテストスクリプト。
+
+### インフラ
 - **`Dockerfile`**: Python環境のDockerイメージ。
 - **`docker-compose.yml`**: Docker Compose設定ファイル。
+- **`test_course_detection.py`**: コース検出機能のテストスクリプト。
 
 ## ドキュメント
 
@@ -239,12 +253,12 @@ docker compose restart
    "boost_pressure": {"offset": "0x50", "type": "float"}
    ```
 3. `decoder.py` でデータを解析する処理を追加します。
-4. `index.html` を編集して、新しいデータを表示するようにします。
+4. `index.html` にHTML要素を追加し、`websocket.js` でデータ表示処理を追加します。
 5. `docker compose restart` で再起動します。
 
 ### UIの変更:
 
-`index.html` 内の `<style>` セクションを編集することで、色やレイアウトを自由に変更できます。
+`styles.css` を編集することで、色やレイアウトを自由に変更できます。JavaScript の機能追加は対応するモジュールファイル（`charts.js`, `course-map.js` 等）を編集してください。
 
 ### コースデータベースの更新:
 
@@ -272,6 +286,13 @@ MIT License
 **暗号化キー:** `Simulator Interface Packet GT7 ver 0.0`
 
 ## 更新履歴
+
+- **2026-02-13**: フロントエンドをリファクタリング
+  - モノリシックな `index.html` (1825行) を機能別ファイルに分割
+  - CSS を `styles.css` に分離
+  - JavaScript を `ui_components.js`, `charts.js`, `course-map.js`, `websocket.js`, `test-mode.js`, `app.js` に分割
+  - 加速度チャートの表示を改善（専用カード化、ResizeObserver対応）
+  - 旧コードの未使用ファイルを整理
 
 - **2026-02-11**: ドキュメントを整備・実機テスト完了
   - APIドキュメント (docs/API.md) を追加

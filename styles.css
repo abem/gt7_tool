@@ -1,7 +1,4 @@
-/**
- * GT7 Telemetry HUD
- * スタイルシート
- */
+/* GT7 Telemetry Dashboard - Stylesheet */
 
 * {
     margin: 0;
@@ -9,376 +6,784 @@
     box-sizing: border-box;
 }
 
+:root {
+    --bg-primary: #0a0e1a;
+    --bg-secondary: #121829;
+    --bg-card: rgba(255, 255, 255, 0.05);
+    --border-color: rgba(255, 255, 255, 0.08);
+    --text-primary: #ffffff;
+    --text-secondary: #6b7280;
+    --accent-green: #00ff88;
+    --accent-yellow: #ffd700;
+    --accent-red: #ff4444;
+    --accent-cyan: #44ffff;
+    --accent-orange: #ff8800;
+
+    --chart-height: clamp(80px, 11vh, 130px);
+    --tyre-temp-size: clamp(16px, 2.2vw, 24px);
+    --tyre-pressure-size: clamp(11px, 1.3vw, 14px);
+    --speed-size: clamp(32px, 5vw, 48px);
+    --gear-size: clamp(24px, 3.5vw, 36px);
+}
+
 body {
-    background: #0a0a0f;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+}
+
+/* ===== Layout ===== */
+
+.dashboard {
+    display: grid;
+    grid-template-columns: clamp(220px, 18vw, 260px) 1fr clamp(260px, 20vw, 300px);
+    grid-template-rows: auto 1fr;
+    gap: clamp(8px, 1vh, 12px);
+    padding: clamp(8px, 1vh, 12px);
+    height: 100vh;
+    max-width: 1920px;
+    margin: 0 auto;
+    overflow: hidden;
+}
+
+/* ===== Header ===== */
+
+.header {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 14px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.header-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+}
+
+#connection-status {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+#connection-status.connected {
+    background: var(--accent-green);
+    color: #000;
+}
+
+#connection-status.disconnected {
+    background: var(--accent-red);
     color: #fff;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ===== Cards ===== */
+
+.card {
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    padding: clamp(6px, 1vh, 10px);
+    contain: layout style;
+}
+
+.card-title {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+/* ===== Left Panel ===== */
+
+.left-panel {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    overflow: hidden;
-    background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 100%);
+    gap: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    contain: content;
 }
 
-.hud-container {
-    width: 100%;
-    max-width: 1600px;
-    padding: 20px;
-}
-
-/* Main Gauge Area */
-.gauge-area {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 40px;
-    margin-bottom: 30px;
-}
-
-/* Gear Display */
-.gear-display {
+/* Speed */
+.speed-card {
     text-align: center;
-    position: relative;
-}
-
-.gear-value {
-    font-size: 180px;
-    font-weight: bold;
-    color: #00ff88;
-    text-shadow: 0 0 20px rgba(0, 255, 136, 0.5),
-                 0 0 40px rgba(0, 255, 136, 0.3),
-                 0 0 60px rgba(0, 255, 136, 0.1);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 10px;
-}
-
-.gear-label {
-    font-size: 24px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 5px;
-    margin-top: 10px;
-}
-
-.gear-sub {
-    font-size: 16px;
-    color: #555;
-    margin-top: 5px;
-}
-
-/* Speed Display */
-.speed-display {
-    text-align: center;
-    position: relative;
+    padding: 12px 10px;
 }
 
 .speed-value {
-    font-size: 160px;
-    font-weight: bold;
-    color: #ffaa00;
-    text-shadow: 0 0 20px rgba(255, 170, 0, 0.5),
-                 0 0 40px rgba(255, 170, 0, 0.3);
-    font-variant-numeric: tabular-nums;
+    font-size: var(--speed-size);
+    font-weight: 700;
+    color: var(--accent-green);
+    line-height: 1;
 }
 
 .speed-unit {
-    font-size: 32px;
-    color: #ffaa00;
-    text-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
 }
 
-/* RPM Bar */
-.rpm-container {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 600px;
-    height: 15px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
+/* Gear & RPM */
+.gear-rpm-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.gear-display {
+    text-align: center;
+    min-width: 50px;
+}
+
+.gear-value {
+    font-size: var(--gear-size);
+    font-weight: 700;
+    color: var(--accent-yellow);
+    line-height: 1;
+}
+
+.gear-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.rpm-display {
+    flex: 1;
+}
+
+.rpm-bar-bg {
+    height: 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
 }
 
 .rpm-bar {
     height: 100%;
     background: linear-gradient(90deg, #00ff88, #ffff00, #ff4444);
-    width: 0%;
-    transition: width 0.05s linear;
-    box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+    border-radius: 8px;
+    transition: width 0.05s;
 }
 
 .rpm-text {
-    position: absolute;
-    top: -30px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 20px;
-    color: #ffff00;
-    font-weight: bold;
-    text-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-top: 3px;
 }
 
 /* Pedals */
-.pedals {
+.pedals-card {
     display: flex;
-    gap: 15px;
-    margin-bottom: 40px;
+    flex-direction: column;
+    gap: 6px;
 }
 
-.pedal {
-    width: 50px;
-    height: 150px;
-    background: linear-gradient(180deg, #333 0%, #222 100%);
-    border-radius: 5px 5px 0 0;
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+.pedal-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .pedal-label {
-    position: absolute;
-    top: 5px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 12px;
-    color: #888;
-    text-transform: uppercase;
+    font-size: 9px;
+    color: var(--text-secondary);
+    min-width: 45px;
 }
 
-.pedal-fill {
-    position: absolute;
-    bottom: 0;
-    width: 100%;
-    transition: height 0.05s;
-    box-shadow: 0 0 20px currentColor;
-}
-
-.pedal.throttle .pedal-fill {
-    background: linear-gradient(180deg, #44ff44 0%, #22cc22 100%);
-    color: #44ff44;
-}
-
-.pedal.brake .pedal-fill {
-    background: linear-gradient(180deg, #ff4444 0%, #cc2222 100%);
-    color: #ff4444;
-}
-
-/* Wheel Rotation Meters */
-.wheel-meters {
-    display: flex;
-    justify-content: center;
-    gap: 80px;
-    margin-bottom: 30px;
-}
-
-.wheel-meter {
-    position: relative;
-    width: 120px;
-    height: 120px;
-}
-
-.wheel-circle {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    border: 3px solid #333;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.3);
-}
-
-.wheel-fill {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    background: conic-gradient(#00aaff 0deg, #00ff88 180deg, #ff4444 360deg);
-    mask: radial-gradient(transparent 70%, black 71%);
-    -webkit-mask: radial-gradient(transparent 70%, black 71%);
-    transform: rotate(-90deg);
-    opacity: 0.8;
-}
-
-.wheel-value {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 14px;
-    color: #00aaff;
-    font-weight: bold;
-    text-shadow: 0 0 10px rgba(0, 170, 255, 0.5);
-}
-
-.wheel-label {
-    position: absolute;
-    bottom: -25px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 12px;
-    color: #888;
-    text-transform: uppercase;
-}
-
-/* Tyre Grid */
-.tyre-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
-    margin-bottom: 20px;
-}
-
-.tyre-card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    border-radius: 15px;
-    padding: 15px;
-    position: relative;
+.pedal-bar-bg {
+    flex: 1;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
     overflow: hidden;
 }
 
-.tyre-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 3px;
+.throttle-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #00aa44, #00ff88);
+    border-radius: 6px;
+    transition: width 0.05s;
 }
 
-.tyre-card.fl::before { background: linear-gradient(90deg, #00ff88, #00aaff); }
-.tyre-card.fr::before { background: linear-gradient(90deg, #00ff88, #00aaff); }
-.tyre-card.rl::before { background: linear-gradient(90deg, #ff00ff, #aa00ff); }
-.tyre-card.rr::before { background: linear-gradient(90deg, #ff00ff, #aa00ff); }
-
-.tyre-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
+.brake-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #aa0000, #ff4444);
+    border-radius: 6px;
+    transition: width 0.05s;
 }
 
-.tyre-position {
-    font-size: 16px;
-    font-weight: bold;
-    text-transform: uppercase;
+.pedal-value {
+    font-size: 10px;
+    color: var(--text-primary);
+    min-width: 30px;
+    text-align: right;
 }
 
-.tyre-card.fl .tyre-position { color: #00ff88; }
-.tyre-card.fr .tyre-position { color: #00ff88; }
-.tyre-card.rl .tyre-position { color: #ff00ff; }
-.tyre-card.rr .tyre-position { color: #ff00ff; }
-
-.tyre-data {
+/* Fuel & Boost */
+.fuel-boost-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
 }
 
-.tyre-data-item {
-    background: rgba(0, 0, 0, 0.3);
+.fuel-boost-item {
+    text-align: center;
+}
+
+.fuel-boost-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent-green);
+}
+
+.fuel-boost-value.boost {
+    color: var(--accent-orange);
+}
+
+.fuel-boost-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* Stat Card */
+.stat-card {
+    text-align: center;
     padding: 8px;
-    border-radius: 8px;
 }
 
-.tyre-data-label {
-    font-size: 10px;
-    color: #666;
-    text-transform: uppercase;
+.stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
 }
 
-.tyre-data-value {
-    font-size: 14px;
-    font-weight: bold;
-    color: #fff;
+.stat-label {
+    font-size: 8px;
+    color: var(--text-secondary);
+    margin-top: 2px;
 }
 
-.tyre-card.fl .tyre-data-value { color: #00ff88; }
-.tyre-card.fr .tyre-data-value { color: #00ff88; }
-.tyre-card.rl .tyre-data-value { color: #ff00ff; }
-.tyre-card.rr .tyre-data-value { color: #ff00ff; }
+/* ===== Center Panel ===== */
 
-/* Temperature Display */
-.temp-display {
+.center-panel {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(10px, 1.5vh, 16px);
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Course Map */
+.course-map-card {
+    flex: 0.8;
+    display: flex;
+    flex-direction: column;
+    min-height: clamp(120px, 25vh, 200px);
+    overflow: hidden;
+}
+
+.course-map-container {
+    flex: 1;
+    position: relative;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#course-map {
     width: 100%;
-    height: 6px;
+    height: 100%;
+    display: block;
+}
+
+.course-map-info {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    font-size: 9px;
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.6);
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+.course-map-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.test-mode-btn {
+    font-size: 8px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    padding: 3px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.test-mode-btn:hover {
+    background: rgba(255, 215, 0, 0.2);
+    color: var(--accent-yellow);
+    border-color: var(--accent-yellow);
+}
+
+.test-mode-btn.active {
+    background: var(--accent-yellow);
+    color: #000;
+    border-color: var(--accent-yellow);
+}
+
+.test-mode-indicator {
+    font-size: 8px;
+    color: var(--accent-yellow);
+    background: rgba(255, 215, 0, 0.1);
+    padding: 2px 4px;
+    border-radius: 2px;
+    margin-left: 4px;
+}
+
+/* Charts */
+.charts-container {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: clamp(4px, 0.8vw, 8px);
+    height: var(--chart-height);
+    min-height: 100px;
+    max-height: 140px;
+    flex-shrink: 0;
+}
+
+.chart-wrapper {
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    padding: 4px 4px 2px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chart-title {
+    font-size: clamp(7px, 0.8vw, 9px);
+    color: var(--text-secondary);
+    margin-bottom: 1px;
+    white-space: nowrap;
+}
+
+.chart {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+}
+
+/* ===== Tyres ===== */
+
+.tyres-card {
+    flex: 0.8;
+    display: flex;
+    flex-direction: column;
+    min-height: 120px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.tyres-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: clamp(8px, 1.5vw, 14px);
+    margin-bottom: 12px;
+}
+
+.tyre-item {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    padding: 6px;
+    text-align: center;
+    min-width: 0;
+}
+
+.tyre-pos {
+    font-size: clamp(9px, 1.2vw, 13px);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.tyre-temp-row,
+.tyre-pressure-row,
+.tyre-rps-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 2px;
+    margin-bottom: 2px;
+    flex-wrap: wrap;
+}
+
+.tyre-data-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 4px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+
+.tyre-temp {
+    font-size: var(--tyre-temp-size);
+    font-weight: 700;
+    color: var(--accent-green);
+}
+
+.tyre-temp-unit {
+    font-size: clamp(8px, 1vw, 12px);
+    color: var(--text-secondary);
+}
+
+.tyre-pressure {
+    font-size: var(--tyre-pressure-size);
+    font-weight: 600;
+    color: var(--accent-cyan);
+}
+
+.tyre-rps {
+    font-size: 9px;
+    font-weight: 600;
+    color: #ff9800;
+}
+
+.tyre-rps-unit {
+    font-size: 8px;
+    color: var(--text-secondary);
+}
+
+.tyre-pressure-unit {
+    font-size: clamp(8px, 0.9vw, 10px);
+    color: var(--text-secondary);
+}
+
+.tyre-label {
+    font-size: clamp(7px, 0.8vw, 9px);
+    color: var(--text-secondary);
+}
+
+/* Suspension */
+.suspension-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: clamp(8px, 1.5vw, 14px);
+}
+
+.susp-item {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    padding: 6px 4px;
+    text-align: center;
+}
+
+.susp-pos {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.susp-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.susp-unit {
+    font-size: 8px;
+    color: var(--text-secondary);
+}
+
+/* ===== Right Panel ===== */
+
+.right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.right-panel::-webkit-scrollbar {
+    width: 4px;
+}
+
+/* Lap Times */
+.lap-times-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lap-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.lap-row:last-child {
+    border-bottom: none;
+}
+
+.lap-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.lap-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-green);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+/* Delta */
+.delta-card {
+    text-align: center;
+    padding: 8px;
+}
+
+.delta-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent-green);
+}
+
+.delta-value.negative {
+    color: var(--accent-red);
+}
+
+.delta-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+/* Lap History */
+.lap-history-card {
+    max-height: clamp(120px, 20vh, 180px);
+    overflow-y: auto;
+    min-height: 80px;
+}
+
+.lap-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.lap-history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 6px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+.lap-history-item.best {
+    background: rgba(0, 255, 136, 0.15);
+    border: 1px solid var(--accent-green);
+}
+
+.lap-hist-num {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.lap-hist-time {
+    color: var(--accent-green);
+    font-weight: 600;
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+.lap-hist-delta {
+    font-size: 9px;
+}
+
+.lap-hist-delta.positive {
+    color: var(--accent-red);
+}
+
+.lap-hist-delta.negative {
+    color: var(--accent-green);
+}
+
+/* Position */
+.position-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.position-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+}
+
+.position-label {
+    color: var(--text-secondary);
+}
+
+.position-value {
+    color: var(--text-primary);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+}
+
+/* Acceleration Chart */
+.accel-chart-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 100px;
+}
+
+.accel-chart-container {
+    flex: 1;
+    position: relative;
+    min-height: 80px;
+}
+
+.accel-chart-container canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* ===== Scrollbar ===== */
+
+::-webkit-scrollbar {
+    width: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 3px;
-    margin-top: 5px;
-    overflow: hidden;
 }
 
-.temp-bar {
-    height: 100%;
-    transition: width 0.05s, background-color 0.05s;
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
-/* Warning Flash */
-@keyframes warningFlash {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+/* ===== uPlot Overrides ===== */
+
+.u-tooltip {
+    display: none !important;
 }
 
-.warning {
-    animation: warningFlash 0.5s infinite;
+.u-over {
+    display: none !important;
 }
 
-.tyre-card.hot .tyre-data-value {
-    color: #ff4444;
-    text-shadow: 0 0 10px rgba(255, 68, 68, 0.8);
+/* ===== Responsive ===== */
+
+@media (min-width: 1900px) and (max-width: 1950px) and (min-height: 1050px) and (max-height: 1100px) {
+    :root {
+        --chart-height: 100px;
+        --tyre-temp-size: 18px;
+        --tyre-pressure-size: 12px;
+    }
+
+    .dashboard {
+        gap: 8px;
+        padding: 8px;
+    }
 }
 
-.tyre-card.cold .tyre-data-value {
-    color: #44ffff;
-    text-shadow: 0 0 10px rgba(68, 255, 255, 0.8);
+@media (max-width: 1400px) {
+    .dashboard {
+        grid-template-columns: 220px 1fr 260px;
+        gap: 8px;
+        padding: 8px;
+    }
+
+    .charts-container {
+        gap: 4px;
+    }
 }
 
-/* Slip Ratio Display */
-.slip-display {
-    width: 100%;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    margin-top: 5px;
-    overflow: hidden;
+@media (max-width: 1200px) {
+    .dashboard {
+        grid-template-columns: 200px 1fr 240px;
+    }
+
+    .tyres-grid {
+        gap: 4px;
+    }
 }
 
-.slip-bar {
-    height: 100%;
-    transition: width 0.05s, background-color 0.05s;
+@media (max-height: 800px) {
+    :root {
+        --chart-height: 85px;
+    }
+
+    .lap-history-card {
+        max-height: 110px;
+    }
+
+    .tyre-item {
+        padding: 6px 4px;
+    }
+
+    .card {
+        padding: 6px 8px;
+    }
+
+    .dashboard {
+        gap: 6px;
+        padding: 6px;
+    }
 }
 
-.slip-good { background: #00ff88; }
-.slip-warn { background: #ffff00; }
-.slip-danger { background: #ff4444; animation: warningFlash 0.3s infinite; }
+@media (max-height: 700px) {
+    :root {
+        --chart-height: 70px;
+        --tyre-temp-size: 14px;
+        --tyre-pressure-size: 10px;
+    }
 
-/* Load Ratio Display */
-.load-display {
-    width: 100%;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    margin-top: 5px;
-    overflow: hidden;
-}
+    .charts-container {
+        gap: 4px;
+    }
 
-.load-bar {
-    height: 100%;
-    transition: width 0.05s, background-color 0.05s;
-}
-
-.load-ideal { background: #00ff88; }
-.load-low { background: #ffff00; }
-.load-void { background: #ff4444; }
-
-/* Brake Temp */
-.brake-temp {
-    font-size: 12px;
+    .lap-history-card {
+        max-height: 90px;
+    }
 }
