@@ -80,6 +80,8 @@ async def telemetry_background_task():
     ensure_log_dir()
 
     last_package_id = 0
+    last_speed_kmh = 0.0
+    last_time = datetime.now()
 
     logger.info(f"Logging enabled. Data will be saved to: {os.path.abspath(log_dir)}/")
 
@@ -104,7 +106,32 @@ async def telemetry_background_task():
                             last_package_id = package_id
 
                             # タイムスタンプを追加
-                            parsed_data["timestamp"] = datetime.now().isoformat()
+                            current_time = datetime.now()
+                            parsed_data["timestamp"] = current_time.isoformat()
+
+                            # 加速度を計算 (G単位)
+                            # 速度変化から前後加速度を計算
+                            time_delta = (current_time - last_time).total_seconds()
+                            if time_delta > 0.001:  # 有効なタイムデルタがある場合のみ計算
+                                speed_delta_ms = (parsed_data["speed_kmh"] - last_speed_kmh) / 3.6  # km/h -> m/s
+                                accel_ms2 = speed_delta_ms / time_delta  # m/s²
+                                accel_g = accel_ms2 / 9.81  # G単位
+
+                                # 異常値をフィルタリング (±5G以上はノイズとみなす)
+                                accel_g = max(-5.0, min(5.0, accel_g))
+
+                                if accel_g > 0:
+                                    parsed_data["accel_g"] = accel_g  # 加速G（正の値）
+                                    parsed_data["accel_decel"] = 0.0
+                                else:
+                                    parsed_data["accel_g"] = 0.0
+                                    parsed_data["accel_decel"] = abs(accel_g)  # 減速G（正の値）
+                            else:
+                                parsed_data["accel_g"] = 0.0
+                                parsed_data["accel_decel"] = 0.0
+
+                            last_speed_kmh = parsed_data["speed_kmh"]
+                            last_time = current_time
 
                             # ラップデータを収集
                             current_lap_data.append(parsed_data)
@@ -124,7 +151,7 @@ async def telemetry_background_task():
                             # 4. WebSocketクライアントにブロードキャスト
                             if websocket_clients:
                                 message = json.dumps(parsed_data)
-                                logger.debug(f"Broadcasting telemetry to {len(websocket_clients)} WebSocket clients")
+                                logger.info(f"Broadcasting telemetry to {len(websocket_clients)} WebSocket clients")
                                 # 切断されたクライアントを除外しながら送信
                                 disconnected = set()
                                 for ws in websocket_clients:
@@ -169,10 +196,15 @@ async def websocket_handler(request):
     try:
         # 接続が続いている限り待機
         async for msg in ws:
-            # クライアントからのメッセージは特に処理しない
-            logger.info(f"WebSocket message received from {remote_addr}: {msg.type}")
+            # クライアントからのメッセージを処理（必要に応じて実装）
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                # クライアントからのリクエストがあればここで処理
+                pass
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                logger.warning(f"WebSocket error: {ws.exception()}")
+                break
     except Exception as e:
-        logger.error(f"WebSocket Error for {remote_addr}: {e}", exc_info=True)
+        logger.error(f"WebSocket handler error: {e}", exc_info=True)
     finally:
         websocket_clients.discard(ws)
         logger.info(f"WebSocket client disconnected: {remote_addr}. Remaining clients: {len(websocket_clients)}")
