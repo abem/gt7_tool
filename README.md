@@ -66,7 +66,7 @@ PS5 がなくてもデモデータで動作確認できます。ダッシュボ�
 - **CLT**: クラッチ位置
 
 ### 車体姿勢 (CAR ATTITUDE)
-- Ferrari F355 Challenge 風 3D モデルによる姿勢可視化
+- ミッドシップスポーツカー風 3D モデルによる姿勢可視化
 - Pitch / Roll / Yaw のリアルタイム表示
 - Angular Velocity 3D 表示
 
@@ -158,7 +158,7 @@ python3 test_course_detection.py --data-dir gt7data
 ## 更新履歴
 
 ### 2026-02-14
-- **3D 車両モデルリデザイン** — BoxGeometry の直方体から Ferrari F355 Challenge 風のリアルなサイドプロファイルに刷新。Shape + ExtrudeGeometry による車体造形、大径 5 スポーク風ホイール、丸型 4 灯テールライト、リアウイング等を追加
+- **3D 車両モデルリデザイン** — BoxGeometry の直方体からミッドシップスポーツカー風のリアルなサイドプロファイルに刷新。Shape + ExtrudeGeometry による車体造形、大径 5 スポーク風ホイール、丸型 4 灯テールライト、リアウイング等を追加
 
 ### 2026-02-13
 - **全テレメトリフィールド対応** — ハートビートを `~` に変更し Packet ~ (344 bytes) の全フィールドを取得。ギア比、ステアリング角度、TCS/ABS 補正値、車体加速度、トルクベクタリング、回生エネルギーを追加

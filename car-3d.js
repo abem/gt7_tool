@@ -1,7 +1,7 @@
 /**
  * GT7 Telemetry Dashboard
  * 3D車両モデル・姿勢ビジュアライゼーション
- * Ferrari F355 Challenge風デザイン
+ * ミッドシップスポーツカー風デザイン
  *
  * 依存: Three.js (CDN r128)
  *       ui_components.js (debugLog)
@@ -220,7 +220,7 @@ function buildCarModel(carGroup) {
     car3DState.windows.push(windowMesh);
     carGroup.add(windowMesh);
 
-    // ─── サイドエアインテーク（F355特徴的な横長スリット）───
+    // ─── サイドエアインテーク（横長スリット）───
     var intakeMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.intake });
     var intakeGeo = new THREE.BoxGeometry(0.50, 0.16, 0.03);
     [-1, 1].forEach(function(side) {
@@ -262,7 +262,7 @@ function buildCarModel(carGroup) {
         carGroup.add(hl);
     });
 
-    // ─── テールライト（F355丸型4灯）───
+    // ─── テールライト（丸型4灯）───
     var tlMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.taillight,
         emissive: 0x880000
@@ -287,7 +287,7 @@ function buildCarModel(carGroup) {
     diff.position.set(-HL - 0.01, 0.20, 0);
     carGroup.add(diff);
 
-    // ─── エキゾースト（F355クアッド出し）───
+    // ─── エキゾースト（クアッド出し）───
     var exhMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.exhaust,
         shininess: 120
@@ -310,7 +310,7 @@ function buildCarModel(carGroup) {
         carGroup.add(louver);
     }
 
-    // ─── リアウイング（F355 Challenge仕様）───
+    // ─── リアウイング ───
     // ウイング支柱
     var stayGeo = new THREE.BoxGeometry(0.03, 0.22, 0.03);
     var stayMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
@@ -384,7 +384,7 @@ function buildWheels(carGroup) {
     // リムバレル（リム外周の銀リング）
     var rimBarrelGeo = new THREE.TorusGeometry(rimR, 0.018, 8, 32);
 
-    // ハブキャップ（フェラーリイエロー）
+    // ハブキャップ（イエロー）
     var hubGeo = new THREE.CircleGeometry(wR * 0.14, 16);
     var hubMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.hubCap,
