@@ -101,10 +101,25 @@
                 <div class="stat-label">MAX SPEED (km/h)</div>
             </div>
 
+            <div class="card stat-card">
+                <div class="stat-value" id="trans-max-speed">--</div>
+                <div class="stat-label">TRANS MAX (km/h)</div>
+            </div>
+
             <div class="card gear-ratios-card">
                 <div class="card-title">GEAR RATIOS</div>
                 <div class="gear-ratios-grid" id="gear-ratios">
                     <span class="gear-ratio-placeholder">Waiting for data...</span>
+                </div>
+            </div>
+
+            <div class="card clutch-detail-card">
+                <div class="card-title">CLUTCH DETAIL</div>
+                <div class="position-row">
+                    <span class="position-label">ENG</span>
+                    <span class="position-value" id="clutch-engagement">--</span>
+                    <span class="position-label" style="margin-left:8px">GBR</span>
+                    <span class="position-value" id="clutch-gearbox-rpm">--</span>
                 </div>
             </div>
         </div>
@@ -315,14 +330,32 @@
                 </div>
             </div>
 
+            <div class="card position-card">
+                <div class="card-title">ANGULAR VELOCITY</div>
+                <div class="position-row">
+                    <span class="position-label">ANG</span>
+                    <span class="position-value" id="ang-x">--</span>
+                    <span class="position-value" id="ang-y">--</span>
+                    <span class="position-value" id="ang-z">--</span>
+                </div>
+                <div class="position-row">
+                    <span class="position-label">PIT</span>
+                    <span class="position-value" id="pitch-rate">--</span>
+                    <span class="position-label">YAW</span>
+                    <span class="position-value" id="yaw-rate">--</span>
+                    <span class="position-label">ROL</span>
+                    <span class="position-value" id="roll-rate">--</span>
+                </div>
+            </div>
+
             <div class="stats-grid">
                 <div class="card stat-card">
                     <div class="stat-value" id="car-id">--</div>
                     <div class="stat-label">CAR ID</div>
                 </div>
                 <div class="card stat-card">
-                    <div class="stat-value" id="packets">0</div>
-                    <div class="stat-label">PACKETS</div>
+                    <div class="stat-value" id="pkg-id">--</div>
+                    <div class="stat-label">PKG ID</div>
                 </div>
             </div>
 

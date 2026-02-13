@@ -188,6 +188,19 @@ function handleTelemetryMessage(data) {
         renderGearRatios(data.gear_ratios, gear);
     }
 
+    // クラッチ詳細
+    if (data.clutch_engagement !== undefined) {
+        elements.clutchEngagement.textContent = (data.clutch_engagement || 0).toFixed(3);
+    }
+    if (data.clutch_gearbox_rpm !== undefined) {
+        elements.clutchGearboxRpm.textContent = Math.round(data.clutch_gearbox_rpm || 0);
+    }
+
+    // トランスミッション最大速度
+    if (data.transmission_max_speed !== undefined) {
+        elements.transMaxSpeed.textContent = Math.round(data.transmission_max_speed * 3.6);
+    }
+
     // 位置
     elements.posX.textContent = (data.position_x || 0).toFixed(1);
     elements.posY.textContent = (data.position_y || 0).toFixed(1);
@@ -202,6 +215,14 @@ function handleTelemetryMessage(data) {
     elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
     elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
     elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
+
+    // 角速度
+    elements.angX.textContent = (data.angular_velocity_x || 0).toFixed(3);
+    elements.angY.textContent = (data.angular_velocity_y || 0).toFixed(3);
+    elements.angZ.textContent = (data.angular_velocity_z || 0).toFixed(3);
+    elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
+    elements.yawRate.textContent = (data.angular_velocity_y || 0).toFixed(3);
+    elements.rollRate.textContent = (data.angular_velocity_z || 0).toFixed(3);
 
     // 方角・車体高さ
     elements.orientation.textContent = (data.orientation || 0).toFixed(3);
@@ -308,12 +329,13 @@ function handleTelemetryMessage(data) {
         elements.energyRecovery.textContent = (data.energy_recovery || 0).toFixed(2);
     }
 
-    // 車種ID
+    // 車種ID・パッケージID
     if (data.car_id) {
         elements.carId.textContent = data.car_id;
     }
-
-    elements.packets.textContent = packetCount;
+    if (data.package_id !== undefined) {
+        elements.pkgId.textContent = data.package_id;
+    }
 
     // チャート再描画
     if (speedChart) speedChart.setData([timeData, speedData]);

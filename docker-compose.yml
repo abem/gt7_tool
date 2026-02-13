@@ -1,7 +1,7 @@
 services:
   gt7_tool:
     build: .
-    container_name: gt7_tool
+    container_name: gt7_tool_dev
     restart: unless-stopped
     network_mode: "host"
     volumes:
