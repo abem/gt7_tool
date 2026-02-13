@@ -204,12 +204,10 @@ GT7テレメトリパケットの復号と解析を行うクラスです。
 
 **コンストラクタ:**
 ```python
-def __init__(self, def_file: str = 'packet_def.json',
-             course_db: str = 'course_database.json')
+def __init__(self, course_db: str = 'course_database.json')
 ```
 
 **引数:**
-- `def_file`: パケット定義ファイルのパス
 - `course_db`: コースデータベースファイルのパス
 
 **メソッド:**

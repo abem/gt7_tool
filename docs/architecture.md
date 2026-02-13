@@ -75,10 +75,9 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 
 | ファイル名 | 説明 | 主要なクラス/関数 |
 |-----------|------|-----------------|
-| `main.py` | エントリーポイント | `websocket_handler`, `index_handler`, `debug_handler` |
+| `main.py` | エントリーポイント | `FuelTracker`, `websocket_handler`, `telemetry_background_task` |
 | `telemetry.py` | UDP通信管理 | `GT7TelemetryClient` |
 | `decoder.py` | パケット復号・解析 | `GT7Decoder`, `CourseEstimator` |
-| `math_utils.py` | 数学ユーティリティ | 各種計算関数 |
 
 ### フロントエンド (HTML/JS/CSS)
 

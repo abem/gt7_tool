@@ -207,7 +207,7 @@ docker compose restart
 ### バックエンド (Python)
 - **`main.py`**: エントリーポイント。WebSocketサーバー (`asyncio` + `aiohttp`) を実行します。
 - **`telemetry.py`**: PS5とのUDP通信（ハートビート `A` パケット送信など）を管理します。
-- **`decoder.py`**: Salsa20で暗号化されたパケットを復号し、`packet_def.json` に基づいてデータを解析します。コース推定機能も含みます。
+- **`decoder.py`**: Salsa20で暗号化されたパケットを復号・解析します。コース推定機能も含みます。
 
 ### フロントエンド (HTML/CSS/JS)
 - **`index.html`**: ダッシュボードのHTML構造のみ。
@@ -221,7 +221,7 @@ docker compose restart
 
 ### 設定・データ
 - **`config.json`**: ネットワーク設定ファイル。
-- **`packet_def.json`**: テレメトリデータのメモリオフセットとデータ型を定義しています。
+- **`packet_def.json`**: テレメトリデータのメモリオフセットとデータ型の参照用定義（デコーダは直接使用せず、`decoder.py` のハードコードされたオフセットが正）。
 - **`course_database.json`**: コースの座標範囲データベース。コース推定に使用されます。
 
 ### インフラ
@@ -248,12 +248,8 @@ docker compose restart
 ### 新しいデータ項目を追加する場合:
 
 1. GT7テレメトリの仕様（コミュニティ等のドキュメント）でオフセットを探します。
-2. `packet_def.json` にフィールドを追加します:
-   ```json
-   "boost_pressure": {"offset": "0x50", "type": "float"}
-   ```
-3. `decoder.py` でデータを解析する処理を追加します。
-4. `index.html` にHTML要素を追加し、`websocket.js` でデータ表示処理を追加します。
+2. `decoder.py` の `_extract_fields()` メソッドにフィールドを追加します。
+3. `index.html` にHTML要素を追加し、`websocket.js` でデータ表示処理を追加します。
 5. `docker compose restart` で再起動します。
 
 ### UIの変更:

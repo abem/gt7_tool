@@ -2,22 +2,20 @@ import asyncio
 import json
 import os
 import logging
+import aiohttp
 from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
 from decoder import GT7Decoder
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
-http_logger = logging.getLogger('http')
-access_logger = logging.getLogger('access')
 
-# Load Config
+
 def load_config():
     with open('config.json', 'r') as f:
         cfg = json.load(f)
@@ -25,42 +23,24 @@ def load_config():
             cfg["ps5_ip"] = os.getenv("PS5_IP")
         return cfg
 
+
 CONFIG = load_config()
 
-# グローバル変数：接続中のWebSocketクライアント
 websocket_clients = set()
 
-# テレメトリクライアントとデコーダー
-telemetry_client = None
-decoder = None
+LOG_DIR = "gt7data"
 
-# ログデータ用
-current_lap_data = []
-all_laps = []
-current_lap_number = 0
-last_lap_ticks = 0
-log_dir = "gt7data"
-
-# 燃費追跡用
-last_fuel = None
-total_fuel_consumed = 0.0
-refuel_lap_count = 0
-refuel_timestamp = None
 
 def ensure_log_dir():
-    """ログディレクトリが存在することを確認"""
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-        logger.info(f"Created log directory: {log_dir}")
+    if not os.path.exists(LOG_DIR):
+        os.makedirs(LOG_DIR)
+        logger.info(f"Created log directory: {LOG_DIR}")
 
 
 def save_lap_to_file(lap_data, lap_num):
-    """ラップデータをJSONファイルに保存"""
     timestamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
-    # 車種IDがあればファイル名に含める
     car_id = lap_data[0].get("car_id", 0) if lap_data else 0
-    filename = f"{log_dir}/{timestamp}_CAR-{car_id}_Lap-{lap_num}.json"
-
+    filename = f"{LOG_DIR}/{timestamp}_CAR-{car_id}_Lap-{lap_num}.json"
     try:
         with open(filename, 'w') as f:
             json.dump(lap_data, f)
@@ -69,392 +49,245 @@ def save_lap_to_file(lap_data, lap_num):
         logger.error(f"Error saving lap data: {e}", exc_info=True)
 
 
+def calculate_acceleration(speed_kmh, last_speed_kmh, time_delta):
+    """速度差分から加速G/減速Gを計算"""
+    if time_delta <= 0.001:
+        return 0.0, 0.0
+
+    speed_delta_ms = (speed_kmh - last_speed_kmh) / 3.6
+    accel_g = max(-5.0, min(5.0, speed_delta_ms / time_delta / 9.81))
+
+    if accel_g > 0:
+        return accel_g, 0.0
+    else:
+        return 0.0, abs(accel_g)
+
+
+class FuelTracker:
+    """燃料消費の追跡"""
+
+    def __init__(self):
+        self.last_fuel = None
+        self.total_consumed = 0.0
+        self.laps_at_refuel = 0
+
+    def update(self, current_fuel, fuel_capacity, current_lap):
+        """燃料データを更新し、計算結果を返す"""
+        result = {}
+
+        if current_fuel is None or fuel_capacity <= 0:
+            self.last_fuel = current_fuel
+            return result
+
+        fuel_consumed = 0.0
+        if self.last_fuel is not None:
+            fuel_consumed = self.last_fuel - current_fuel
+            if fuel_consumed > 0:
+                self.total_consumed += fuel_consumed
+            # 給油検出（燃料が急増した場合）
+            if fuel_consumed < -(fuel_capacity * 0.5):
+                self.total_consumed = 0.0
+                self.laps_at_refuel = current_lap
+
+        laps_since_refuel = current_lap - self.laps_at_refuel
+        fuel_per_lap = self.total_consumed / laps_since_refuel if laps_since_refuel > 0 else 0
+
+        result["fuel_consumed"] = round(fuel_consumed, 2)
+        result["fuel_per_lap"] = round(fuel_per_lap, 2)
+        result["laps_since_refuel"] = laps_since_refuel
+        result["fuel_laps_remaining"] = round(current_fuel / fuel_per_lap, 1) if fuel_per_lap > 0 else 0
+
+        self.last_fuel = current_fuel
+        return result
+
+
+async def broadcast_to_clients(message):
+    """WebSocketクライアントにメッセージを配信"""
+    if not websocket_clients:
+        return
+
+    disconnected = set()
+    for ws in websocket_clients:
+        try:
+            await ws.send_str(message)
+        except Exception:
+            disconnected.add(ws)
+
+    if disconnected:
+        websocket_clients.difference_update(disconnected)
+        logger.info(f"Removed {len(disconnected)} disconnected client(s). Active: {len(websocket_clients)}")
+
+
 async def telemetry_background_task():
     """バックグラウンドでGT7からのテレメトリデータを受信し続けるタスク"""
-    global telemetry_client, decoder
-    global current_lap_data, current_lap_number, last_lap_ticks
-
-    telemetry_client = GT7TelemetryClient(
+    client = GT7TelemetryClient(
         CONFIG["ps5_ip"],
         CONFIG.get("send_port", 33739),
         CONFIG.get("receive_port", 33740),
         CONFIG["heartbeat_interval"]
     )
-    decoder = GT7Decoder('packet_def.json')
+    decoder = GT7Decoder()
+    fuel_tracker = FuelTracker()
 
     ensure_log_dir()
+    logger.info(f"Logging enabled. Data will be saved to: {os.path.abspath(LOG_DIR)}/")
 
     last_package_id = 0
     last_speed_kmh = 0.0
     last_time = datetime.now()
-
-    logger.info(f"Logging enabled. Data will be saved to: {os.path.abspath(log_dir)}/")
+    current_lap_data = []
+    current_lap_number = 0
 
     try:
         while True:
-            # 1. メンテナンス（Heartbeat）
-            telemetry_client.send_heartbeat()
-
-            # 2. データ受信
-            raw_data = telemetry_client.receive()
+            client.send_heartbeat()
+            raw_data = client.receive()
 
             if raw_data:
-                # 3. 復号と解析
                 decrypted = decoder.decrypt(raw_data)
                 if decrypted:
-                    parsed_data = decoder.parse(decrypted)
+                    parsed = decoder.parse(decrypted)
+                    if parsed and parsed.get("package_id", 0) > last_package_id:
+                        last_package_id = parsed["package_id"]
 
-                    if parsed_data:
-                        # パッケージIDチェック（重複除外）
-                        package_id = parsed_data.get("package_id", 0)
-                        if package_id > last_package_id:
-                            last_package_id = package_id
+                        current_time = datetime.now()
+                        parsed["timestamp"] = current_time.isoformat()
 
-                            # タイムスタンプを追加
-                            current_time = datetime.now()
-                            parsed_data["timestamp"] = current_time.isoformat()
+                        # 加速度計算
+                        time_delta = (current_time - last_time).total_seconds()
+                        accel_g, decel_g = calculate_acceleration(
+                            parsed["speed_kmh"], last_speed_kmh, time_delta
+                        )
+                        parsed["accel_g"] = accel_g
+                        parsed["accel_decel"] = decel_g
+                        last_speed_kmh = parsed["speed_kmh"]
+                        last_time = current_time
 
-                            # 加速度を計算 (G単位)
-                            # 速度変化から前後加速度を計算
-                            time_delta = (current_time - last_time).total_seconds()
-                            if time_delta > 0.001:  # 有効なタイムデルタがある場合のみ計算
-                                speed_delta_ms = (parsed_data["speed_kmh"] - last_speed_kmh) / 3.6  # km/h -> m/s
-                                accel_ms2 = speed_delta_ms / time_delta  # m/s²
-                                accel_g = accel_ms2 / 9.81  # G単位
+                        # 燃料計算
+                        fuel_data = fuel_tracker.update(
+                            parsed.get("current_fuel"),
+                            parsed.get("fuel_capacity", 100),
+                            current_lap_number
+                        )
+                        parsed.update(fuel_data)
 
-                                # 異常値をフィルタリング (±5G以上はノイズとみなす)
-                                accel_g = max(-5.0, min(5.0, accel_g))
+                        # ラップデータ蓄積・保存
+                        current_lap_data.append(parsed)
+                        if len(current_lap_data) >= 1800:
+                            save_lap_to_file(current_lap_data, current_lap_number)
+                            current_lap_data = []
+                            current_lap_number += 1
 
-                                if accel_g > 0:
-                                    parsed_data["accel_g"] = accel_g  # 加速G（正の値）
-                                    parsed_data["accel_decel"] = 0.0
-                                else:
-                                    parsed_data["accel_g"] = 0.0
-                                    parsed_data["accel_decel"] = abs(accel_g)  # 減速G（正の値）
-                            else:
-                                parsed_data["accel_g"] = 0.0
-                                parsed_data["accel_decel"] = 0.0
-
-                            last_speed_kmh = parsed_data["speed_kmh"]
-                            last_time = current_time
-
-                            # 燃料消費を計算
-                            global last_fuel, total_fuel_consumed, refuel_lap_count, refuel_timestamp
-                            current_fuel = parsed_data.get("current_fuel", 0)
-                            fuel_capacity = parsed_data.get("fuel_capacity", 100)
-
-                            if current_fuel is not None and fuel_capacity > 0:
-                                if last_fuel is not None:
-                                    # 前回の燃料との差を計算
-                                    fuel_consumed = last_fuel - current_fuel
-
-                                    # ラップが始まって燃料が減っている場合のみカウント
-                                    if fuel_consumed > 0:
-                                        total_fuel_consumed += fuel_consumed
-                                        refuel_lap_count += 1
-
-                                        # 給給油とみなす
-                                        if fuel_consumed > fuel_capacity * 0.5:
-                                            refuel_timestamp = datetime.now()
-                                            total_fuel_consumed = 0
-                                            refuel_lap_count = 0
-
-                                # 今回のラップでの燃費を計算
-                                laps_since_refuel = current_lap_number - refuel_lap_count
-
-                                if laps_since_refuel > 0:
-                                    fuel_per_lap = total_fuel_consumed / laps_since_refuel
-                                    fuel_consumption_rate = (total_fuel_consumed / fuel_capacity) * 100
-                                else:
-                                    fuel_per_lap = 0
-                                    fuel_consumption_rate = 0
-
-                                parsed_data["fuel_consumed"] = round(fuel_consumed, 2) if last_fuel is not None else 0
-                                parsed_data["fuel_per_lap"] = round(fuel_per_lap, 2) if laps_since_refuel > 0 else 0
-                                parsed_data["fuel_consumption_rate"] = round(fuel_consumption_rate, 1) if fuel_consumption_rate > 0 else 0
-                                parsed_data["laps_since_refuel"] = laps_since_refuel
-                                parsed_data["fuel_laps_remaining"] = round((current_fuel / fuel_per_lap), 1) if fuel_per_lap > 0 else 0
-
-                            last_fuel = current_fuel
-
-                            # ラップデータを収集
-                            current_lap_data.append(parsed_data)
-
-                            # ラップ変化を検出（gt7dashboardの実装を参考）
-                            # パケット内のラップ番号を取得（0x74バイト目）
-                            # ただしdecoder.parseで取得していないので、gearなどを基準に判定
-                            # ここでは簡易的に一定数のサンプルで保存
-
-                            # 定期的にログを保存（60fps × 30秒 = 1800サンプルで区切る）
-                            if len(current_lap_data) >= 1800:
-                                save_lap_to_file(current_lap_data.copy(), current_lap_number)
-                                all_laps.extend(current_lap_data)
-                                current_lap_data = []
-                                current_lap_number += 1
-
-                            # 4. WebSocketクライアントにブロードキャスト
-                            if websocket_clients:
-                                message = json.dumps(parsed_data)
-                                logger.info(f"Broadcasting telemetry to {len(websocket_clients)} WebSocket clients")
-                                # 切断されたクライアントを除外しながら送信
-                                disconnected = set()
-                                for ws in websocket_clients:
-                                    try:
-                                        await ws.send_str(message)
-                                    except Exception as e:
-                                        logger.warning(f"WebSocket send failed: {e}")
-                                        disconnected.add(ws)
-                                # 切断されたクライアントを削除
-                                websocket_clients.difference_update(disconnected)
-                                if disconnected:
-                                    logger.info(f"Removed {len(disconnected)} disconnected WebSocket clients")
+                        # WebSocket配信
+                        await broadcast_to_clients(json.dumps(parsed))
 
             await asyncio.sleep(0.01)
 
     except Exception as e:
-        logger.error(f"Telemetry Task Error: {e}", exc_info=True)
-        # エラー時にも現在のラップデータを保存
-        if current_lap_data:
-            save_lap_to_file(current_lap_data.copy(), current_lap_number)
+        logger.error(f"Telemetry task error: {e}", exc_info=True)
     finally:
-        # 終了時に残りのデータを保存
         if current_lap_data:
-            save_lap_to_file(current_lap_data.copy(), current_lap_number)
-        telemetry_client.close()
+            save_lap_to_file(current_lap_data, current_lap_number)
+        client.close()
 
 
 async def websocket_handler(request):
     """WebSocket接続を処理"""
-    remote_addr = request.remote
-    user_agent = request.headers.get('User-Agent', 'Unknown')
-
-    logger.info(f"WebSocket connection attempt from {remote_addr}, User-Agent: {user_agent}")
-
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    logger.info(f"WebSocket client connected: {remote_addr}, User-Agent: {user_agent}")
-    logger.info(f"Total WebSocket clients: {len(websocket_clients) + 1}")
+    logger.info(f"WebSocket client connected. Total: {len(websocket_clients) + 1}")
     websocket_clients.add(ws)
 
     try:
-        # 接続が続いている限り待機
         async for msg in ws:
-            # クライアントからのメッセージを処理（必要に応じて実装）
-            if msg.type == aiohttp.WSMsgType.TEXT:
-                # クライアントからのリクエストがあればここで処理
-                pass
-            elif msg.type == aiohttp.WSMsgType.ERROR:
+            if msg.type == aiohttp.WSMsgType.ERROR:
                 logger.warning(f"WebSocket error: {ws.exception()}")
                 break
     except Exception as e:
         logger.error(f"WebSocket handler error: {e}", exc_info=True)
     finally:
         websocket_clients.discard(ws)
-        logger.info(f"WebSocket client disconnected: {remote_addr}. Remaining clients: {len(websocket_clients)}")
+        logger.info(f"WebSocket client disconnected. Remaining: {len(websocket_clients)}")
 
     return ws
 
 
 async def index_handler(request):
-    """HTMLページを配信"""
-    remote_addr = request.remote
-    method = request.method
-    user_agent = request.headers.get('User-Agent', 'Unknown')
-
-    logger.info(f"Index request - Method: {method}, Path: /, Remote: {remote_addr}, User-Agent: {user_agent}")
-
-    try:
-        with open('index.html', 'r') as f:
-            content = f.read()
-            logger.info(f"Index file served successfully - Content-Type: text/html, Status: 200, Remote: {remote_addr}")
-            return web.Response(text=content, content_type='text/html')
-    except FileNotFoundError as e:
-        logger.error(f"Index file not found - Status: 404, Remote: {remote_addr}, Error: {e}")
-        return web.Response(status=404, text="Index file not found")
-    except Exception as e:
-        logger.error(f"Error serving index file - Remote: {remote_addr}, Error: {e}", exc_info=True)
-        return web.Response(status=500, text="Internal server error")
+    """メインダッシュボードを配信"""
+    return web.FileResponse('index.html')
 
 
 async def static_handler(request):
-    """静的ファイル（CSS, JS）を配信"""
+    """静的ファイル（CSS, JS等）を配信"""
     filename = request.match_info['filename']
-    remote_addr = request.remote
-    method = request.method
-    user_agent = request.headers.get('User-Agent', 'Unknown')
 
-    content_types = {
-        'css': 'text/css',
-        'js': 'application/javascript',
-        'html': 'text/html',
-        'json': 'application/json',
-    }
-    ext = filename.split('.')[-1]
-    content_type = content_types.get(ext, 'text/plain')
+    # パストラバーサル防止
+    if '..' in filename or filename.startswith('/'):
+        return web.Response(status=403, text="Forbidden")
 
-    logger.info(f"Static file request - Method: {method}, Path: /{filename}, Remote: {remote_addr}, User-Agent: {user_agent}")
-
-    try:
-        with open(filename, 'r') as f:
-            content = f.read()
-            logger.info(f"Static file served successfully - File: {filename}, Content-Type: {content_type}, Status: 200, Remote: {remote_addr}")
-            return web.Response(text=content, content_type=content_type)
-    except FileNotFoundError as e:
-        logger.warning(f"Static file not found - File: {filename}, Status: 404, Remote: {remote_addr}")
+    if not os.path.isfile(filename):
         return web.Response(status=404, text="File not found")
-    except Exception as e:
-        logger.error(f"Error serving static file - File: {filename}, Remote: {remote_addr}, Error: {e}", exc_info=True)
-        return web.Response(status=500, text="Internal server error")
+
+    return web.FileResponse(filename)
 
 
 async def debug_handler(request):
-    """サーバー診断情報を返すデバッグエンドポイント"""
-    debug_info = {
-        "current_working_directory": os.getcwd(),
-        "app_directory": "/app",
-        "files": [],
-        "index_html_preview": None,
-        "errors": []
-    }
-
-    app_dir = "/app"
-    index_html_path = os.path.join(app_dir, "index.html")
-
+    """サーバー診断情報を返す"""
+    cwd = os.getcwd()
+    files = []
     try:
-        if os.path.exists(app_dir):
-            try:
-                entries = os.listdir(app_dir)
-                for entry in entries:
-                    full_path = os.path.join(app_dir, entry)
-                    try:
-                        stat_info = os.stat(full_path)
-                        file_info = {
-                            "name": entry,
-                            "path": full_path,
-                            "exists": True,
-                            "size": stat_info.st_size,
-                            "is_directory": os.path.isdir(full_path),
-                            "is_file": os.path.isfile(full_path)
-                        }
-                        debug_info["files"].append(file_info)
-                    except Exception as e:
-                        debug_info["errors"].append({
-                            "type": "file_stat_error",
-                            "path": full_path,
-                            "error": str(e)
-                        })
-            except Exception as e:
-                debug_info["errors"].append({
-                    "type": "directory_list_error",
-                    "path": app_dir,
-                    "error": str(e)
-                })
-        else:
-            debug_info["errors"].append({
-                "type": "directory_not_found",
-                "path": app_dir,
-                "error": f"Directory {app_dir} does not exist"
-            })
+        for entry in os.listdir(cwd):
+            path = os.path.join(cwd, entry)
+            if os.path.isfile(path):
+                files.append({"name": entry, "size": os.path.getsize(path)})
     except Exception as e:
-        debug_info["errors"].append({
-            "type": "unexpected_error",
-            "error": str(e)
-        })
+        return web.json_response({"error": str(e)}, status=500)
 
-    # Read first 200 bytes of index.html
-    try:
-        if os.path.exists(index_html_path):
-            with open(index_html_path, 'rb') as f:
-                preview_bytes = f.read(200)
-                debug_info["index_html_preview"] = {
-                    "path": index_html_path,
-                    "first_200_bytes": preview_bytes.hex(),
-                    "first_200_bytes_utf8": preview_bytes.decode('utf-8', errors='replace'),
-                    "bytes_read": len(preview_bytes)
-                }
-        else:
-            debug_info["errors"].append({
-                "type": "file_not_found",
-                "path": index_html_path,
-                "error": f"index.html not found at {index_html_path}"
-            })
-    except Exception as e:
-        debug_info["errors"].append({
-            "type": "index_html_read_error",
-            "path": index_html_path,
-            "error": str(e)
-        })
-
-    return web.json_response(debug_info)
+    return web.json_response({
+        "working_directory": cwd,
+        "files": files,
+        "websocket_clients": len(websocket_clients),
+    })
 
 
 @web.middleware
 async def logging_middleware(request, handler):
-    """Middleware to log all HTTP requests"""
     start_time = datetime.now()
-    remote_addr = request.remote
-    method = request.method
-    path = request.path
-    user_agent = request.headers.get('User-Agent', 'Unknown')
-    query_string = request.query_string
-
-    # Log incoming request
-    logger.info(f"HTTP Request - {method} {path} from {remote_addr}")
-    if query_string:
-        logger.debug(f"Query string: {query_string}")
-    logger.debug(f"Headers: User-Agent={user_agent}")
-
     try:
         response = await handler(request)
         duration = (datetime.now() - start_time).total_seconds()
-
-        # Log response details
-        status_code = response.status
-        content_type = response.headers.get('Content-Type', 'N/A')
-
-        if status_code >= 400:
-            logger.warning(f"HTTP Response - Status: {status_code}, Content-Type: {content_type}, Duration: {duration:.3f}s, Remote: {remote_addr}")
-        else:
-            logger.info(f"HTTP Response - Status: {status_code}, Content-Type: {content_type}, Duration: {duration:.3f}s, Remote: {remote_addr}")
-
+        logger.info(f"{request.method} {request.path} -> {response.status} ({duration:.3f}s)")
         return response
-
     except web.HTTPException as e:
         duration = (datetime.now() - start_time).total_seconds()
-        logger.warning(f"HTTP Exception - Status: {e.status}, Path: {path}, Duration: {duration:.3f}s, Remote: {remote_addr}, Error: {e.text}")
+        logger.warning(f"{request.method} {request.path} -> {e.status} ({duration:.3f}s)")
         raise
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
-        logger.error(f"Unhandled exception - Method: {method}, Path: {path}, Duration: {duration:.3f}s, Remote: {remote_addr}, Error: {e}", exc_info=True)
+        logger.error(f"{request.method} {request.path} -> ERROR ({duration:.3f}s): {e}", exc_info=True)
         raise
 
 
 async def on_startup(app):
-    """アプリ起動時にバックグラウンドタスクを開始"""
     logger.info("Starting telemetry background task...")
     asyncio.create_task(telemetry_background_task())
 
 
 def main():
     port = CONFIG.get("http_port", 8080)
-    ws_port = CONFIG.get("ws_port", 8080)
 
-    # Create app with logging middleware
     app = web.Application(middlewares=[logging_middleware])
     app.router.add_get('/', index_handler)
-    app.router.add_get('/{filename}', static_handler)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/debug', debug_handler)
+    app.router.add_get('/{filename}', static_handler)
 
     app.on_startup.append(on_startup)
 
     logger.info(f"Starting GT7 Dashboard Server on port {port}...")
     logger.info(f"HTTP: http://0.0.0.0:{port}")
     logger.info(f"WebSocket: ws://0.0.0.0:{port}/ws")
-    print(f"Starting GT7 Dashboard Server on port {port}...")
-    print(f"HTTP: http://0.0.0.0:{port}")
-    print(f"WebSocket: ws://0.0.0.0:{port}/ws")
 
     web.run_app(app, host='0.0.0.0', port=port)
 
