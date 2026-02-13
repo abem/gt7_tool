@@ -8,7 +8,7 @@ __pycache__/
 dist/
 build/
 
-# Logs
+# Data logs
 gt7data/
 *.log
 
@@ -25,6 +25,41 @@ Thumbs.db
 # Docker
 .env
 
-# Course data (local, auto-generated from driving data)
+# Course data (auto-generated from driving data)
 course_database.json
 *.json.backup
+
+# Node
+node_modules/
+package-lock.json
+
+# Debug/test files
+debug*.html
+debug*.py
+test*.html
+test_*.py
+verify_*.py
+auto_verify.py
+capture_*.py
+check_*.py
+force_chart_update.py
+visual_regression_test.py
+ws_*.html
+simple.html
+uplot-test.html
+
+# Test output
+screenshots/
+visual_baseline/
+visual_current/
+visual_diff/
+verify_output/
+verification_results.json
+visual_regression_results.json
+integration_test_plan.md
+
+# Generated docs/reports
+FINAL_REPORT.md
+TEST_MODE_VERIFICATION_REPORT.md
+DOCS_PLAN.md
+investigation_summary.md

@@ -20,6 +20,7 @@ var currentLapData = [];
 var bestLapData = [];
 
 function updateLapList() {
+    if (!elements.lapList) return;
     elements.lapList.innerHTML = '';
     lapTimes.forEach(function(lap) {
         var item = document.createElement('div');
@@ -77,7 +78,7 @@ function handleTelemetryMessage(data) {
         brake: data.brake_pct || 0
     });
 
-    // デルタ計算
+    // 速度デルタ（ベストラップ同地点との速度差）
     if (bestLapData.length > 0 && currentLapData.length > 0) {
         var idx = Math.min(currentLapData.length - 1, bestLapData.length - 1);
         var delta = currentLapData[idx].speed - bestLapData[idx].speed;

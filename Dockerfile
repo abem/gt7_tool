@@ -10,12 +10,14 @@ RUN apt-get update && apt-get install -y \
     && pip install --no-cache-dir -r requirements.txt \
     && rm -rf /var/lib/apt/lists/*
 
-# 全てのソースファイルをコピー
-COPY *.py .
-COPY *.json .
-COPY *.html .
-COPY *.css .
-COPY *.js .
+# アプリケーションファイルのみコピー
+COPY main.py telemetry.py decoder.py ./
+COPY config.json packet_def.json ./
+COPY course_database.json* ./
+COPY index.html ./
+COPY styles.css ./
+COPY ui_components.js charts.js course-map.js websocket.js test-mode.js app.js ./
+COPY uplot.min.js uplot.min.css ./
 
 ENV PYTHONUNBUFFERED=1
 

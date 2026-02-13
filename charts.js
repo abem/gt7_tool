@@ -148,7 +148,9 @@ function initCharts() {
         };
 
         var accelResizeObserver = new ResizeObserver(resizeAccelChart);
-        accelResizeObserver.observe(accelCanvas.parentElement);
+        if (accelCanvas.parentElement) {
+            accelResizeObserver.observe(accelCanvas.parentElement);
+        }
         resizeAccelChart();
     }
 

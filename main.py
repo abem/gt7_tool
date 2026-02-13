@@ -232,25 +232,6 @@ async def static_handler(request):
     return web.FileResponse(filename)
 
 
-async def debug_handler(request):
-    """サーバー診断情報を返す"""
-    cwd = os.getcwd()
-    files = []
-    try:
-        for entry in os.listdir(cwd):
-            path = os.path.join(cwd, entry)
-            if os.path.isfile(path):
-                files.append({"name": entry, "size": os.path.getsize(path)})
-    except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
-
-    return web.json_response({
-        "working_directory": cwd,
-        "files": files,
-        "websocket_clients": len(websocket_clients),
-    })
-
-
 @web.middleware
 async def logging_middleware(request, handler):
     start_time = datetime.now()
@@ -280,7 +261,6 @@ def main():
     app = web.Application(middlewares=[logging_middleware])
     app.router.add_get('/', index_handler)
     app.router.add_get('/ws', websocket_handler)
-    app.router.add_get('/debug', debug_handler)
     app.router.add_get('/{filename}', static_handler)
 
     app.on_startup.append(on_startup)

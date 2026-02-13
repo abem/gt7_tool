@@ -99,6 +99,8 @@ class CourseEstimator:
         try:
             data = {
                 'courses': self.courses,
+                'known_courses': self.known_courses,
+                'test_mode': self.test_mode,
                 'metadata': {
                     'version': '1.0.0',
                     'description': 'GT7コースデータベース - 位置座標(x, z)からコースを推定',

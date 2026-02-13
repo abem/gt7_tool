@@ -1,0 +1,55 @@
+# Git
+.git/
+.gitignore
+
+# Data
+gt7data/
+screenshots/
+visual_baseline/
+visual_current/
+visual_diff/
+verify_output/
+
+# Debug/test files
+debug*.html
+debug*.py
+test*.html
+test_*.py
+verify_*.py
+auto_verify.py
+capture_*.py
+check_*.py
+force_chart_update.py
+visual_regression_test.py
+ws_*.html
+simple.html
+uplot-test.html
+
+# Node
+node_modules/
+package.json
+package-lock.json
+
+# Docs
+docs/
+*.md
+LICENSE
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Misc
+*.backup
+*.json.backup
+verification_results.json
+visual_regression_results.json
+integration_test_plan.md
