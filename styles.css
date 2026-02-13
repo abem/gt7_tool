@@ -68,6 +68,39 @@ body {
     letter-spacing: 1px;
 }
 
+.header-flags {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.flag-on {
+    background: var(--accent-green);
+    color: #000;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.flag-warn {
+    background: var(--accent-yellow);
+    color: #000;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.flag-info {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
 #connection-status {
     padding: 3px 10px;
     border-radius: 4px;
@@ -158,6 +191,13 @@ body {
     color: var(--text-secondary);
 }
 
+.suggested-gear {
+    font-size: 12px;
+    color: var(--accent-cyan);
+    font-weight: 600;
+    min-height: 16px;
+}
+
 .rpm-display {
     flex: 1;
 }
@@ -220,6 +260,13 @@ body {
 .brake-bar {
     height: 100%;
     background: linear-gradient(90deg, #aa0000, #ff4444);
+    border-radius: 6px;
+    transition: width 0.05s;
+}
+
+.clutch-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #6644aa, #aa88ff);
     border-radius: 6px;
     transition: width 0.05s;
 }
@@ -700,6 +747,88 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
+}
+
+/* ===== Fuel Card ===== */
+
+.fuel-card .card-title {
+    margin-bottom: 4px;
+}
+
+.fuel-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+}
+
+.fuel-item {
+    text-align: center;
+}
+
+.fuel-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent-green);
+}
+
+.fuel-label {
+    font-size: 8px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+/* ===== Race Position ===== */
+
+.race-info-card {
+    text-align: center;
+    padding: 6px 10px;
+}
+
+.race-position {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent-yellow);
+    line-height: 1.1;
+}
+
+.race-position-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+/* ===== Course Name ===== */
+
+.course-name {
+    font-size: 11px;
+    color: var(--accent-cyan);
+    font-weight: 600;
+    flex: 1;
+    text-align: center;
+}
+
+/* ===== Lap Time Running ===== */
+
+.lap-time-running {
+    color: var(--accent-cyan);
+}
+
+/* ===== Tyre Radius ===== */
+
+.tyre-radius-row {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+}
+
+.tyre-radius {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.tyre-radius-unit {
+    font-size: 8px;
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 /* ===== Responsive ===== */

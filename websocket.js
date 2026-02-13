@@ -107,19 +107,30 @@ function handleTelemetryMessage(data) {
     // ギア
     var gear = data.gear || 0;
     elements.gear.textContent = gear === 0 ? 'R' : gear;
+    if (data.suggested_gear != null && data.suggested_gear !== gear) {
+        elements.suggestedGear.textContent = '\u2192' + data.suggested_gear;
+    } else {
+        elements.suggestedGear.textContent = '';
+    }
 
-    // RPM
+    // RPM (パケットからの実際のmax_rpmを使用)
     var rpm = Math.round(data.rpm || 0);
     var maxRpm = data.max_rpm || 9000;
     var rpmPct = Math.min((rpm / maxRpm) * 100, 100);
     rpmData.shift();
     rpmData.push(rpm);
     elements.rpmBar.style.width = rpmPct + '%';
+    if (data.rpm_alert_min && rpm >= data.rpm_alert_min) {
+        elements.rpmBar.style.background = rpm >= maxRpm ? '#ff4444' : '#ffd700';
+    } else {
+        elements.rpmBar.style.background = '';
+    }
     elements.rpmText.textContent = rpm + ' RPM';
 
     // ペダル
     var throttle = Math.round(data.throttle_pct || 0);
     var brake = Math.round(data.brake_pct || 0);
+    var clutch = Math.round((data.clutch || 0) * 100);
     throttleData.shift();
     throttleData.push(throttle);
     brakeData.shift();
@@ -128,15 +139,70 @@ function handleTelemetryMessage(data) {
     elements.throttleValue.textContent = throttle + '%';
     elements.brakeBar.style.width = brake + '%';
     elements.brakeValue.textContent = brake + '%';
+    elements.clutchBar.style.width = clutch + '%';
+    elements.clutchValue.textContent = clutch + '%';
 
-    // 燃料・ブースト
+    // 燃料
     elements.fuel.textContent = (data.current_fuel || 0).toFixed(1);
+    elements.fuelCapacity.textContent = (data.fuel_capacity || 0).toFixed(0);
+    if (data.fuel_per_lap !== undefined) {
+        elements.fuelPerLap.textContent = (data.fuel_per_lap || 0).toFixed(2);
+    }
+    if (data.fuel_laps_remaining !== undefined) {
+        elements.fuelLapsRemaining.textContent = data.fuel_laps_remaining || '--';
+    }
+
+    // ブースト・油圧
     elements.boost.textContent = ((data.boost || 0) * 100).toFixed(0);
+    elements.oilPressure.textContent = (data.oil_pressure || 0).toFixed(1);
 
     // 位置
     elements.posX.textContent = (data.position_x || 0).toFixed(1);
     elements.posY.textContent = (data.position_y || 0).toFixed(1);
     elements.posZ.textContent = (data.position_z || 0).toFixed(1);
+
+    // 速度ベクトル
+    elements.velX.textContent = (data.velocity_x || 0).toFixed(1);
+    elements.velY.textContent = (data.velocity_y || 0).toFixed(1);
+    elements.velZ.textContent = (data.velocity_z || 0).toFixed(1);
+
+    // 回転
+    elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
+    elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
+    elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
+
+    // 方角・車体高さ
+    elements.orientation.textContent = (data.orientation || 0).toFixed(3);
+    elements.bodyHeight.textContent = (data.body_height || 0).toFixed(3);
+
+    // 現在のラップ経過時間
+    if (data.current_laptime !== undefined && data.current_laptime > 0) {
+        elements.runningLapTime.textContent = formatLapTime(data.current_laptime);
+    }
+
+    // レース順位
+    if (data.race_position != null && data.total_cars != null) {
+        elements.racePosition.textContent = 'P' + data.race_position + '/' + data.total_cars;
+    } else if (data.race_position != null) {
+        elements.racePosition.textContent = 'P' + data.race_position;
+    }
+
+    // コース名
+    if (data.course && data.course.name && data.course.id !== 'unknown') {
+        elements.courseName.textContent = data.course.name;
+    }
+
+    // フラグ表示
+    if (data.flags) {
+        var flagParts = [];
+        if (data.flags.tcs_active) flagParts.push('<span class="flag-on">TCS</span>');
+        if (data.flags.asm_active) flagParts.push('<span class="flag-on">ASM</span>');
+        if (data.flags.rev_limiter) flagParts.push('<span class="flag-warn">REV</span>');
+        if (data.flags.hand_brake) flagParts.push('<span class="flag-warn">P-BRK</span>');
+        if (data.flags.lights) flagParts.push('<span class="flag-info">LIGHT</span>');
+        if (data.flags.has_turbo) flagParts.push('<span class="flag-info">TURBO</span>');
+        elements.flagsBar.innerHTML = flagParts.join('');
+    }
 
     // コースマップ
     if (data.position_x !== undefined && data.position_z !== undefined) {
@@ -185,6 +251,14 @@ function handleTelemetryMessage(data) {
         elements.frRps.textContent = Math.abs(rps[1] || 0).toFixed(1);
         elements.rlRps.textContent = Math.abs(rps[2] || 0).toFixed(1);
         elements.rrRps.textContent = Math.abs(rps[3] || 0).toFixed(1);
+    }
+
+    // タイヤ半径
+    if (data.tyre_radius) {
+        elements.flRadius.textContent = (data.tyre_radius[0] || 0).toFixed(3);
+        elements.frRadius.textContent = (data.tyre_radius[1] || 0).toFixed(3);
+        elements.rlRadius.textContent = (data.tyre_radius[2] || 0).toFixed(3);
+        elements.rrRadius.textContent = (data.tyre_radius[3] || 0).toFixed(3);
     }
 
     // 車種ID

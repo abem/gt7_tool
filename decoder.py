@@ -185,23 +185,38 @@ class GT7Decoder:
         f = struct.unpack_from
 
         speed_ms = f('f', d, 0x4C)[0]
+        gear_byte = f('B', d, 0x90)[0]
+        rpm_alert_max = f('H', d, 0x8A)[0]
+        flags_raw = f('H', d, 0x8E)[0]
 
-        return {
+        # レース順位 (0x84: 4byteに順位と台数がパック)
+        race_data = f('I', d, 0x84)[0]
+        race_position = race_data >> 4
+        total_cars = race_data & 0xFF
+        suggested = gear_byte >> 4
+
+        result = {
             # 速度
             "speed_ms": speed_ms,
             "speed_kmh": speed_ms * 3.6,
 
             # エンジン
             "rpm": f('f', d, 0x3C)[0],
-            "max_rpm": 9000,
+            "max_rpm": rpm_alert_max if rpm_alert_max > 0 else 9000,
+            "rpm_alert_min": f('H', d, 0x88)[0],
 
             # ギア・ペダル
-            "gear": f('B', d, 0x90)[0] & 0x0F,
-            "gear_byte": f('B', d, 0x90)[0],
+            "gear": gear_byte & 0x0F,
+            "suggested_gear": suggested if suggested < 15 else None,
             "throttle": f('B', d, 0x91)[0],
             "throttle_pct": f('B', d, 0x91)[0] / 2.55,
             "brake": f('B', d, 0x92)[0],
             "brake_pct": f('B', d, 0x92)[0] / 2.55,
+
+            # クラッチ
+            "clutch": f('f', d, 0xF4)[0],
+            "clutch_engagement": f('f', d, 0xF8)[0],
+            "clutch_gearbox_rpm": f('f', d, 0xFC)[0],
 
             # タイヤ温度 [FL, FR, RL, RR]
             "tyre_temp": [f('f', d, 0x60 + i * 4)[0] for i in range(4)],
@@ -223,12 +238,38 @@ class GT7Decoder:
             "position_y": f('f', d, 0x08)[0],
             "position_z": f('f', d, 0x0C)[0],
 
+            # 速度ベクトル (m/s)
+            "velocity_x": f('f', d, 0x10)[0],
+            "velocity_y": f('f', d, 0x14)[0],
+            "velocity_z": f('f', d, 0x18)[0],
+
+            # 回転 (-1〜1)
+            "rotation_pitch": f('f', d, 0x1C)[0],
+            "rotation_yaw": f('f', d, 0x20)[0],
+            "rotation_roll": f('f', d, 0x24)[0],
+
+            # 方角 (1.0=北, 0.0=南)
+            "orientation": f('f', d, 0x28)[0],
+
+            # 角速度 (rad/s)
+            "angular_velocity_x": f('f', d, 0x2C)[0],
+            "angular_velocity_y": f('f', d, 0x30)[0],
+            "angular_velocity_z": f('f', d, 0x34)[0],
+
+            # 車体
+            "body_height": f('f', d, 0x38)[0],
+            "car_max_speed": f('H', d, 0x8C)[0],
+            "oil_pressure": f('f', d, 0x54)[0],
+
             # 燃料
             "current_fuel": f('f', d, 0x44)[0],
             "fuel_capacity": f('f', d, 0x48)[0],
 
             # ブースト
             "boost": f('f', d, 0x50)[0] - 1,
+
+            # トランスミッション
+            "transmission_max_speed": f('f', d, 0x100)[0],
 
             # パッケージID
             "package_id": f('i', d, 0x70)[0],
@@ -238,7 +279,30 @@ class GT7Decoder:
             "total_laps": f('h', d, 0x76)[0],
             "best_laptime": f('i', d, 0x78)[0],
             "last_laptime": f('i', d, 0x7C)[0],
+            "current_laptime": f('i', d, 0x80)[0],
+
+            # レース
+            "race_position": race_position if race_position < 4096 else None,
+            "total_cars": total_cars if total_cars < 255 else None,
+
+            # フラグ
+            "flags": {
+                "car_on_track": bool(flags_raw & 0x0001),
+                "paused": bool(flags_raw & 0x0002),
+                "loading": bool(flags_raw & 0x0004),
+                "in_gear": bool(flags_raw & 0x0008),
+                "has_turbo": bool(flags_raw & 0x0010),
+                "rev_limiter": bool(flags_raw & 0x0020),
+                "hand_brake": bool(flags_raw & 0x0040),
+                "lights": bool(flags_raw & 0x0080),
+                "high_beams": bool(flags_raw & 0x0100),
+                "low_beams": bool(flags_raw & 0x0200),
+                "asm_active": bool(flags_raw & 0x0400),
+                "tcs_active": bool(flags_raw & 0x0800),
+            },
 
             # 車種
             "car_id": f('i', d, 0x124)[0],
         }
+
+        return result

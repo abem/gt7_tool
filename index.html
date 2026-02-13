@@ -11,6 +11,7 @@
     <div class="dashboard">
         <div class="header">
             <span class="header-title">GT7 TELEMETRY DASHBOARD</span>
+            <div class="header-flags" id="flags-bar"></div>
             <div id="connection-status" class="disconnected">Disconnected</div>
         </div>
 
@@ -25,6 +26,7 @@
                 <div class="gear-display">
                     <div class="gear-value" id="gear">N</div>
                     <div class="gear-label">GEAR</div>
+                    <div class="suggested-gear" id="suggested-gear"></div>
                 </div>
                 <div class="rpm-display">
                     <div class="rpm-bar-bg">
@@ -49,16 +51,45 @@
                     </div>
                     <span class="pedal-value" id="brake-value">0%</span>
                 </div>
+                <div class="pedal-row">
+                    <span class="pedal-label">CLUTCH</span>
+                    <div class="pedal-bar-bg">
+                        <div class="clutch-bar" id="clutch-bar"></div>
+                    </div>
+                    <span class="pedal-value" id="clutch-value">0%</span>
+                </div>
+            </div>
+
+            <div class="card fuel-card">
+                <div class="card-title">FUEL</div>
+                <div class="fuel-grid">
+                    <div class="fuel-item">
+                        <div class="fuel-value" id="fuel">--</div>
+                        <div class="fuel-label">LEVEL (L)</div>
+                    </div>
+                    <div class="fuel-item">
+                        <div class="fuel-value" id="fuel-capacity">--</div>
+                        <div class="fuel-label">CAPACITY</div>
+                    </div>
+                    <div class="fuel-item">
+                        <div class="fuel-value" id="fuel-per-lap">--</div>
+                        <div class="fuel-label">PER LAP</div>
+                    </div>
+                    <div class="fuel-item">
+                        <div class="fuel-value" id="fuel-laps-remaining">--</div>
+                        <div class="fuel-label">LAPS LEFT</div>
+                    </div>
+                </div>
             </div>
 
             <div class="card fuel-boost-grid">
                 <div class="fuel-boost-item">
-                    <div class="fuel-boost-value" id="fuel">--</div>
-                    <div class="fuel-boost-label">FUEL (L)</div>
-                </div>
-                <div class="fuel-boost-item">
                     <div class="fuel-boost-value boost" id="boost">--</div>
                     <div class="fuel-boost-label">BOOST (%)</div>
+                </div>
+                <div class="fuel-boost-item">
+                    <div class="fuel-boost-value" id="oil-pressure">--</div>
+                    <div class="fuel-boost-label">OIL (bar)</div>
                 </div>
             </div>
 
@@ -92,6 +123,7 @@
             <div class="card course-map-card">
                 <div class="course-map-header">
                     <div class="card-title">COURSE MAP</div>
+                    <span class="course-name" id="course-name"></span>
                     <button id="test-mode-btn" class="test-mode-btn">TEST MODE</button>
                 </div>
                 <div class="course-map-container">
@@ -118,6 +150,10 @@
                                 <span class="tyre-rps" id="fl-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
                             </div>
+                            <div class="tyre-radius-row">
+                                <span class="tyre-radius" id="fl-radius">--</span>
+                                <span class="tyre-radius-unit">m</span>
+                            </div>
                         </div>
                     </div>
                     <div class="tyre-item">
@@ -134,6 +170,10 @@
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="fr-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
+                            </div>
+                            <div class="tyre-radius-row">
+                                <span class="tyre-radius" id="fr-radius">--</span>
+                                <span class="tyre-radius-unit">m</span>
                             </div>
                         </div>
                     </div>
@@ -152,6 +192,10 @@
                                 <span class="tyre-rps" id="rl-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
                             </div>
+                            <div class="tyre-radius-row">
+                                <span class="tyre-radius" id="rl-radius">--</span>
+                                <span class="tyre-radius-unit">m</span>
+                            </div>
                         </div>
                     </div>
                     <div class="tyre-item">
@@ -168,6 +212,10 @@
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="rr-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
+                            </div>
+                            <div class="tyre-radius-row">
+                                <span class="tyre-radius" id="rr-radius">--</span>
+                                <span class="tyre-radius-unit">m</span>
                             </div>
                         </div>
                     </div>
@@ -200,10 +248,19 @@
 
         <!-- Right Panel -->
         <div class="right-panel">
+            <div class="card race-info-card">
+                <div class="race-position" id="race-position">--</div>
+                <div class="race-position-label">POSITION</div>
+            </div>
+
             <div class="card lap-times-card">
                 <div class="lap-row">
                     <span class="lap-label">LAP</span>
                     <span class="lap-value" id="current-lap">--</span>
+                </div>
+                <div class="lap-row">
+                    <span class="lap-label">TIME</span>
+                    <span class="lap-value lap-time-running" id="running-lap-time">--:--.---</span>
                 </div>
                 <div class="lap-row">
                     <span class="lap-label">CURRENT</span>
@@ -226,18 +283,30 @@
             </div>
 
             <div class="card position-card">
-                <div class="card-title">POSITION</div>
+                <div class="card-title">POSITION / DYNAMICS</div>
                 <div class="position-row">
-                    <span class="position-label">X</span>
+                    <span class="position-label">POS</span>
                     <span class="position-value" id="pos-x">--</span>
-                </div>
-                <div class="position-row">
-                    <span class="position-label">Y</span>
                     <span class="position-value" id="pos-y">--</span>
+                    <span class="position-value" id="pos-z">--</span>
                 </div>
                 <div class="position-row">
-                    <span class="position-label">Z</span>
-                    <span class="position-value" id="pos-z">--</span>
+                    <span class="position-label">VEL</span>
+                    <span class="position-value" id="vel-x">--</span>
+                    <span class="position-value" id="vel-y">--</span>
+                    <span class="position-value" id="vel-z">--</span>
+                </div>
+                <div class="position-row">
+                    <span class="position-label">ROT</span>
+                    <span class="position-value" id="rot-pitch">--</span>
+                    <span class="position-value" id="rot-yaw">--</span>
+                    <span class="position-value" id="rot-roll">--</span>
+                </div>
+                <div class="position-row">
+                    <span class="position-label">HDG</span>
+                    <span class="position-value" id="orientation">--</span>
+                    <span class="position-label" style="margin-left:8px">HGT</span>
+                    <span class="position-value" id="body-height">--</span>
                 </div>
             </div>
 
