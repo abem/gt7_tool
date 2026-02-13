@@ -119,31 +119,60 @@ class GT7Decoder:
     SALSA20_KEY = b'Simulator Interface Packet GT7 ver 0.0'
     MAGIC_G7S0 = 0x47375330
     MIN_PACKET_SIZE = 0x100
-    MIN_PARSE_SIZE = 0x128  # 296 bytes
+    MIN_PARSE_SIZE = 0x128  # 296 bytes (Packet A)
 
-    def __init__(self, course_db='course_database.json'):
+    # ハートビートタイプ別XOR値
+    XOR_MAP = {
+        b'A': 0xDEADBEAF,
+        b'B': 0xDEADBEEF,
+        b'~': 0x55FABB4F,
+    }
+
+    def __init__(self, course_db='course_database.json', heartbeat_type=b'~'):
         self.course_estimator = CourseEstimator(course_db)
         self._parse_count = 0
+        self.heartbeat_type = heartbeat_type
+        self._xor_value = self.XOR_MAP.get(heartbeat_type, 0xDEADBEAF)
+
+    def _try_decrypt(self, data: bytes, xor_value: int) -> bytes:
+        """指定のXOR値でSalsa20復号を試行"""
+        oiv = data[0x40:0x44]
+        iv1 = int.from_bytes(oiv, byteorder='little')
+        iv2 = iv1 ^ xor_value
+        iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
+
+        cipher = Salsa20.new(self.SALSA20_KEY[:32], bytes(iv))
+        decrypted = cipher.decrypt(data)
+        magic = int.from_bytes(decrypted[0:4], byteorder='little')
+        if magic == self.MAGIC_G7S0:
+            return decrypted
+        return b''
 
     def decrypt(self, data: bytes) -> bytes:
-        """GT7パケットをSalsa20で復号"""
+        """GT7パケットをSalsa20で復号（XOR自動フォールバック付き）"""
         if len(data) < self.MIN_PACKET_SIZE:
             logger.warning(f"Packet too small: {len(data)} bytes")
             return b''
 
-        oiv = data[0x40:0x44]
-        iv1 = int.from_bytes(oiv, byteorder='little')
-        iv2 = iv1 ^ 0xDEADBEAF  # GT7固有のXOR値（DEADBEAFであってDEADBEEFではない）
-        iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
-
         try:
-            cipher = Salsa20.new(self.SALSA20_KEY[:32], bytes(iv))
-            decrypted = cipher.decrypt(data)
-            magic = int.from_bytes(decrypted[0:4], byteorder='little')
-            if magic != self.MAGIC_G7S0:
-                logger.warning(f"Invalid magic number: 0x{magic:08X}")
-                return b''
-            return decrypted
+            # 現在のXOR値で復号を試行
+            result = self._try_decrypt(data, self._xor_value)
+            if result:
+                return result
+
+            # フォールバック: 他のXOR値を試す
+            for hb_type, xor_val in self.XOR_MAP.items():
+                if xor_val == self._xor_value:
+                    continue
+                result = self._try_decrypt(data, xor_val)
+                if result:
+                    logger.info(f"XOR fallback: switched to heartbeat type '{hb_type.decode()}'")
+                    self._xor_value = xor_val
+                    self.heartbeat_type = hb_type
+                    return result
+
+            logger.warning("Decryption failed: no valid XOR value found")
+            return b''
         except Exception as e:
             logger.error(f"Decryption failed: {e}")
             return b''
@@ -189,10 +218,9 @@ class GT7Decoder:
         rpm_alert_max = f('H', d, 0x8A)[0]
         flags_raw = f('H', d, 0x8E)[0]
 
-        # レース順位 (0x84: 4byteに順位と台数がパック)
-        race_data = f('I', d, 0x84)[0]
-        race_position = race_data >> 4
-        total_cars = race_data & 0xFF
+        # スタート順位・参加台数 (レース前のみ有効、開始後は-1)
+        pre_race_position = f('h', d, 0x84)[0]
+        num_cars_pre_race = f('h', d, 0x86)[0]
         suggested = gear_byte >> 4
 
         result = {
@@ -221,8 +249,11 @@ class GT7Decoder:
             # タイヤ温度 [FL, FR, RL, RR]
             "tyre_temp": [f('f', d, 0x60 + i * 4)[0] for i in range(4)],
 
-            # タイヤ圧 (bar) [FL, FR, RL, RR]
-            "tyre_pressure": [f('B', d, 0x94 + i)[0] / 4.0 for i in range(4)],
+            # 路面法線ベクトル
+            "road_plane_x": f('f', d, 0x94)[0],
+            "road_plane_y": f('f', d, 0x98)[0],
+            "road_plane_z": f('f', d, 0x9C)[0],
+            "road_plane_distance": f('f', d, 0xA0)[0],
 
             # サスペンション高さ [FL, FR, RL, RR]
             "susp_height": [f('f', d, 0xC4 + i * 4)[0] for i in range(4)],
@@ -271,6 +302,9 @@ class GT7Decoder:
             # トランスミッション
             "transmission_max_speed": f('f', d, 0x100)[0],
 
+            # ギア比 [1st - 8th]
+            "gear_ratios": [f('f', d, 0x104 + i * 4)[0] for i in range(8)],
+
             # パッケージID
             "package_id": f('i', d, 0x70)[0],
 
@@ -281,9 +315,9 @@ class GT7Decoder:
             "last_laptime": f('i', d, 0x7C)[0],
             "current_laptime": f('i', d, 0x80)[0],
 
-            # レース
-            "race_position": race_position if race_position < 4096 else None,
-            "total_cars": total_cars if total_cars < 255 else None,
+            # レース (スタート前のみ有効、開始後は-1)
+            "pre_race_position": pre_race_position if pre_race_position >= 0 else None,
+            "num_cars_pre_race": num_cars_pre_race if num_cars_pre_race >= 0 else None,
 
             # フラグ
             "flags": {
@@ -304,5 +338,19 @@ class GT7Decoder:
             # 車種
             "car_id": f('i', d, 0x124)[0],
         }
+
+        # Packet B 拡張フィールド (316 bytes以上)
+        if len(d) >= 0x13C:
+            result["wheel_rotation"] = f('f', d, 0x128)[0]
+            result["body_accel_sway"] = f('f', d, 0x130)[0]
+            result["body_accel_heave"] = f('f', d, 0x134)[0]
+            result["body_accel_surge"] = f('f', d, 0x138)[0]
+
+        # Packet ~ 拡張フィールド (344 bytes以上)
+        if len(d) >= 0x158:
+            result["throttle_filtered_pct"] = f('B', d, 0x13C)[0] / 2.55
+            result["brake_filtered_pct"] = f('B', d, 0x13D)[0] / 2.55
+            result["torque_vector"] = [f('f', d, 0x140 + i * 4)[0] for i in range(4)]
+            result["energy_recovery"] = f('f', d, 0x150)[0]
 
         return result

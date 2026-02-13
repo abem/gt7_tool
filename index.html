@@ -27,6 +27,7 @@
                     <div class="gear-value" id="gear">N</div>
                     <div class="gear-label">GEAR</div>
                     <div class="suggested-gear" id="suggested-gear"></div>
+                    <div class="wheel-rotation" id="wheel-rotation">0.0&deg;</div>
                 </div>
                 <div class="rpm-display">
                     <div class="rpm-bar-bg">
@@ -38,21 +39,23 @@
 
             <div class="card pedals-card">
                 <div class="pedal-row">
-                    <span class="pedal-label">THROTTLE</span>
+                    <span class="pedal-label">THR</span>
                     <div class="pedal-bar-bg">
                         <div class="throttle-bar" id="throttle-bar"></div>
+                        <div class="filtered-bar throttle-filtered-bar" id="throttle-filtered-bar"></div>
                     </div>
                     <span class="pedal-value" id="throttle-value">0%</span>
                 </div>
                 <div class="pedal-row">
-                    <span class="pedal-label">BRAKE</span>
+                    <span class="pedal-label">BRK</span>
                     <div class="pedal-bar-bg">
                         <div class="brake-bar" id="brake-bar"></div>
+                        <div class="filtered-bar brake-filtered-bar" id="brake-filtered-bar"></div>
                     </div>
                     <span class="pedal-value" id="brake-value">0%</span>
                 </div>
                 <div class="pedal-row">
-                    <span class="pedal-label">CLUTCH</span>
+                    <span class="pedal-label">CLT</span>
                     <div class="pedal-bar-bg">
                         <div class="clutch-bar" id="clutch-bar"></div>
                     </div>
@@ -96,6 +99,11 @@
             <div class="card stat-card">
                 <div class="stat-value" id="max-speed">--</div>
                 <div class="stat-label">MAX SPEED (km/h)</div>
+            </div>
+
+            <div class="card gear-ratios-card">
+                <div class="card-title">GEAR RATIOS</div>
+                <div class="gear-ratios-grid" id="gear-ratios"></div>
             </div>
         </div>
 
@@ -142,10 +150,6 @@
                                 <span class="tyre-temp" id="fl-temp">--</span>
                                 <span class="tyre-temp-unit">&deg;C</span>
                             </div>
-                            <div class="tyre-pressure-row">
-                                <span class="tyre-pressure" id="fl-pressure">--</span>
-                                <span class="tyre-pressure-unit">bar</span>
-                            </div>
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="fl-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
@@ -162,10 +166,6 @@
                             <div class="tyre-temp-row">
                                 <span class="tyre-temp" id="fr-temp">--</span>
                                 <span class="tyre-temp-unit">&deg;C</span>
-                            </div>
-                            <div class="tyre-pressure-row">
-                                <span class="tyre-pressure" id="fr-pressure">--</span>
-                                <span class="tyre-pressure-unit">bar</span>
                             </div>
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="fr-rps">--</span>
@@ -184,10 +184,6 @@
                                 <span class="tyre-temp" id="rl-temp">--</span>
                                 <span class="tyre-temp-unit">&deg;C</span>
                             </div>
-                            <div class="tyre-pressure-row">
-                                <span class="tyre-pressure" id="rl-pressure">--</span>
-                                <span class="tyre-pressure-unit">bar</span>
-                            </div>
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="rl-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
@@ -204,10 +200,6 @@
                             <div class="tyre-temp-row">
                                 <span class="tyre-temp" id="rr-temp">--</span>
                                 <span class="tyre-temp-unit">&deg;C</span>
-                            </div>
-                            <div class="tyre-pressure-row">
-                                <span class="tyre-pressure" id="rr-pressure">--</span>
-                                <span class="tyre-pressure-unit">bar</span>
                             </div>
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="rr-rps">--</span>
@@ -243,6 +235,17 @@
                         <div class="susp-unit">mm</div>
                     </div>
                 </div>
+                <div class="card-title" style="margin-top: 4px;">ROAD SURFACE</div>
+                <div class="position-row">
+                    <span class="position-label">NRM</span>
+                    <span class="position-value" id="road-plane-x">--</span>
+                    <span class="position-value" id="road-plane-y">--</span>
+                    <span class="position-value" id="road-plane-z">--</span>
+                </div>
+                <div class="position-row">
+                    <span class="position-label">DST</span>
+                    <span class="position-value" id="road-plane-dist">--</span>
+                </div>
             </div>
         </div>
 
@@ -250,7 +253,7 @@
         <div class="right-panel">
             <div class="card race-info-card">
                 <div class="race-position" id="race-position">--</div>
-                <div class="race-position-label">POSITION</div>
+                <div class="race-position-label">START POS</div>
             </div>
 
             <div class="card lap-times-card">
@@ -332,10 +335,43 @@
                 </div>
             </div>
 
+            <div class="card body-accel-card">
+                <div class="card-title">BODY ACCELERATION</div>
+                <div class="stats-grid" style="margin:0">
+                    <div class="body-accel-item">
+                        <div class="body-accel-value" id="body-sway">--</div>
+                        <div class="body-accel-label">SWAY (LAT)</div>
+                    </div>
+                    <div class="body-accel-item">
+                        <div class="body-accel-value" id="body-heave">--</div>
+                        <div class="body-accel-label">HEAVE (VERT)</div>
+                    </div>
+                    <div class="body-accel-item">
+                        <div class="body-accel-value" id="body-surge">--</div>
+                        <div class="body-accel-label">SURGE (LONG)</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card accel-chart-card">
                 <div class="chart-title">ACCELERATION (G)</div>
                 <div class="accel-chart-container">
                     <canvas id="accel-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="card extended-data-card">
+                <div class="card-title">EXTENDED</div>
+                <div class="position-row">
+                    <span class="position-label">TRQ</span>
+                    <span class="position-value" id="torque-1">--</span>
+                    <span class="position-value" id="torque-2">--</span>
+                    <span class="position-value" id="torque-3">--</span>
+                    <span class="position-value" id="torque-4">--</span>
+                </div>
+                <div class="position-row">
+                    <span class="position-label">RGN</span>
+                    <span class="position-value" id="energy-recovery">--</span>
                 </div>
             </div>
         </div>

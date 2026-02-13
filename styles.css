@@ -21,7 +21,7 @@
 
     --chart-height: clamp(80px, 11vh, 130px);
     --tyre-temp-size: clamp(16px, 2.2vw, 24px);
-    --tyre-pressure-size: clamp(11px, 1.3vw, 14px);
+
     --speed-size: clamp(32px, 5vw, 48px);
     --gear-size: clamp(24px, 3.5vw, 36px);
 }
@@ -477,7 +477,6 @@ body {
 }
 
 .tyre-temp-row,
-.tyre-pressure-row,
 .tyre-rps-row {
     display: flex;
     align-items: baseline;
@@ -507,12 +506,6 @@ body {
     color: var(--text-secondary);
 }
 
-.tyre-pressure {
-    font-size: var(--tyre-pressure-size);
-    font-weight: 600;
-    color: var(--accent-cyan);
-}
-
 .tyre-rps {
     font-size: 9px;
     font-weight: 600;
@@ -521,11 +514,6 @@ body {
 
 .tyre-rps-unit {
     font-size: 8px;
-    color: var(--text-secondary);
-}
-
-.tyre-pressure-unit {
-    font-size: clamp(8px, 0.9vw, 10px);
     color: var(--text-secondary);
 }
 
@@ -831,13 +819,119 @@ body {
     opacity: 0.6;
 }
 
+/* ===== Wheel Rotation ===== */
+
+.wheel-rotation {
+    font-size: 11px;
+    color: var(--accent-cyan);
+    font-weight: 600;
+    min-height: 14px;
+}
+
+/* ===== Filtered Pedal Bars ===== */
+
+.pedal-bar-bg {
+    position: relative;
+}
+
+.filtered-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    border-radius: 6px;
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.throttle-filtered-bar {
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-sizing: border-box;
+}
+
+.brake-filtered-bar {
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-sizing: border-box;
+}
+
+/* ===== Gear Ratios ===== */
+
+.gear-ratios-card {
+    padding: 6px 8px;
+}
+
+.gear-ratios-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+}
+
+.gear-ratio-item {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    padding: 1px 3px;
+    border-radius: 3px;
+}
+
+.gear-ratio-item.active {
+    background: rgba(0, 255, 136, 0.15);
+}
+
+.gear-ratio-num {
+    font-size: 9px;
+    color: var(--text-secondary);
+    font-weight: 700;
+    min-width: 10px;
+}
+
+.gear-ratio-val {
+    font-size: 10px;
+    color: var(--text-primary);
+    font-family: monospace;
+}
+
+.gear-ratio-item.active .gear-ratio-num,
+.gear-ratio-item.active .gear-ratio-val {
+    color: var(--accent-green);
+}
+
+/* ===== Body Acceleration ===== */
+
+.body-accel-card {
+    padding: 6px 8px;
+}
+
+.body-accel-item {
+    text-align: center;
+}
+
+.body-accel-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-green);
+    font-family: monospace;
+}
+
+.body-accel-label {
+    font-size: 8px;
+    color: var(--text-secondary);
+}
+
+/* ===== Extended Data ===== */
+
+.extended-data-card {
+    padding: 6px 8px;
+}
+
 /* ===== Responsive ===== */
 
 @media (min-width: 1900px) and (max-width: 1950px) and (min-height: 1050px) and (max-height: 1100px) {
     :root {
         --chart-height: 100px;
         --tyre-temp-size: 18px;
-        --tyre-pressure-size: 12px;
     }
 
     .dashboard {
@@ -895,7 +989,6 @@ body {
     :root {
         --chart-height: 70px;
         --tyre-temp-size: 14px;
-        --tyre-pressure-size: 10px;
     }
 
     .charts-container {

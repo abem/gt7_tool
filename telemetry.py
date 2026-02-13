@@ -6,11 +6,13 @@ logger = logging.getLogger(__name__)
 
 
 class GT7TelemetryClient:
-    def __init__(self, ip, send_port=33739, receive_port=33740, heartbeat_interval=10):
+    def __init__(self, ip, send_port=33739, receive_port=33740,
+                 heartbeat_interval=10, heartbeat_type=b'~'):
         self.ip = ip
         self.send_port = send_port
         self.receive_port = receive_port
         self.heartbeat_interval = heartbeat_interval
+        self.heartbeat_type = heartbeat_type
         self.last_heartbeat = 0
         self.packets_received = 0
 
@@ -25,7 +27,7 @@ class GT7TelemetryClient:
             return
 
         try:
-            self.sock.sendto(b'A', (self.ip, self.send_port))
+            self.sock.sendto(self.heartbeat_type, (self.ip, self.send_port))
             self.last_heartbeat = now
             if self.packets_received == 0:
                 logger.info(f"Heartbeat sent to {self.ip}:{self.send_port} - waiting for data...")

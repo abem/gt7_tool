@@ -18,6 +18,7 @@ var bestLapNumber = 0;
 var lapTimes = [];
 var currentLapData = [];
 var bestLapData = [];
+var gearRatiosRendered = false;
 
 function updateLapList() {
     if (!elements.lapList) return;
@@ -50,6 +51,20 @@ function addLapData(lapNumber, lapTime) {
     }
     updateLapList();
     elements.bestLapTime.textContent = formatLapTime(bestLapTime);
+}
+
+function renderGearRatios(ratios, currentGear) {
+    if (!elements.gearRatios || !ratios) return;
+    var html = '';
+    for (var i = 0; i < ratios.length; i++) {
+        if (ratios[i] === 0) continue;
+        var isActive = (i + 1) === currentGear;
+        html += '<div class="gear-ratio-item' + (isActive ? ' active' : '') + '">' +
+            '<span class="gear-ratio-num">' + (i + 1) + '</span>' +
+            '<span class="gear-ratio-val">' + ratios[i].toFixed(3) + '</span>' +
+            '</div>';
+    }
+    elements.gearRatios.innerHTML = html;
 }
 
 function handleTelemetryMessage(data) {
@@ -113,6 +128,12 @@ function handleTelemetryMessage(data) {
         elements.suggestedGear.textContent = '';
     }
 
+    // ステアリング回転
+    if (data.wheel_rotation !== undefined) {
+        var deg = (data.wheel_rotation * 180 / Math.PI).toFixed(1);
+        elements.wheelRotation.textContent = deg + '\u00B0';
+    }
+
     // RPM (パケットからの実際のmax_rpmを使用)
     var rpm = Math.round(data.rpm || 0);
     var maxRpm = data.max_rpm || 9000;
@@ -142,6 +163,14 @@ function handleTelemetryMessage(data) {
     elements.clutchBar.style.width = clutch + '%';
     elements.clutchValue.textContent = clutch + '%';
 
+    // フィルタ後入力（TCS/ABS補正後）
+    if (data.throttle_filtered_pct !== undefined) {
+        elements.throttleFilteredBar.style.width = Math.round(data.throttle_filtered_pct) + '%';
+    }
+    if (data.brake_filtered_pct !== undefined) {
+        elements.brakeFilteredBar.style.width = Math.round(data.brake_filtered_pct) + '%';
+    }
+
     // 燃料
     elements.fuel.textContent = (data.current_fuel || 0).toFixed(1);
     elements.fuelCapacity.textContent = (data.fuel_capacity || 0).toFixed(0);
@@ -155,6 +184,15 @@ function handleTelemetryMessage(data) {
     // ブースト・油圧
     elements.boost.textContent = ((data.boost || 0) * 100).toFixed(0);
     elements.oilPressure.textContent = (data.oil_pressure || 0).toFixed(1);
+
+    // ギア比（初回または車両変更時のみ更新）
+    if (data.gear_ratios && !gearRatiosRendered) {
+        renderGearRatios(data.gear_ratios, gear);
+        gearRatiosRendered = true;
+    }
+    if (data.gear_ratios && gearRatiosRendered) {
+        renderGearRatios(data.gear_ratios, gear);
+    }
 
     // 位置
     elements.posX.textContent = (data.position_x || 0).toFixed(1);
@@ -180,11 +218,11 @@ function handleTelemetryMessage(data) {
         elements.runningLapTime.textContent = formatLapTime(data.current_laptime);
     }
 
-    // レース順位
-    if (data.race_position != null && data.total_cars != null) {
-        elements.racePosition.textContent = 'P' + data.race_position + '/' + data.total_cars;
-    } else if (data.race_position != null) {
-        elements.racePosition.textContent = 'P' + data.race_position;
+    // スタート順位（レース前のみ有効）
+    if (data.pre_race_position != null && data.num_cars_pre_race != null) {
+        elements.racePosition.textContent = 'P' + data.pre_race_position + '/' + data.num_cars_pre_race;
+    } else if (data.pre_race_position != null) {
+        elements.racePosition.textContent = 'P' + data.pre_race_position;
     }
 
     // コース名
@@ -235,15 +273,6 @@ function handleTelemetryMessage(data) {
         elements.rrTemp.style.color = getTyreTempColor(temps[3]);
     }
 
-    // タイヤ空気圧
-    if (data.tyre_pressure) {
-        var pressures = data.tyre_pressure;
-        elements.flPressure.textContent = (pressures[0] || 0).toFixed(1);
-        elements.frPressure.textContent = (pressures[1] || 0).toFixed(1);
-        elements.rlPressure.textContent = (pressures[2] || 0).toFixed(1);
-        elements.rrPressure.textContent = (pressures[3] || 0).toFixed(1);
-    }
-
     // ホイール回転速度
     if (data.wheel_rps) {
         var rps = data.wheel_rps;
@@ -259,6 +288,30 @@ function handleTelemetryMessage(data) {
         elements.frRadius.textContent = (data.tyre_radius[1] || 0).toFixed(3);
         elements.rlRadius.textContent = (data.tyre_radius[2] || 0).toFixed(3);
         elements.rrRadius.textContent = (data.tyre_radius[3] || 0).toFixed(3);
+    }
+
+    // 路面法線
+    elements.roadPlaneX.textContent = (data.road_plane_x || 0).toFixed(3);
+    elements.roadPlaneY.textContent = (data.road_plane_y || 0).toFixed(3);
+    elements.roadPlaneZ.textContent = (data.road_plane_z || 0).toFixed(3);
+    elements.roadPlaneDist.textContent = (data.road_plane_distance || 0).toFixed(3);
+
+    // 車体加速度（Packet B拡張）
+    if (data.body_accel_sway !== undefined) {
+        elements.bodySway.textContent = (data.body_accel_sway || 0).toFixed(3);
+        elements.bodyHeave.textContent = (data.body_accel_heave || 0).toFixed(3);
+        elements.bodySurge.textContent = (data.body_accel_surge || 0).toFixed(3);
+    }
+
+    // トルクベクタリング・回生（Packet ~拡張）
+    if (data.torque_vector) {
+        elements.torque1.textContent = data.torque_vector[0].toFixed(2);
+        elements.torque2.textContent = data.torque_vector[1].toFixed(2);
+        elements.torque3.textContent = data.torque_vector[2].toFixed(2);
+        elements.torque4.textContent = data.torque_vector[3].toFixed(2);
+    }
+    if (data.energy_recovery !== undefined) {
+        elements.energyRecovery.textContent = (data.energy_recovery || 0).toFixed(2);
     }
 
     // 車種ID
