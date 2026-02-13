@@ -986,6 +986,23 @@ body {
     font-family: 'Segoe UI Mono', monospace;
 }
 
+/* トップビュー（車両表示） */
+.car-top-view-container {
+    border-top: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.1);
+}
+
+#car-top-view {
+    width: 100%;
+    height: 100px;
+}
+
+#car-top-view canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
 /* ===== Filtered Pedal Bars ===== */
 
 .pedal-bar-bg {
