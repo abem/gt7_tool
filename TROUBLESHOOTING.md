@@ -205,7 +205,7 @@ uPlot.cjs.jsはCommonJS形式で、グローバルに`uPlot`をエクスポー�
 ## ファイル一覧
 
 ```
-/home/abem/docker/gt7_tool/
+./
 ├── main.py              # サーバー (ポート8080)
 ├── index.html           # ダッシュボードHTML
 ├── uplot-test.html      # uPlot単体テストページ (新規)

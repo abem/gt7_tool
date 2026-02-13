@@ -58,6 +58,14 @@ verification_results.json
 visual_regression_results.json
 integration_test_plan.md
 
+# Internal files
+GLMむけ指示/
+LOG.md
+index.html.broken*
+index.html.fuel-backup
+index.html.working
+TROUBLESHOOTING.md
+
 # Generated docs/reports
 FINAL_REPORT.md
 TEST_MODE_VERIFICATION_REPORT.md
