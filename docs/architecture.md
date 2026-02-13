@@ -77,7 +77,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 |-----------|------|-----------------|
 | `main.py` | エントリーポイント | `FuelTracker`, `websocket_handler`, `telemetry_background_task` |
 | `telemetry.py` | UDP通信管理 | `GT7TelemetryClient` |
-| `decoder.py` | パケット復号・解析 | `GT7Decoder`, `CourseEstimator` |
+| `decoder.py` | パケット復号・解析 (A/B/~ 対応) | `GT7Decoder`, `CourseEstimator` |
 
 ### フロントエンド (HTML/JS/CSS)
 
@@ -97,7 +97,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | ファイル名 | 説明 |
 |-----------|------|
 | `config.json` | ネットワーク設定 |
-| `packet_def.json` | パケット定義（オフセットとデータ型） |
+| `packet_def.json` | パケット定義（参照用、デコーダは未使用） |
 | `course_database.json` | コースデータベース |
 
 ### その他
@@ -119,9 +119,9 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
    └─> main.py 開始
        └─> config.json 読み込み
        └─> course_database.json 読み込み
-       └─> packet_def.json 読み込み
        └─> HTTP/WebSocketサーバー起動 (Port 8080)
-       └─> GT7TelemetryClient 初期化
+       └─> GT7TelemetryClient 初期化 (heartbeat_type=b'~')
+       └─> GT7Decoder 初期化 (heartbeat_type=b'~')
 ```
 
 ### 2. データ受信フェーズ
@@ -131,14 +131,15 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
    └─> WebSocket接続確立 (ws://localhost:8080/ws)
 
 2. PS5にハートビート送信
-   └─> "A" パケット送信 (Port 33739)
-       └─> GT7がテレメトリ送信を開始
+   └─> "~" パケット送信 (Port 33739)
+       └─> GT7が全フィールドパケット (344 bytes) の送信を開始
 
 3. テレメトリパケット受信
    └─> UDP Port 33740 で受信
-       └─> Salsa20復号
-       └─> パケット解析
+       └─> Salsa20復号 (XOR自動フォールバック)
+       └─> パケット解析 (サイズに応じてA/B/~フィールドを抽出)
        └─> コース推定
+       └─> 燃料計算 (FuelTracker)
        └─> WebSocket経由でブラウザに配信
 ```
 
@@ -161,9 +162,21 @@ GT7のテレメトリパケットはSalsa20で暗号化されています。
 | パラメータ | 値 |
 |-----------|---|
 | アルゴリズム | Salsa20 |
-| キー | `Simulator Interface Packet GT7 ver 0.0` |
+| キー | `Simulator Interface Packet GT7 ver 0.0` (先頭32バイト) |
 | IV生成 | パケットオフセット0x40-0x47 |
 | マジックナンバー | `0x47375330` ("G7S0") |
+
+### パケットタイプ
+
+ハートビートとして送信するバイト値により、GT7から返されるパケットが変わります。
+
+| ハートビート | XOR値 | パケットサイズ | 追加フィールド |
+|-------------|-------|--------------|--------------|
+| `A` (0x41) | 0xDEADBEAF | 296 bytes | 基本フィールドのみ |
+| `B` (0x42) | 0xDEADBEEF | 316 bytes | ステアリング角度、車体加速度 |
+| `~` (0x7E) | 0x55FABB4F | 344 bytes | 上記 + フィルタ入力、トルクベクタリング、回生 |
+
+デフォルトでは `~` を使用し、全フィールドを取得します。
 
 ## コース推定
 
