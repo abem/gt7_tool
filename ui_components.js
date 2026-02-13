@@ -135,7 +135,14 @@ function cacheElements() {
         racePosition: document.getElementById('race-position'),
         courseName: document.getElementById('course-name'),
         flagsBar: document.getElementById('flags-bar'),
-        connectionStatus: document.getElementById('connection-status')
+        connectionStatus: document.getElementById('connection-status'),
+        rotationCube: document.getElementById('rotation-cube'),
+        rotPitchDisplay: document.getElementById('rot-pitch-display'),
+        rotYawDisplay: document.getElementById('rot-yaw-display'),
+        rotRollDisplay: document.getElementById('rot-roll-display'),
+        pitchIndicator: document.getElementById('pitch-indicator'),
+        yawIndicator: document.getElementById('yaw-indicator'),
+        rollIndicator: document.getElementById('roll-indicator')
     };
 }
 
@@ -167,4 +174,22 @@ function getSpeedColor(speed) {
     if (speed < 60) return COURSE_MAP_CONFIG.colors.trajectoryLow;
     if (speed < 120) return COURSE_MAP_CONFIG.colors.trajectoryMid;
     return COURSE_MAP_CONFIG.colors.trajectoryHigh;
+}
+
+// 3D回転更新関数
+function updateRotation3D(pitch, yaw, roll) {
+    if (!elements.rotationCube) return;
+
+    var transform = 'rotateZ(' + roll + 'rad) rotateX(' + pitch + 'rad) rotateY(' + yaw + 'rad)';
+    elements.rotationCube.style.transform = transform;
+
+    if (elements.rotPitchDisplay) {
+        elements.rotPitchDisplay.textContent = pitch.toFixed(3);
+    }
+    if (elements.rotYawDisplay) {
+        elements.rotYawDisplay.textContent = yaw.toFixed(3);
+    }
+    if (elements.rotRollDisplay) {
+        elements.rotRollDisplay.textContent = roll.toFixed(3);
+    }
 }

@@ -2,11 +2,26 @@
  * GT7 Telemetry Dashboard
  * WebSocket接続・メッセージ処理・ラップ管理
  *
- * 依存: ui_components.js (elements, formatLapTime, getTyreTempColor, debugLog)
+ * 依存: ui_components.js (elements, formatLapTime, getTyreTempColor, debugLog, updateRotation3D)
  *       charts.js (timeData, speedData, rpmData, throttleData, brakeData, timeCounter,
  *                  speedChart, rpmChart, throttleChart, brakeChart, updateAccelChart)
  *       course-map.js (updateCourseMap, initCourseMap)
+ *       car-3d.js (initCar3D, updateCar3D)
  */
+
+// 回転矢印を取得
+function getRotationArrow(angle) {
+    if (angle > 0.1) return '↑';
+    if (angle < -0.1) return '↓';
+    return '→';
+}
+
+function updateRotationArrows(pitch, yaw, roll) {
+    if (!elements.pitchIndicator) return;
+    elements.pitchIndicator.textContent = getRotationArrow(pitch);
+    elements.yawIndicator.textContent = getRotationArrow(yaw);
+    elements.rollIndicator.textContent = getRotationArrow(roll);
+}
 
 var ws = null;
 var packetCount = 0;
@@ -216,6 +231,36 @@ function handleTelemetryMessage(data) {
     elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
     elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
 
+    // 3Dモデル更新（既存の車体3Dモデル）
+    updateCar3D(
+        data.rotation_pitch || 0,
+        data.rotation_yaw || 0,
+        data.rotation_roll || 0,
+        // 3D回転表示を更新
+        updateRotation3D(
+            data.rotation_pitch || 0,
+            data.rotation_yaw || 0,
+            data.rotation_roll || 0
+        );
+    updateRotation3D(
+            data.rotation_pitch || 0,
+            data.rotation_yaw || 0,
+            data.rotation_roll || 0,
+            // 回転矢印の更新
+            updateRotationArrows(
+                data.rotation_pitch || 0,
+                data.rotation_yaw || 0,
+                data.rotation_roll || 0
+            );
+    );
+
+    // 3D回転表示更新（Angular Velocityカード内の直方体）
+    updateRotation3D(
+        data.rotation_pitch || 0,
+        data.rotation_yaw || 0,
+        data.rotation_roll || 0
+    );
+
     // 角速度
     elements.angX.textContent = (data.angular_velocity_x || 0).toFixed(3);
     elements.angY.textContent = (data.angular_velocity_y || 0).toFixed(3);
@@ -356,6 +401,7 @@ function connectWebSocket() {
         elements.connectionStatus.className = 'connected';
         initCharts();
         initCourseMap();
+        initCar3D();
     };
 
     ws.onerror = function(error) {

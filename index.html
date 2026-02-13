@@ -145,6 +145,27 @@
                 </div>
             </div>
 
+            <div class="card car-3d-card">
+                <div class="card-title">CAR ATTITUDE</div>
+                <div class="car-3d-container">
+                    <div id="car-3d-view"></div>
+                    <div class="car-3d-info">
+                        <div class="car-3d-info-row">
+                            <span class="car-3d-label">PITCH</span>
+                            <span class="car-3d-value" id="car-3d-pitch">0.00&deg;</span>
+                        </div>
+                        <div class="car-3d-info-row">
+                            <span class="car-3d-label">ROLL</span>
+                            <span class="car-3d-value" id="car-3d-roll">0.00&deg;</span>
+                        </div>
+                        <div class="car-3d-info-row">
+                            <span class="car-3d-label">YAW</span>
+                            <span class="car-3d-value" id="car-3d-yaw">0.00&deg;</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card course-map-card">
                 <div class="course-map-header">
                     <div class="card-title">COURSE MAP</div>
@@ -330,20 +351,45 @@
                 </div>
             </div>
 
-            <div class="card position-card">
-                <div class="card-title">ANGULAR VELOCITY</div>
-                <div class="position-row">
-                    <span class="position-label">ANG</span>
-                    <span class="position-value" id="ang-x">--</span>
-                    <span class="position-value" id="ang-y">--</span>
-                    <span class="position-value" id="ang-z">--</span>
+            <div class="card angular-velocity-card">
+                <div class="card-title">ANGULAR VELOCITY 3D</div>
+
+                <!-- 3D表示エリア -->
+                <div class="rotation-3d-container">
+                    <div class="cube-scene">
+                        <div class="cube" id="rotation-cube">
+                            <div class="cube-face cube-front"></div>
+                            <div class="cube-face cube-back"></div>
+                            <div class="cube-face cube-left"></div>
+                            <div class="cube-face cube-right"></div>
+                            <div class="cube-face cube-top"></div>
+                            <div class="cube-face cube-bottom"></div>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- 角度数値表示 -->
                 <div class="position-row">
                     <span class="position-label">PIT</span>
-                    <span class="position-value" id="pitch-rate">--</span>
+                    <span class="position-value" id="rot-pitch-display">--</span>
                     <span class="position-label">YAW</span>
-                    <span class="position-value" id="yaw-rate">--</span>
+                    <span class="position-value" id="rot-yaw-display">--</span>
                     <span class="position-label">ROL</span>
+                    <span class="position-value" id="rot-roll-display">--</span>
+                </div>
+
+                <!-- 回転矢印 -->
+                <div class="rotation-indicators">
+                    <div class="rotation-arrow" id="pitch-indicator">→</div>
+                    <div class="rotation-arrow" id="yaw-indicator">→</div>
+                    <div class="rotation-arrow" id="roll-indicator">→</div>
+                </div>
+
+                <!-- 角速度数値表示 -->
+                <div class="position-row">
+                    <span class="position-label">RATE</span>
+                    <span class="position-value" id="pitch-rate">--</span>
+                    <span class="position-value" id="yaw-rate">--</span>
                     <span class="position-value" id="roll-rate">--</span>
                 </div>
             </div>
@@ -412,9 +458,11 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="/uplot.min.js"></script>
     <script src="/ui_components.js"></script>
     <script src="/charts.js"></script>
+    <script src="/car-3d.js"></script>
     <script src="/course-map.js"></script>
     <script src="/websocket.js"></script>
     <script src="/test-mode.js"></script>
