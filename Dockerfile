@@ -22,7 +22,7 @@ COPY uplot.min.js uplot.min.css ./
 ENV PYTHONUNBUFFERED=1
 
 # ポートを公開（HTTP/WebSocketとUDP受信）
-EXPOSE 8081/tcp
+EXPOSE 8080/tcp
 EXPOSE 33740/udp
 
 CMD ["python", "main.py"]

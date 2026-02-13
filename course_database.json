@@ -273,7 +273,7 @@
         },
         {
             "id": "real_track",
-            "name": "実走コース（デフォルト）",
+            "name": "",
             "name_en": "Current Track",
             "bounds": {
                 "min_x": -10000,

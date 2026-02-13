@@ -187,11 +187,12 @@ class GT7Decoder:
             d = decrypted_data
             result = self._extract_fields(d)
 
-            # コース推定
-            course_info = self.course_estimator.estimate_course(
-                result["position_x"], result["position_z"]
-            )
-            result["course"] = course_info
+            # コース推定（無効化）
+            # course_info = self.course_estimator.estimate_course(
+            #     result["position_x"], result["position_z"]
+            # )
+            # result["course"] = course_info
+            result["course"] = {"id": "unknown", "name": "", "confidence": 0}
 
             self._parse_count += 1
             if self._parse_count <= 3:
