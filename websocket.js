@@ -235,23 +235,7 @@ function handleTelemetryMessage(data) {
     updateCar3D(
         data.rotation_pitch || 0,
         data.rotation_yaw || 0,
-        data.rotation_roll || 0,
-        // 3D回転表示を更新
-        updateRotation3D(
-            data.rotation_pitch || 0,
-            data.rotation_yaw || 0,
-            data.rotation_roll || 0
-        );
-    updateRotation3D(
-            data.rotation_pitch || 0,
-            data.rotation_yaw || 0,
-            data.rotation_roll || 0,
-            // 回転矢印の更新
-            updateRotationArrows(
-                data.rotation_pitch || 0,
-                data.rotation_yaw || 0,
-                data.rotation_roll || 0
-            );
+        data.rotation_roll || 0
     );
 
     // 3D回転表示更新（Angular Velocityカード内の直方体）
@@ -261,13 +245,20 @@ function handleTelemetryMessage(data) {
         data.rotation_roll || 0
     );
 
+    // 回転矢印の更新
+    updateRotationArrows(
+        data.rotation_pitch || 0,
+        data.rotation_yaw || 0,
+        data.rotation_roll || 0
+    );
+
     // 角速度
-    elements.angX.textContent = (data.angular_velocity_x || 0).toFixed(3);
-    elements.angY.textContent = (data.angular_velocity_y || 0).toFixed(3);
-    elements.angZ.textContent = (data.angular_velocity_z || 0).toFixed(3);
-    elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
-    elements.yawRate.textContent = (data.angular_velocity_y || 0).toFixed(3);
-    elements.rollRate.textContent = (data.angular_velocity_z || 0).toFixed(3);
+    if (elements.angX) elements.angX.textContent = (data.angular_velocity_x || 0).toFixed(3);
+    if (elements.angY) elements.angY.textContent = (data.angular_velocity_y || 0).toFixed(3);
+    if (elements.angZ) elements.angZ.textContent = (data.angular_velocity_z || 0).toFixed(3);
+    if (elements.pitchRate) elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
+    if (elements.yawRate) elements.yawRate.textContent = (data.angular_velocity_y || 0).toFixed(3);
+    if (elements.rollRate) elements.rollRate.textContent = (data.angular_velocity_z || 0).toFixed(3);
 
     // 方角・車体高さ
     elements.orientation.textContent = (data.orientation || 0).toFixed(3);

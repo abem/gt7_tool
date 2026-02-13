@@ -5,6 +5,7 @@
  * 依存: ui_components.js (elements, courseMapState, debugLog)
  *       websocket.js (packetCount)
  *       course-map.js (updateCourseMap, drawCourseMap)
+ *       car-3d.js (updateCar3D, initCar3D)
  */
 
 var testModeActive = false;
@@ -34,6 +35,10 @@ function initTestMode() {
         btn.textContent = testModeActive ? 'STOP TEST' : 'TEST MODE';
 
         if (testModeActive) {
+            // テストモード開始時に3Dモデルを初期化（まだ初期化されていない場合）
+            if (!car3DState.initialized) {
+                initCar3D();
+            }
             startTestMode(btn);
         } else {
             stopTestMode();
@@ -74,6 +79,12 @@ function startTestMode(btn) {
         elements.posX.textContent = point.x.toFixed(1);
         elements.posY.textContent = '0.0';
         elements.posZ.textContent = point.z.toFixed(1);
+
+        // 3Dモデル更新（テスト用のランダムな姿勢）
+        var demoPitch = (Math.sin(testTrajectoryIndex * 0.1) * 0.3).toFixed(3);
+        var demoYaw = (testTrajectoryIndex * 0.05).toFixed(3);
+        var demoRoll = (Math.cos(testTrajectoryIndex * 0.08) * 0.2).toFixed(3);
+        updateCar3D(parseFloat(demoPitch), parseFloat(demoYaw), parseFloat(demoRoll));
 
         updateCourseMap(point.x, 0, point.z, point.speed);
 
