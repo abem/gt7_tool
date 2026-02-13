@@ -18,8 +18,6 @@ var bestLapNumber = 0;
 var lapTimes = [];
 var currentLapData = [];
 var bestLapData = [];
-var gearRatiosRendered = false;
-
 function updateLapList() {
     if (!elements.lapList) return;
     elements.lapList.innerHTML = '';
@@ -185,12 +183,8 @@ function handleTelemetryMessage(data) {
     elements.boost.textContent = ((data.boost || 0) * 100).toFixed(0);
     elements.oilPressure.textContent = (data.oil_pressure || 0).toFixed(1);
 
-    // ギア比（初回または車両変更時のみ更新）
-    if (data.gear_ratios && !gearRatiosRendered) {
-        renderGearRatios(data.gear_ratios, gear);
-        gearRatiosRendered = true;
-    }
-    if (data.gear_ratios && gearRatiosRendered) {
+    // ギア比
+    if (data.gear_ratios) {
         renderGearRatios(data.gear_ratios, gear);
     }
 
