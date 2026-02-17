@@ -210,39 +210,48 @@ function buildCarModel(carGroup) {
     car3DState.carBody = new THREE.Mesh(bodyGeo, bodyMat);
     carGroup.add(car3DState.carBody);
 
-    // ─── ウインドウ（ガラス面を水色で描画）───
-    // ボディと同幅で押し出し、polygonOffsetで手前に描画させる
-    var winShape = new THREE.Shape();
-    winShape.moveTo(0.47, 0.73);
-    winShape.lineTo(-0.15, H - 0.05);
-    winShape.quadraticCurveTo(-0.35, H - 0.01, -0.55, H - 0.01);
-    winShape.lineTo(-0.85, H - 0.03);
-    winShape.quadraticCurveTo(-1.03, 0.94, -1.22, 0.83);
-    winShape.lineTo(0.47, 0.73);
-
-    var winGeo = new THREE.ExtrudeGeometry(winShape, {
-        depth: bodyW,
-        bevelEnabled: false
-    });
-    winGeo.translate(0, 0, -bodyW / 2);
-
+    // ─── ウインドウ（ガラス面を水色で描画、ルーフは除外）───
     var winMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.windows,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.85,
         shininess: 200,
         specular: new THREE.Color(0xaaaaaa),
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -4,
-        polygonOffsetUnits: -4
+        side: THREE.FrontSide,
+        depthTest: false,
+        depthWrite: false
     });
 
-    var windowMesh = new THREE.Mesh(winGeo, winMat);
-    windowMesh.renderOrder = 1;
-    car3DState.windows.push(windowMesh);
-    carGroup.add(windowMesh);
+    var winExtOpts = { depth: bodyW, bevelEnabled: false };
+
+    // フロントウインドシールド（ルーフ前端で止める）
+    var wsShape = new THREE.Shape();
+    wsShape.moveTo(0.47, 0.73);
+    wsShape.lineTo(-0.15, H - 0.05);
+    wsShape.quadraticCurveTo(-0.35, H - 0.01, -0.55, H - 0.01);
+    wsShape.lineTo(-0.55, 0.73);
+    wsShape.lineTo(0.47, 0.73);
+
+    var wsGeo = new THREE.ExtrudeGeometry(wsShape, winExtOpts);
+    wsGeo.translate(0, 0, -bodyW / 2);
+    var wsMesh = new THREE.Mesh(wsGeo, winMat);
+    wsMesh.renderOrder = 1;
+    car3DState.windows.push(wsMesh);
+    carGroup.add(wsMesh);
+
+    // リアウインドウ（ルーフ後端から下へ）
+    var rwShape = new THREE.Shape();
+    rwShape.moveTo(-0.85, H - 0.03);
+    rwShape.quadraticCurveTo(-1.03, 0.94, -1.22, 0.83);
+    rwShape.lineTo(-0.85, 0.83);
+    rwShape.lineTo(-0.85, H - 0.03);
+
+    var rwGeo = new THREE.ExtrudeGeometry(rwShape, winExtOpts);
+    rwGeo.translate(0, 0, -bodyW / 2);
+    var rwMesh = new THREE.Mesh(rwGeo, winMat);
+    rwMesh.renderOrder = 1;
+    car3DState.windows.push(rwMesh);
+    carGroup.add(rwMesh);
 
     // ─── サイドエアインテーク（横長スリット）───
     var intakeMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.intake });
