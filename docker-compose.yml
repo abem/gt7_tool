@@ -1,7 +1,7 @@
 services:
   gt7_tool:
     build: .
-    container_name: gt7_tool_dev
+    container_name: gt7_tool_car_attitude2
     restart: unless-stopped
     network_mode: "host"
     volumes:

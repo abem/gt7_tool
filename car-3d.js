@@ -21,7 +21,8 @@ var car3DState = {
     yaw: 0,
     roll: 0,
     topViewContext: null,
-    topViewCanvas: null
+    topViewCanvas: null,
+    controls: null
 };
 
 var CAR_3D_CONFIG = {
@@ -79,6 +80,21 @@ function initCar3D() {
     car3DState.camera.position.set(5, 2.2, 3);
     car3DState.camera.lookAt(0, 0.4, 0);
 
+    // OrbitControls初期化（失敗時はカメラ固定で動作継続）
+    try {
+        car3DState.controls = new THREE.OrbitControls(
+            car3DState.camera,
+            car3DState.renderer.domElement
+        );
+        car3DState.controls.enableDamping = true;
+        car3DState.controls.dampingFactor = 0.05;
+        car3DState.controls.target.set(0, 0.4, 0);
+        car3DState.controls.update();
+    } catch (e) {
+        console.warn('[CAR_3D] OrbitControls initialization failed:', e);
+        car3DState.controls = null;
+    }
+
     // 環境光
     var ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     car3DState.scene.add(ambientLight);
@@ -121,6 +137,9 @@ function initCar3D() {
     // レンダーループ開始
     function animate() {
         car3DState.animationId = requestAnimationFrame(animate);
+        if (car3DState.controls) {
+            car3DState.controls.update();
+        }
         if (car3DState.renderer && car3DState.scene && car3DState.camera) {
             car3DState.renderer.render(car3DState.scene, car3DState.camera);
         }
@@ -450,9 +469,9 @@ function updateCar3D(pitch, yaw, roll) {
     car3DState.yaw = yaw || 0;
     car3DState.roll = roll || 0;
 
-    // carGroup全体を回転
+    // carGroup全体を回転（yawは無視して常に0）
     car3DState.carGroup.rotation.x = car3DState.pitch;
-    car3DState.carGroup.rotation.y = car3DState.yaw;
+    car3DState.carGroup.rotation.y = 0;
     car3DState.carGroup.rotation.z = car3DState.roll;
 
     // CAR ATTITUDEカード内の数値表示を更新
