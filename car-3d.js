@@ -36,7 +36,7 @@ var CAR_3D_CONFIG = {
     groundClearance: 0.12,
     colors: {
         body: 0xcc0000,
-        windows: 0x080810,
+        windows: 0x88ccff,
         tire: 0x1a1a1a,
         rim: 0xcccccc,
         hubCap: 0xddaa00,
@@ -210,8 +210,8 @@ function buildCarModel(carGroup) {
     car3DState.carBody = new THREE.Mesh(bodyGeo, bodyMat);
     carGroup.add(car3DState.carBody);
 
-    // ─── ウインドウ（ガラスキャビン、やや狭い幅で凹み表現）───
-    var winW = W * 0.74;
+    // ─── ウインドウ（ガラス面を水色で描画）───
+    // ボディと同幅で押し出し、polygonOffsetで手前に描画させる
     var winShape = new THREE.Shape();
     winShape.moveTo(0.47, 0.73);
     winShape.lineTo(-0.15, H - 0.05);
@@ -221,21 +221,26 @@ function buildCarModel(carGroup) {
     winShape.lineTo(0.47, 0.73);
 
     var winGeo = new THREE.ExtrudeGeometry(winShape, {
-        depth: winW,
+        depth: bodyW,
         bevelEnabled: false
     });
-    winGeo.translate(0, 0, -winW / 2);
+    winGeo.translate(0, 0, -bodyW / 2);
 
     var winMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.windows,
         transparent: true,
-        opacity: 0.50,
+        opacity: 0.88,
         shininess: 200,
-        specular: new THREE.Color(0x999999)
+        specular: new THREE.Color(0xaaaaaa),
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4
     });
 
     var windowMesh = new THREE.Mesh(winGeo, winMat);
-    windowMesh.position.y = 0.01;
+    windowMesh.renderOrder = 1;
     car3DState.windows.push(windowMesh);
     carGroup.add(windowMesh);
 
