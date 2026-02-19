@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "puppeteer-core": "^24.37.5",
     "uplot": "^1.6.32"
   }
 }
