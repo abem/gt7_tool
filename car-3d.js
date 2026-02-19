@@ -20,9 +20,10 @@ var car3DState = {
     pitch: 0,
     yaw: 0,
     roll: 0,
-    topViewContext: null,
-    topViewCanvas: null,
-    controls: null
+    controls: null,
+    pitchEl: null,
+    rollEl: null,
+    yawEl: null
 };
 
 var CAR_3D_CONFIG = {
@@ -133,6 +134,11 @@ function initCar3D() {
     resizeObserver.observe(container);
 
     car3DState.initialized = true;
+
+    // DOM要素キャッシュ（updateCar3D で毎回 getElementById を呼ばないよう初期化時に保持）
+    car3DState.pitchEl = document.getElementById('car-3d-pitch');
+    car3DState.rollEl  = document.getElementById('car-3d-roll');
+    car3DState.yawEl   = document.getElementById('car-3d-yaw');
 
     // レンダーループ開始
     function animate() {
@@ -488,11 +494,8 @@ function updateCar3D(pitch, yaw, roll) {
     car3DState.carGroup.rotation.y = 0;
     car3DState.carGroup.rotation.z = car3DState.roll;
 
-    // CAR ATTITUDEカード内の数値表示を更新
-    var pitchEl = document.getElementById('car-3d-pitch');
-    var rollEl = document.getElementById('car-3d-roll');
-    var yawEl = document.getElementById('car-3d-yaw');
-    if (pitchEl) pitchEl.textContent = (pitch * 180 / Math.PI).toFixed(2) + '\u00B0';
-    if (rollEl) rollEl.textContent = (roll * 180 / Math.PI).toFixed(2) + '\u00B0';
-    if (yawEl) yawEl.textContent = (yaw * 180 / Math.PI).toFixed(2) + '\u00B0';
+    // CAR ATTITUDEカード内の数値表示を更新（initCar3D でキャッシュ済みの参照を使用）
+    if (car3DState.pitchEl) car3DState.pitchEl.textContent = (pitch * 180 / Math.PI).toFixed(2) + '\u00B0';
+    if (car3DState.rollEl)  car3DState.rollEl.textContent  = (roll  * 180 / Math.PI).toFixed(2) + '\u00B0';
+    if (car3DState.yawEl)   car3DState.yawEl.textContent   = (yaw   * 180 / Math.PI).toFixed(2) + '\u00B0';
 }

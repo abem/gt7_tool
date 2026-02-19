@@ -80,9 +80,8 @@ function renderGearRatios(ratios, currentGear) {
     elements.gearRatios.innerHTML = html;
 }
 
-function handleTelemetryMessage(data) {
-    packetCount++;
-
+// ラップカウント検出・ラップタイム記録・ラップデータ蓄積・速度デルタ計算
+function updateLapState(data) {
     currentLapNumber = data.lap_count || 1;
     elements.currentLap.textContent = currentLapNumber + '/' + (data.total_laps || '--');
 
@@ -113,19 +112,11 @@ function handleTelemetryMessage(data) {
         elements.lapDelta.textContent = (delta >= 0 ? '+' : '') + delta.toFixed(1) + ' km/h';
         elements.lapDelta.className = 'delta-value' + (delta < 0 ? ' negative' : '');
     }
+}
 
-    // 加速度
-    updateAccelChart(data.accel_g || 0, data.accel_decel || 0);
-    elements.accelG.textContent = (data.accel_g || 0).toFixed(2);
-    elements.accelDecel.textContent = (data.accel_decel || 0).toFixed(2);
-
-    // チャートデータ更新
-    timeData.shift();
-    timeData.push(timeCounter++);
-
+// 速度・ギア・RPM・スロットル・ブレーキ・クラッチ・ステアリング・ブーストの表示更新
+function updateVehicleState(data) {
     var speed = Math.round(data.speed_kmh || 0);
-    speedData.shift();
-    speedData.push(speed);
     elements.speed.textContent = speed;
     if (speed > maxSpeed) {
         maxSpeed = speed;
@@ -151,8 +142,6 @@ function handleTelemetryMessage(data) {
     var rpm = Math.round(data.rpm || 0);
     var maxRpm = data.max_rpm || 9000;
     var rpmPct = Math.min((rpm / maxRpm) * 100, 100);
-    rpmData.shift();
-    rpmData.push(rpm);
     elements.rpmBar.style.width = rpmPct + '%';
     if (data.rpm_alert_min && rpm >= data.rpm_alert_min) {
         elements.rpmBar.style.background = rpm >= maxRpm ? '#ff4444' : '#ffd700';
@@ -165,10 +154,6 @@ function handleTelemetryMessage(data) {
     var throttle = Math.round(data.throttle_pct || 0);
     var brake = Math.round(data.brake_pct || 0);
     var clutch = Math.round((data.clutch || 0) * 100);
-    throttleData.shift();
-    throttleData.push(throttle);
-    brakeData.shift();
-    brakeData.push(brake);
     elements.throttleBar.style.width = throttle + '%';
     elements.throttleValue.textContent = throttle + '%';
     elements.brakeBar.style.width = brake + '%';
@@ -182,16 +167,6 @@ function handleTelemetryMessage(data) {
     }
     if (data.brake_filtered_pct !== undefined) {
         elements.brakeFilteredBar.style.width = Math.round(data.brake_filtered_pct) + '%';
-    }
-
-    // 燃料
-    elements.fuel.textContent = (data.current_fuel || 0).toFixed(1);
-    elements.fuelCapacity.textContent = (data.fuel_capacity || 0).toFixed(0);
-    if (data.fuel_per_lap !== undefined) {
-        elements.fuelPerLap.textContent = (data.fuel_per_lap || 0).toFixed(2);
-    }
-    if (data.fuel_laps_remaining !== undefined) {
-        elements.fuelLapsRemaining.textContent = data.fuel_laps_remaining || '--';
     }
 
     // ブースト・油圧
@@ -216,6 +191,107 @@ function handleTelemetryMessage(data) {
         elements.transMaxSpeed.textContent = Math.round(data.transmission_max_speed * 3.6);
     }
 
+    // 車種ID・パッケージID
+    if (data.car_id) {
+        elements.carId.textContent = data.car_id;
+    }
+    if (data.package_id !== undefined) {
+        elements.pkgId.textContent = data.package_id;
+    }
+
+    // フラグ表示
+    if (data.flags) {
+        var flagParts = [];
+        if (data.flags.tcs_active) flagParts.push('<span class="flag-on">TCS</span>');
+        if (data.flags.asm_active) flagParts.push('<span class="flag-on">ASM</span>');
+        if (data.flags.rev_limiter) flagParts.push('<span class="flag-warn">REV</span>');
+        if (data.flags.hand_brake) flagParts.push('<span class="flag-warn">P-BRK</span>');
+        if (data.flags.lights) flagParts.push('<span class="flag-info">LIGHT</span>');
+        if (data.flags.has_turbo) flagParts.push('<span class="flag-info">TURBO</span>');
+        elements.flagsBar.innerHTML = flagParts.join('');
+    }
+}
+
+// 燃料残量・燃費・走行可能周回数の表示更新
+function updateFuelState(data) {
+    // 燃料
+    elements.fuel.textContent = (data.current_fuel || 0).toFixed(1);
+    elements.fuelCapacity.textContent = (data.fuel_capacity || 0).toFixed(0);
+    if (data.fuel_per_lap !== undefined) {
+        elements.fuelPerLap.textContent = (data.fuel_per_lap || 0).toFixed(2);
+    }
+    if (data.fuel_laps_remaining !== undefined) {
+        elements.fuelLapsRemaining.textContent = data.fuel_laps_remaining || '--';
+    }
+}
+
+// タイヤ温度・RPS・サスペンション高・タイヤ半径・ブレーキ温度の表示更新
+function updateTyreState(data) {
+    // サスペンション
+    if (data.susp_height) {
+        elements.flSusp.textContent = (data.susp_height[0] * 1000).toFixed(0);
+        elements.frSusp.textContent = (data.susp_height[1] * 1000).toFixed(0);
+        elements.rlSusp.textContent = (data.susp_height[2] * 1000).toFixed(0);
+        elements.rrSusp.textContent = (data.susp_height[3] * 1000).toFixed(0);
+    }
+
+    // タイヤ温度
+    if (data.tyre_temp) {
+        var temps = data.tyre_temp;
+        elements.flTemp.textContent = Math.round(temps[0]);
+        elements.frTemp.textContent = Math.round(temps[1]);
+        elements.rlTemp.textContent = Math.round(temps[2]);
+        elements.rrTemp.textContent = Math.round(temps[3]);
+        elements.flTemp.style.color = getTyreTempColor(temps[0]);
+        elements.frTemp.style.color = getTyreTempColor(temps[1]);
+        elements.rlTemp.style.color = getTyreTempColor(temps[2]);
+        elements.rrTemp.style.color = getTyreTempColor(temps[3]);
+    }
+
+    // ホイール回転速度
+    if (data.wheel_rps) {
+        var rps = data.wheel_rps;
+        elements.flRps.textContent = Math.abs(rps[0] || 0).toFixed(1);
+        elements.frRps.textContent = Math.abs(rps[1] || 0).toFixed(1);
+        elements.rlRps.textContent = Math.abs(rps[2] || 0).toFixed(1);
+        elements.rrRps.textContent = Math.abs(rps[3] || 0).toFixed(1);
+    }
+
+    // タイヤ半径
+    if (data.tyre_radius) {
+        elements.flRadius.textContent = (data.tyre_radius[0] || 0).toFixed(3);
+        elements.frRadius.textContent = (data.tyre_radius[1] || 0).toFixed(3);
+        elements.rlRadius.textContent = (data.tyre_radius[2] || 0).toFixed(3);
+        elements.rrRadius.textContent = (data.tyre_radius[3] || 0).toFixed(3);
+    }
+
+    // 路面法線
+    elements.roadPlaneX.textContent = (data.road_plane_x || 0).toFixed(3);
+    elements.roadPlaneY.textContent = (data.road_plane_y || 0).toFixed(3);
+    elements.roadPlaneZ.textContent = (data.road_plane_z || 0).toFixed(3);
+    elements.roadPlaneDist.textContent = (data.road_plane_distance || 0).toFixed(3);
+
+    // 車体加速度（Packet B拡張）
+    if (data.body_accel_sway !== undefined) {
+        elements.bodySway.textContent = (data.body_accel_sway || 0).toFixed(3);
+        elements.bodyHeave.textContent = (data.body_accel_heave || 0).toFixed(3);
+        elements.bodySurge.textContent = (data.body_accel_surge || 0).toFixed(3);
+    }
+
+    // トルクベクタリング・回生（Packet ~拡張）
+    if (data.torque_vector) {
+        elements.torque1.textContent = data.torque_vector[0].toFixed(2);
+        elements.torque2.textContent = data.torque_vector[1].toFixed(2);
+        elements.torque3.textContent = data.torque_vector[2].toFixed(2);
+        elements.torque4.textContent = data.torque_vector[3].toFixed(2);
+    }
+    if (data.energy_recovery !== undefined) {
+        elements.energyRecovery.textContent = (data.energy_recovery || 0).toFixed(2);
+    }
+}
+
+// 位置・速度ベクトル・姿勢角・コースマップ・3D車両モデル更新
+function updatePositionState(data) {
     // 位置
     elements.posX.textContent = (data.position_x || 0).toFixed(1);
     elements.posY.textContent = (data.position_y || 0).toFixed(1);
@@ -281,18 +357,6 @@ function handleTelemetryMessage(data) {
         elements.courseName.textContent = data.course.name;
     }
 
-    // フラグ表示
-    if (data.flags) {
-        var flagParts = [];
-        if (data.flags.tcs_active) flagParts.push('<span class="flag-on">TCS</span>');
-        if (data.flags.asm_active) flagParts.push('<span class="flag-on">ASM</span>');
-        if (data.flags.rev_limiter) flagParts.push('<span class="flag-warn">REV</span>');
-        if (data.flags.hand_brake) flagParts.push('<span class="flag-warn">P-BRK</span>');
-        if (data.flags.lights) flagParts.push('<span class="flag-info">LIGHT</span>');
-        if (data.flags.has_turbo) flagParts.push('<span class="flag-info">TURBO</span>');
-        elements.flagsBar.innerHTML = flagParts.join('');
-    }
-
     // コースマップ
     if (data.position_x !== undefined && data.position_z !== undefined) {
         updateCourseMap(
@@ -302,82 +366,49 @@ function handleTelemetryMessage(data) {
             data.speed_kmh || 0
         );
     }
+}
 
-    // サスペンション
-    if (data.susp_height) {
-        elements.flSusp.textContent = (data.susp_height[0] * 1000).toFixed(0);
-        elements.frSusp.textContent = (data.susp_height[1] * 1000).toFixed(0);
-        elements.rlSusp.textContent = (data.susp_height[2] * 1000).toFixed(0);
-        elements.rrSusp.textContent = (data.susp_height[3] * 1000).toFixed(0);
-    }
+// チャートデータのシフトと更新（uPlot系）
+function updateChartState(data) {
+    // 加速度
+    updateAccelChart(data.accel_g || 0, data.accel_decel || 0);
+    elements.accelG.textContent = (data.accel_g || 0).toFixed(2);
+    elements.accelDecel.textContent = (data.accel_decel || 0).toFixed(2);
 
-    // タイヤ温度
-    if (data.tyre_temp) {
-        var temps = data.tyre_temp;
-        elements.flTemp.textContent = Math.round(temps[0]);
-        elements.frTemp.textContent = Math.round(temps[1]);
-        elements.rlTemp.textContent = Math.round(temps[2]);
-        elements.rrTemp.textContent = Math.round(temps[3]);
-        elements.flTemp.style.color = getTyreTempColor(temps[0]);
-        elements.frTemp.style.color = getTyreTempColor(temps[1]);
-        elements.rlTemp.style.color = getTyreTempColor(temps[2]);
-        elements.rrTemp.style.color = getTyreTempColor(temps[3]);
-    }
+    // チャートデータ更新
+    timeData.shift();
+    timeData.push(timeCounter++);
 
-    // ホイール回転速度
-    if (data.wheel_rps) {
-        var rps = data.wheel_rps;
-        elements.flRps.textContent = Math.abs(rps[0] || 0).toFixed(1);
-        elements.frRps.textContent = Math.abs(rps[1] || 0).toFixed(1);
-        elements.rlRps.textContent = Math.abs(rps[2] || 0).toFixed(1);
-        elements.rrRps.textContent = Math.abs(rps[3] || 0).toFixed(1);
-    }
+    var speed = Math.round(data.speed_kmh || 0);
+    speedData.shift();
+    speedData.push(speed);
 
-    // タイヤ半径
-    if (data.tyre_radius) {
-        elements.flRadius.textContent = (data.tyre_radius[0] || 0).toFixed(3);
-        elements.frRadius.textContent = (data.tyre_radius[1] || 0).toFixed(3);
-        elements.rlRadius.textContent = (data.tyre_radius[2] || 0).toFixed(3);
-        elements.rrRadius.textContent = (data.tyre_radius[3] || 0).toFixed(3);
-    }
+    var rpm = Math.round(data.rpm || 0);
+    rpmData.shift();
+    rpmData.push(rpm);
 
-    // 路面法線
-    elements.roadPlaneX.textContent = (data.road_plane_x || 0).toFixed(3);
-    elements.roadPlaneY.textContent = (data.road_plane_y || 0).toFixed(3);
-    elements.roadPlaneZ.textContent = (data.road_plane_z || 0).toFixed(3);
-    elements.roadPlaneDist.textContent = (data.road_plane_distance || 0).toFixed(3);
-
-    // 車体加速度（Packet B拡張）
-    if (data.body_accel_sway !== undefined) {
-        elements.bodySway.textContent = (data.body_accel_sway || 0).toFixed(3);
-        elements.bodyHeave.textContent = (data.body_accel_heave || 0).toFixed(3);
-        elements.bodySurge.textContent = (data.body_accel_surge || 0).toFixed(3);
-    }
-
-    // トルクベクタリング・回生（Packet ~拡張）
-    if (data.torque_vector) {
-        elements.torque1.textContent = data.torque_vector[0].toFixed(2);
-        elements.torque2.textContent = data.torque_vector[1].toFixed(2);
-        elements.torque3.textContent = data.torque_vector[2].toFixed(2);
-        elements.torque4.textContent = data.torque_vector[3].toFixed(2);
-    }
-    if (data.energy_recovery !== undefined) {
-        elements.energyRecovery.textContent = (data.energy_recovery || 0).toFixed(2);
-    }
-
-    // 車種ID・パッケージID
-    if (data.car_id) {
-        elements.carId.textContent = data.car_id;
-    }
-    if (data.package_id !== undefined) {
-        elements.pkgId.textContent = data.package_id;
-    }
+    var throttle = Math.round(data.throttle_pct || 0);
+    var brake = Math.round(data.brake_pct || 0);
+    throttleData.shift();
+    throttleData.push(throttle);
+    brakeData.shift();
+    brakeData.push(brake);
 
     // チャート再描画
     if (speedChart) speedChart.setData([timeData, speedData]);
     if (rpmChart) rpmChart.setData([timeData, rpmData]);
     if (throttleChart) throttleChart.setData([timeData, throttleData]);
     if (brakeChart) brakeChart.setData([timeData, brakeData]);
+}
+
+function handleTelemetryMessage(data) {
+    packetCount++;
+    updateLapState(data);
+    updateVehicleState(data);
+    updateFuelState(data);
+    updateTyreState(data);
+    updatePositionState(data);
+    updateChartState(data);
 }
 
 function connectWebSocket() {

@@ -26,6 +26,7 @@ def load_config():
 
 CONFIG = load_config()
 
+# アプリケーション状態: 接続中のWebSocketクライアント一覧
 websocket_clients = set()
 
 LOG_DIR = "gt7data"
@@ -173,6 +174,7 @@ async def telemetry_background_task():
 
                         # ラップデータ蓄積・保存
                         current_lap_data.append(parsed)
+                        # 固定サンプル数トリガー（lap_count変化検知ではない）
                         if len(current_lap_data) >= 1800:
                             save_lap_to_file(current_lap_data, current_lap_number)
                             current_lap_data = []

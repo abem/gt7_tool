@@ -187,7 +187,7 @@ class GT7Decoder:
             d = decrypted_data
             result = self._extract_fields(d)
 
-            # コース推定（無効化）
+            # コース推定は無効化中。有効にする場合はこの行を復元し下のハードコードを削除
             # course_info = self.course_estimator.estimate_course(
             #     result["position_x"], result["position_z"]
             # )

@@ -89,7 +89,6 @@ function startTestMode(btn) {
         updateCourseMap(point.x, 0, point.z, point.speed);
 
         packetCount++;
-        elements.packets.textContent = packetCount;
     }, 200);
 }
 
@@ -97,7 +96,9 @@ function stopTestMode() {
     debugLog('TEST', 'Test mode disabled');
     clearInterval(testModeInterval);
 
-    elements.connectionStatus.textContent = 'Connected';
+    // ws が接続中なら Connected、そうでなければ Disconnected
+    elements.connectionStatus.textContent = (ws && ws.readyState === WebSocket.OPEN) ? 'Connected' : 'Disconnected';
+    elements.connectionStatus.className = (ws && ws.readyState === WebSocket.OPEN) ? 'connected' : 'disconnected';
     elements.connectionStatus.style.background = '';
     elements.connectionStatus.style.color = '';
 
