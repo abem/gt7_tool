@@ -49,6 +49,7 @@ simple.html
 uplot-test.html
 
 # Test output
+test-glass-result.png
 screenshots/
 visual_baseline/
 visual_current/

@@ -39,7 +39,7 @@ var chartOptions = {
         { show: false },
         { show: false }
     ],
-    series: [{}, { stroke: '#00ff88', width: 1.5, fill: 'rgba(0, 255, 136, 0.1)' }],
+    series: [{}, { stroke: COLORS.accentGreen, width: 1.5, fill: 'rgba(0, 255, 136, 0.1)' }],
     cursor: { show: false },
     legend: { show: false },
     padding: [0, 0, 0, 0],
@@ -83,7 +83,7 @@ function drawAccelChart() {
 
     // 減速G（赤）
     if (accelData.accelDecel.length > 0) {
-        accelCtx.strokeStyle = '#ff4444';
+        accelCtx.strokeStyle = COLORS.accentRed;
         accelCtx.lineWidth = config.lineWidth;
         accelCtx.beginPath();
         for (var i = 0; i < accelData.accelDecel.length; i++) {
@@ -99,12 +99,12 @@ function drawAccelChart() {
     accelCtx.font = '12px sans-serif';
     var lastAccelG = accelData.accelG[accelData.accelG.length - 1] || 0;
     accelCtx.textAlign = 'right';
-    accelCtx.fillStyle = '#00ff88';
+    accelCtx.fillStyle = COLORS.accentGreen;
     accelCtx.fillText('ACCEL: ' + lastAccelG.toFixed(2) + ' G', width - 10, 20);
 
     var lastAccelDecel = accelData.accelDecel[accelData.accelDecel.length - 1] || 0;
     accelCtx.textAlign = 'left';
-    accelCtx.fillStyle = '#ff4444';
+    accelCtx.fillStyle = COLORS.accentRed;
     accelCtx.fillText('DECEL: ' + lastAccelDecel.toFixed(2) + ' G', 10, 20);
 }
 
@@ -157,7 +157,7 @@ function initCharts() {
     try {
         speedChart = new uPlot(
             Object.assign({}, chartOptions, {
-                series: [{}, { stroke: '#00ff88', width: 1.5, fill: 'rgba(0, 255, 136, 0.1)' }]
+                series: [{}, { stroke: COLORS.accentGreen, width: 1.5, fill: 'rgba(0, 255, 136, 0.1)' }]
             }),
             [timeData, speedData],
             chartElements['speed-chart']
@@ -165,7 +165,7 @@ function initCharts() {
 
         rpmChart = new uPlot(
             Object.assign({}, chartOptions, {
-                series: [{}, { stroke: '#ffd700', width: 1.5, fill: 'rgba(255, 215, 0, 0.1)' }]
+                series: [{}, { stroke: COLORS.accentYellow, width: 1.5, fill: 'rgba(255, 215, 0, 0.1)' }]
             }),
             [timeData, rpmData],
             chartElements['rpm-chart']
@@ -173,7 +173,7 @@ function initCharts() {
 
         throttleChart = new uPlot(
             Object.assign({}, chartOptions, {
-                series: [{}, { stroke: '#00ff88', width: 1.5, fill: 'rgba(0, 255, 136, 0.15)' }]
+                series: [{}, { stroke: COLORS.accentGreen, width: 1.5, fill: 'rgba(0, 255, 136, 0.15)' }]
             }),
             [timeData, throttleData],
             chartElements['throttle-chart']
@@ -181,7 +181,7 @@ function initCharts() {
 
         brakeChart = new uPlot(
             Object.assign({}, chartOptions, {
-                series: [{}, { stroke: '#ff4444', width: 1.5, fill: 'rgba(255, 68, 68, 0.15)' }]
+                series: [{}, { stroke: COLORS.accentRed, width: 1.5, fill: 'rgba(255, 68, 68, 0.15)' }]
             }),
             [timeData, brakeData],
             chartElements['brake-chart']

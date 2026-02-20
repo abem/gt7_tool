@@ -24,6 +24,9 @@ function updateRotationArrows(pitch, yaw, roll) {
 }
 
 var ws = null;
+var reconnectDelay = 2000;
+var maxReconnectDelay = 30000;
+var reconnectTimer = null;
 var packetCount = 0;
 var maxSpeed = 0;
 var currentLapNumber = 0;
@@ -144,7 +147,7 @@ function updateVehicleState(data) {
     var rpmPct = Math.min((rpm / maxRpm) * 100, 100);
     elements.rpmBar.style.width = rpmPct + '%';
     if (data.rpm_alert_min && rpm >= data.rpm_alert_min) {
-        elements.rpmBar.style.background = rpm >= maxRpm ? '#ff4444' : '#ffd700';
+        elements.rpmBar.style.background = rpm >= maxRpm ? COLORS.accentRed : COLORS.accentYellow;
     } else {
         elements.rpmBar.style.background = '';
     }
@@ -421,6 +424,7 @@ function connectWebSocket() {
         console.log('Connected to GT7 Bridge');
         elements.connectionStatus.textContent = 'Connected';
         elements.connectionStatus.className = 'connected';
+        reconnectDelay = 2000;
         initCharts();
         initCourseMap();
         initCar3D();
@@ -432,8 +436,9 @@ function connectWebSocket() {
 
     ws.onclose = function() {
         console.log('Disconnected');
-        elements.connectionStatus.textContent = 'Disconnected';
+        elements.connectionStatus.textContent = 'Reconnecting...';
         elements.connectionStatus.className = 'disconnected';
+        scheduleReconnect();
     };
 
     ws.onmessage = function(event) {
@@ -444,4 +449,14 @@ function connectWebSocket() {
             console.error('WebSocket message error:', e);
         }
     };
+}
+
+function scheduleReconnect() {
+    if (reconnectTimer) return;
+    console.log('Reconnecting in ' + (reconnectDelay / 1000) + 's...');
+    reconnectTimer = setTimeout(function() {
+        reconnectTimer = null;
+        connectWebSocket();
+    }, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.5, maxReconnectDelay);
 }

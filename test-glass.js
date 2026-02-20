@@ -11,7 +11,6 @@
  * Usage: node test-glass.js [http://host:port]
  */
 const puppeteer = require('puppeteer-core');
-const fs = require('fs');
 const path = require('path');
 
 const TARGET_URL = process.argv[2] || 'http://localhost:18080';
@@ -295,6 +294,7 @@ async function analyzeAndReport(pixelData, page, browser) {
 
     const outsidePct = blueCount > 0 ? (blueOutsideSilhouette / blueCount * 100).toFixed(1) : 0;
     console.log(`\nはみ出し青: ${blueOutsideSilhouette} (青全体の${outsidePct}%)`);
+    console.log(`内部青: ${blueInsideSilhouette}`);
 
     // === 検査項目 ===
     const results = [];

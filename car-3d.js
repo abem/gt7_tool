@@ -159,43 +159,36 @@ function initCar3D() {
  *  車両モデル構築
  * ================================================================ */
 function buildCarModel(carGroup) {
-    var L = CAR_3D_CONFIG.bodyLength;    // 4.3
-    var W = CAR_3D_CONFIG.bodyWidth;     // 1.9
-    var H = CAR_3D_CONFIG.bodyHeight;    // 1.12
-    var wR = CAR_3D_CONFIG.wheelRadius;  // 0.42
-    var gc = CAR_3D_CONFIG.groundClearance; // 0.12
-    var HL = L / 2;                      // 2.15
-    var bodyW = W * 0.92;               // ボディ押し出し幅
+    buildCarBody(carGroup);
+    buildWindows(carGroup);
+    buildAeroAndIntakes(carGroup);
+    buildWheels(carGroup);
+    buildLights(carGroup);
+    buildRearDetails(carGroup);
+}
 
-    // ─── メインボディ（サイドプロファイル → 押し出し）───
+// ─── メインボディ（サイドプロファイル → 押し出し）───
+function buildCarBody(carGroup) {
+    var L = CAR_3D_CONFIG.bodyLength;
+    var H = CAR_3D_CONFIG.bodyHeight;
+    var gc = CAR_3D_CONFIG.groundClearance;
+    var HL = L / 2;
+    var bodyW = CAR_3D_CONFIG.bodyWidth * 0.92;
+
     var bodyShape = new THREE.Shape();
-
-    // 後方底部スタート（時計回り）
     bodyShape.moveTo(-HL, gc);
-    // 底部ライン
     bodyShape.lineTo(HL - 0.30, gc);
-    // フロントバンパー（丸みを帯びて上昇）
     bodyShape.quadraticCurveTo(HL - 0.05, gc, HL, gc + 0.16);
-    // フロントフェイス（低いノーズ）
     bodyShape.lineTo(HL, 0.42);
-    // フード前半（緩やかに上昇）
     bodyShape.quadraticCurveTo(HL - 0.20, 0.46, 1.50, 0.55);
-    // フード後半（ウインドシールドへ）
     bodyShape.quadraticCurveTo(1.00, 0.63, 0.50, 0.72);
-    // ウインドシールド（深いレーキ角）
     bodyShape.lineTo(-0.15, H - 0.04);
-    // ルーフ前端（カーブ）
     bodyShape.quadraticCurveTo(-0.35, H, -0.55, H);
-    // ルーフ
     bodyShape.lineTo(-0.85, H - 0.02);
-    // リアウインドウ（急傾斜）
     bodyShape.quadraticCurveTo(-1.05, 0.93, -1.25, 0.82);
-    // エンジンカバー（ミッドエンジン配置）
     bodyShape.lineTo(-1.80, 0.78);
-    // リアリップ
     bodyShape.lineTo(-HL + 0.05, 0.76);
     bodyShape.lineTo(-HL, 0.68);
-    // リアフェイス → クローズ
     bodyShape.lineTo(-HL, gc);
 
     var bodyGeo = new THREE.ExtrudeGeometry(bodyShape, {
@@ -215,9 +208,12 @@ function buildCarModel(carGroup) {
 
     car3DState.carBody = new THREE.Mesh(bodyGeo, bodyMat);
     carGroup.add(car3DState.carBody);
+}
 
-    // ─── ウインドウ ───
-    var bh = bodyW / 2;  // 0.874
+// ─── ウインドウ ───
+function buildWindows(carGroup) {
+    var bodyW = CAR_3D_CONFIG.bodyWidth * 0.92;
+    var bh = bodyW / 2;
     var bevelT = 0.05;
     var bevelS = 0.04;
 
@@ -240,7 +236,7 @@ function buildCarModel(carGroup) {
         depthWrite: false
     });
 
-    // ── フロントウインドシールド（薄板クワッド）──
+    // フロントウインドシールド（薄板クワッド）
     var gw  = bh * 0.85;
     var gwT = bh * 0.70;
     var wsGeo = new THREE.BufferGeometry();
@@ -261,7 +257,7 @@ function buildCarModel(carGroup) {
     car3DState.windows.push(wsMesh);
     carGroup.add(wsMesh);
 
-    // ── リアウインドウ（薄板クワッド）──
+    // リアウインドウ（薄板クワッド）
     var rw  = bh * 0.78;
     var rwB = bh * 0.68;
     var rwGeo = new THREE.BufferGeometry();
@@ -282,17 +278,14 @@ function buildCarModel(carGroup) {
     car3DState.windows.push(rwMesh);
     carGroup.add(rwMesh);
 
-    // ── サイドウインドウ（ExtrudeGeometryでボディと同一ベベル — 深度が完全一致）──
-    // ウインドウ領域のプロファイルをボディと同じ押し出し＋ベベルで作る
-    // → ベベル面の深度がボディと完全一致し、polygonOffsetが確実に効く
-    // → はみ出しも原理的に発生しない（ボディと同じ形状）
+    // サイドウインドウ（ExtrudeGeometryでボディと同一ベベル — 深度が完全一致）
     var swShape = new THREE.Shape();
-    swShape.moveTo(0.44, 0.74);                              // ベルトライン前端
-    swShape.lineTo(-0.10, 1.04);                             // ウインドシールド上端
-    swShape.quadraticCurveTo(-0.30, 1.06, -0.55, 1.06);     // ルーフライン
-    swShape.lineTo(-0.85, 1.04);                             // ルーフリア
-    swShape.quadraticCurveTo(-1.00, 0.92, -1.15, 0.82);     // リアウインドウカーブ
-    swShape.lineTo(0.44, 0.74);                              // ベルトライン閉じる
+    swShape.moveTo(0.44, 0.74);
+    swShape.lineTo(-0.10, 1.04);
+    swShape.quadraticCurveTo(-0.30, 1.06, -0.55, 1.06);
+    swShape.lineTo(-0.85, 1.04);
+    swShape.quadraticCurveTo(-1.00, 0.92, -1.15, 0.82);
+    swShape.lineTo(0.44, 0.74);
 
     var swGeo = new THREE.ExtrudeGeometry(swShape, {
         depth: bodyW,
@@ -303,7 +296,6 @@ function buildCarModel(carGroup) {
     });
     swGeo.translate(0, 0, -bodyW / 2);
 
-    // サイドウインドウ暗背景（ボディより手前に描画）
     var sideBackMat = new THREE.MeshBasicMaterial({
         color: 0x081018,
         depthTest: true,
@@ -312,8 +304,6 @@ function buildCarModel(carGroup) {
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -4
     });
-
-    // サイドウインドウガラス
     var sideGlassMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.windows,
         transparent: true,
@@ -335,8 +325,15 @@ function buildCarModel(carGroup) {
     swGlassMesh.renderOrder = 4;
     car3DState.windows.push(swGlassMesh);
     carGroup.add(swGlassMesh);
+}
 
-    // ─── サイドエアインテーク（横長スリット）───
+// ─── エアロ・インテーク・スカート ───
+function buildAeroAndIntakes(carGroup) {
+    var W = CAR_3D_CONFIG.bodyWidth;
+    var gc = CAR_3D_CONFIG.groundClearance;
+    var HL = CAR_3D_CONFIG.bodyLength / 2;
+    var bodyW = W * 0.92;
+
     var intakeMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.intake });
     var intakeGeo = new THREE.BoxGeometry(0.50, 0.16, 0.03);
     [-1, 1].forEach(function(side) {
@@ -345,25 +342,24 @@ function buildCarModel(carGroup) {
         carGroup.add(intake);
     });
 
-    // ─── フロントスプリッター ───
-    var splitterGeo = new THREE.BoxGeometry(0.18, 0.025, W * 1.02);
     var darkMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
+    var splitterGeo = new THREE.BoxGeometry(0.18, 0.025, W * 1.02);
     var splitter = new THREE.Mesh(splitterGeo, darkMat);
     splitter.position.set(HL - 0.05, gc - 0.01, 0);
     carGroup.add(splitter);
 
-    // ─── サイドスカート ───
     var skirtGeo = new THREE.BoxGeometry(2.2, 0.035, 0.025);
     [-1, 1].forEach(function(side) {
         var skirt = new THREE.Mesh(skirtGeo, darkMat);
         skirt.position.set(-0.10, gc + 0.02, side * W / 2);
         carGroup.add(skirt);
     });
+}
 
-    // ─── ホイール ───
-    buildWheels(carGroup);
+// ─── ヘッドライト・テールライト ───
+function buildLights(carGroup) {
+    var HL = CAR_3D_CONFIG.bodyLength / 2;
 
-    // ─── ヘッドライト（丸型ポップアップ風）───
     var hlMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.headlight,
         emissive: 0x888866,
@@ -378,7 +374,6 @@ function buildCarModel(carGroup) {
         carGroup.add(hl);
     });
 
-    // ─── テールライト（丸型4灯）───
     var tlMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.taillight,
         emissive: 0x880000
@@ -390,20 +385,28 @@ function buildCarModel(carGroup) {
         tl.rotation.y = -Math.PI / 2;
         carGroup.add(tl);
     });
+}
 
-    // ─── フロントグリル / インテーク ───
+// ─── グリル・ディフューザー・エキゾースト・ルーバー・ウイング ───
+function buildRearDetails(carGroup) {
+    var HL = CAR_3D_CONFIG.bodyLength / 2;
+    var bodyW = CAR_3D_CONFIG.bodyWidth * 0.92;
+
+    var intakeMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.intake });
+
+    // フロントグリル
     var grillGeo = new THREE.BoxGeometry(0.02, 0.13, 0.65);
     var grill = new THREE.Mesh(grillGeo, intakeMat);
     grill.position.set(HL + 0.01, 0.22, 0);
     carGroup.add(grill);
 
-    // ─── リアディフューザー ───
+    // リアディフューザー
     var diffGeo = new THREE.BoxGeometry(0.02, 0.10, 0.75);
     var diff = new THREE.Mesh(diffGeo, intakeMat);
     diff.position.set(-HL - 0.01, 0.20, 0);
     carGroup.add(diff);
 
-    // ─── エキゾースト（クアッド出し）───
+    // エキゾースト（クアッド出し）
     var exhMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.exhaust,
         shininess: 120
@@ -416,7 +419,7 @@ function buildCarModel(carGroup) {
         carGroup.add(exh);
     });
 
-    // ─── エンジンカバーのルーバー（ミッドエンジンの吸気口）───
+    // エンジンカバーのルーバー（ミッドエンジンの吸気口）
     var louverMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
     var louverGeo = new THREE.BoxGeometry(0.30, 0.008, bodyW * 0.55);
     for (var i = 0; i < 4; i++) {
@@ -426,8 +429,7 @@ function buildCarModel(carGroup) {
         carGroup.add(louver);
     }
 
-    // ─── リアウイング ───
-    // ウイング支柱
+    // リアウイング支柱
     var stayGeo = new THREE.BoxGeometry(0.03, 0.22, 0.03);
     var stayMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
     [-0.55, 0.55].forEach(function(z) {
@@ -435,7 +437,8 @@ function buildCarModel(carGroup) {
         stay.position.set(-HL + 0.15, 0.88, z);
         carGroup.add(stay);
     });
-    // ウイング翼面
+
+    // リアウイング翼面
     var wingShape = new THREE.Shape();
     wingShape.moveTo(0, 0);
     wingShape.lineTo(0.22, -0.01);
@@ -566,7 +569,9 @@ function updateCar3D(pitch, yaw, roll) {
     car3DState.yaw = yaw || 0;
     car3DState.roll = roll || 0;
 
-    // carGroup全体を回転（yawは無視して常に0）
+    // carGroup全体を回転
+    // yawはOrbitControlsのカメラ回転と干渉するため、3Dモデルには適用しない
+    // （car3DState.yawにはUI表示用に保持）
     car3DState.carGroup.rotation.x = car3DState.pitch;
     car3DState.carGroup.rotation.y = 0;
     car3DState.carGroup.rotation.z = car3DState.roll;

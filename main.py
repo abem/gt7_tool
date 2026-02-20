@@ -17,11 +17,25 @@ logger = logging.getLogger(__name__)
 
 
 def load_config():
-    with open('config.json', 'r') as f:
-        cfg = json.load(f)
-        if os.getenv("PS5_IP"):
-            cfg["ps5_ip"] = os.getenv("PS5_IP")
-        return cfg
+    defaults = {
+        "ps5_ip": "192.168.1.100",
+        "send_port": 33739,
+        "receive_port": 33740,
+        "http_port": 18080,
+        "heartbeat_interval": 10
+    }
+    try:
+        with open('config.json', 'r') as f:
+            cfg = json.load(f)
+    except FileNotFoundError:
+        logger.warning("config.json not found, using defaults")
+        cfg = defaults
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in config.json: {e}, using defaults")
+        cfg = defaults
+    if os.getenv("PS5_IP"):
+        cfg["ps5_ip"] = os.getenv("PS5_IP")
+    return cfg
 
 
 CONFIG = load_config()

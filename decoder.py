@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class CourseEstimator:
-    """位置座標からコースを推定するクラス"""
+    """位置座標からコースを推定するクラス（現在未使用: 将来コース推定を有効化する際に使用）"""
 
     def __init__(self, db_file='course_database.json'):
         self.courses = []
@@ -128,8 +128,7 @@ class GT7Decoder:
         b'~': 0x55FABB4F,
     }
 
-    def __init__(self, course_db='course_database.json', heartbeat_type=b'~'):
-        self.course_estimator = CourseEstimator(course_db)
+    def __init__(self, heartbeat_type=b'~'):
         self._parse_count = 0
         self.heartbeat_type = heartbeat_type
         self._xor_value = self.XOR_MAP.get(heartbeat_type, 0xDEADBEAF)
@@ -187,11 +186,7 @@ class GT7Decoder:
             d = decrypted_data
             result = self._extract_fields(d)
 
-            # コース推定は無効化中。有効にする場合はこの行を復元し下のハードコードを削除
-            # course_info = self.course_estimator.estimate_course(
-            #     result["position_x"], result["position_z"]
-            # )
-            # result["course"] = course_info
+            # コース推定は未実装（CourseEstimatorクラスは将来用に保持）
             result["course"] = {"id": "unknown", "name": "", "confidence": 0}
 
             self._parse_count += 1

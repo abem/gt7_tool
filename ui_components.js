@@ -5,12 +5,20 @@
 
 var DEBUG_MODE = false;
 
+// 共通カラー定数
+var COLORS = {
+    accentRed: '#ff4444',
+    accentGreen: '#00ff88',
+    accentYellow: '#ffd700',
+    accentCyan: '#44ffff'
+};
+
 // チャート設定
 var CHART_POINTS = 1200;
 
 var ACCEL_CHART_CONFIG = {
     maxPoints: 200,
-    lineColor: '#00ff88',
+    lineColor: COLORS.accentGreen,
     lineWidth: 2,
     gridColor: 'rgba(255, 255, 255, 0.1)'
 };
@@ -20,10 +28,10 @@ var COURSE_MAP_CONFIG = {
     colors: {
         grid: 'rgba(255, 255, 255, 0.05)',
         text: 'rgba(255, 255, 255, 0.5)',
-        car: '#00ff88',
-        trajectoryLow: '#ff4444',
-        trajectoryMid: '#ffd700',
-        trajectoryHigh: '#00ff88'
+        car: COLORS.accentGreen,
+        trajectoryLow: COLORS.accentRed,
+        trajectoryMid: COLORS.accentYellow,
+        trajectoryHigh: COLORS.accentGreen
     },
     trajectorySampleInterval: 3,
     maxTrajectoryPoints: 2000
@@ -42,9 +50,8 @@ var courseMapState = {
 
 // 加速度データ
 var accelData = {
-    times: new Array(ACCEL_CHART_CONFIG.maxPoints).fill(0),
-    accelG: new Array(ACCEL_CHART_CONFIG.maxPoints).fill(0),
-    accelDecel: new Array(ACCEL_CHART_CONFIG.maxPoints).fill(0)
+    accelG: [],
+    accelDecel: []
 };
 
 // DOM要素キャッシュ
@@ -164,10 +171,10 @@ function formatLapTime(ms) {
 }
 
 function getTyreTempColor(temp) {
-    if (temp < 40) return '#44ffff';
-    if (temp < 80) return '#00ff88';
-    if (temp < 100) return '#ffff00';
-    return '#ff4444';
+    if (temp < 40) return COLORS.accentCyan;
+    if (temp < 80) return COLORS.accentGreen;
+    if (temp < 100) return COLORS.accentYellow;
+    return COLORS.accentRed;
 }
 
 function getSpeedColor(speed) {
