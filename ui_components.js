@@ -41,6 +41,7 @@ var COURSE_MAP_CONFIG = {
 var courseMapState = {
     canvas: null,
     ctx: null,
+    domReady: false,
     initialized: false,
     bounds: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 },
     trajectory: [],

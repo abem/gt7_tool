@@ -28,6 +28,18 @@ var reconnectDelay = 2000;
 var maxReconnectDelay = 30000;
 var reconnectTimer = null;
 var packetCount = 0;
+var latestMessage = null;
+var processingScheduled = false;
+var lastUiTs = 0;
+var lastChartsTs = 0;
+var lastMapTs = 0;
+var last3DTs = 0;
+var lastRotationTs = 0;
+var UI_UPDATE_INTERVAL = 1000 / 30;
+var CHART_UPDATE_INTERVAL = 1000 / 20;
+var MAP_UPDATE_INTERVAL = 1000 / 10;
+var CAR3D_UPDATE_INTERVAL = 1000 / 30;
+var ROTATION_UPDATE_INTERVAL = 1000 / 30;
 var maxSpeed = 0;
 var currentLapNumber = 0;
 var lastLapNumber = 0;
@@ -294,80 +306,106 @@ function updateTyreState(data) {
 }
 
 // 位置・速度ベクトル・姿勢角・コースマップ・3D車両モデル更新
-function updatePositionState(data) {
+function updatePositionState(data, options) {
+    var opts = options || {};
+    var updateText = opts.updateText !== false;
+    var updateCourse = !!opts.updateCourseMap;
+    var update3D = !!opts.update3D;
+    var updateRotation = !!opts.updateRotation;
+
     // 位置
-    elements.posX.textContent = (data.position_x || 0).toFixed(1);
-    elements.posY.textContent = (data.position_y || 0).toFixed(1);
-    elements.posZ.textContent = (data.position_z || 0).toFixed(1);
+    if (updateText) {
+        elements.posX.textContent = (data.position_x || 0).toFixed(1);
+        elements.posY.textContent = (data.position_y || 0).toFixed(1);
+        elements.posZ.textContent = (data.position_z || 0).toFixed(1);
+    }
 
     // 速度ベクトル
-    elements.velX.textContent = (data.velocity_x || 0).toFixed(1);
-    elements.velY.textContent = (data.velocity_y || 0).toFixed(1);
-    elements.velZ.textContent = (data.velocity_z || 0).toFixed(1);
+    if (updateText) {
+        elements.velX.textContent = (data.velocity_x || 0).toFixed(1);
+        elements.velY.textContent = (data.velocity_y || 0).toFixed(1);
+        elements.velZ.textContent = (data.velocity_z || 0).toFixed(1);
+    }
 
     // 回転
-    elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
-    elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
-    elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
+    if (updateText) {
+        elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
+        elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
+        elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
+    }
 
     // 3Dモデル更新（既存の車体3Dモデル）
-    updateCar3D(
-        data.rotation_pitch || 0,
-        data.rotation_yaw || 0,
-        data.rotation_roll || 0
-    );
+    if (update3D) {
+        updateCar3D(
+            data.rotation_pitch || 0,
+            data.rotation_yaw || 0,
+            data.rotation_roll || 0
+        );
+    }
 
     // 3D回転表示更新（Angular Velocityカード内の直方体）
-    updateRotation3D(
-        data.rotation_pitch || 0,
-        data.rotation_yaw || 0,
-        data.rotation_roll || 0
-    );
+    if (updateRotation) {
+        updateRotation3D(
+            data.rotation_pitch || 0,
+            data.rotation_yaw || 0,
+            data.rotation_roll || 0
+        );
 
-    // 回転矢印の更新
-    updateRotationArrows(
-        data.rotation_pitch || 0,
-        data.rotation_yaw || 0,
-        data.rotation_roll || 0
-    );
+        // 回転矢印の更新
+        updateRotationArrows(
+            data.rotation_pitch || 0,
+            data.rotation_yaw || 0,
+            data.rotation_roll || 0
+        );
+    }
 
     // 角速度
-    if (elements.angX) elements.angX.textContent = (data.angular_velocity_x || 0).toFixed(3);
-    if (elements.angY) elements.angY.textContent = (data.angular_velocity_y || 0).toFixed(3);
-    if (elements.angZ) elements.angZ.textContent = (data.angular_velocity_z || 0).toFixed(3);
-    if (elements.pitchRate) elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
-    if (elements.yawRate) elements.yawRate.textContent = (data.angular_velocity_y || 0).toFixed(3);
-    if (elements.rollRate) elements.rollRate.textContent = (data.angular_velocity_z || 0).toFixed(3);
+    if (updateText) {
+        if (elements.angX) elements.angX.textContent = (data.angular_velocity_x || 0).toFixed(3);
+        if (elements.angY) elements.angY.textContent = (data.angular_velocity_y || 0).toFixed(3);
+        if (elements.angZ) elements.angZ.textContent = (data.angular_velocity_z || 0).toFixed(3);
+        if (elements.pitchRate) elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
+        if (elements.yawRate) elements.yawRate.textContent = (data.angular_velocity_y || 0).toFixed(3);
+        if (elements.rollRate) elements.rollRate.textContent = (data.angular_velocity_z || 0).toFixed(3);
+    }
 
     // 方角・車体高さ
-    elements.orientation.textContent = (data.orientation || 0).toFixed(3);
-    elements.bodyHeight.textContent = (data.body_height || 0).toFixed(3);
+    if (updateText) {
+        elements.orientation.textContent = (data.orientation || 0).toFixed(3);
+        elements.bodyHeight.textContent = (data.body_height || 0).toFixed(3);
+    }
 
     // 現在のラップ経過時間
-    if (data.current_laptime !== undefined && data.current_laptime > 0) {
+    if (updateText && data.current_laptime !== undefined && data.current_laptime > 0) {
         elements.runningLapTime.textContent = formatLapTime(data.current_laptime);
     }
 
     // スタート順位（レース前のみ有効）
-    if (data.pre_race_position != null && data.num_cars_pre_race != null) {
-        elements.racePosition.textContent = 'P' + data.pre_race_position + '/' + data.num_cars_pre_race;
-    } else if (data.pre_race_position != null) {
-        elements.racePosition.textContent = 'P' + data.pre_race_position;
+    if (updateText) {
+        if (data.pre_race_position != null && data.num_cars_pre_race != null) {
+            elements.racePosition.textContent = 'P' + data.pre_race_position + '/' + data.num_cars_pre_race;
+        } else if (data.pre_race_position != null) {
+            elements.racePosition.textContent = 'P' + data.pre_race_position;
+        }
     }
 
     // コース名
-    if (data.course && data.course.name && data.course.id !== 'unknown') {
-        elements.courseName.textContent = data.course.name;
+    if (updateText) {
+        if (data.course && data.course.name && data.course.id !== 'unknown') {
+            elements.courseName.textContent = data.course.name;
+        }
     }
 
     // コースマップ
-    if (data.position_x !== undefined && data.position_z !== undefined) {
-        updateCourseMap(
-            data.position_x,
-            data.position_y || 0,
-            data.position_z,
-            data.speed_kmh || 0
-        );
+    if (updateCourse) {
+        if (data.position_x !== undefined && data.position_z !== undefined) {
+            updateCourseMap(
+                data.position_x,
+                data.position_y || 0,
+                data.position_z,
+                data.speed_kmh || 0
+            );
+        }
     }
 }
 
@@ -404,14 +442,43 @@ function updateChartState(data) {
     if (brakeChart) brakeChart.setData([timeData, brakeData]);
 }
 
-function handleTelemetryMessage(data) {
-    packetCount++;
-    updateLapState(data);
-    updateVehicleState(data);
-    updateFuelState(data);
-    updateTyreState(data);
-    updatePositionState(data);
-    updateChartState(data);
+function handleTelemetryMessage(data, nowTs) {
+    var now = nowTs || performance.now();
+    var doUi = (now - lastUiTs) >= UI_UPDATE_INTERVAL;
+    var doCharts = (now - lastChartsTs) >= CHART_UPDATE_INTERVAL;
+    var doMap = (now - lastMapTs) >= MAP_UPDATE_INTERVAL;
+    var do3D = (now - last3DTs) >= CAR3D_UPDATE_INTERVAL;
+    var doRotation = (now - lastRotationTs) >= ROTATION_UPDATE_INTERVAL;
+
+    if (doUi) {
+        updateLapState(data);
+        updateVehicleState(data);
+        updateFuelState(data);
+        updateTyreState(data);
+        lastUiTs = now;
+    }
+
+    updatePositionState(data, {
+        updateText: doUi,
+        updateCourseMap: doMap,
+        update3D: do3D,
+        updateRotation: doRotation
+    });
+
+    if (doMap) {
+        lastMapTs = now;
+    }
+    if (do3D) {
+        last3DTs = now;
+    }
+    if (doRotation) {
+        lastRotationTs = now;
+    }
+
+    if (doCharts) {
+        updateChartState(data);
+        lastChartsTs = now;
+    }
 }
 
 function connectWebSocket() {
@@ -442,13 +509,31 @@ function connectWebSocket() {
     };
 
     ws.onmessage = function(event) {
-        try {
-            var data = JSON.parse(event.data);
-            handleTelemetryMessage(data);
-        } catch (e) {
-            console.error('WebSocket message error:', e);
-        }
+        packetCount++;
+        latestMessage = event.data;
+        scheduleTelemetryProcessing();
     };
+}
+
+function scheduleTelemetryProcessing() {
+    if (processingScheduled) return;
+    processingScheduled = true;
+    requestAnimationFrame(processTelemetryFrame);
+}
+
+function processTelemetryFrame(now) {
+    processingScheduled = false;
+    if (!latestMessage) return;
+
+    var raw = latestMessage;
+    latestMessage = null;
+
+    try {
+        var data = JSON.parse(raw);
+        handleTelemetryMessage(data, now);
+    } catch (e) {
+        console.error('WebSocket message error:', e);
+    }
 }
 
 function scheduleReconnect() {

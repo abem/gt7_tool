@@ -23,7 +23,10 @@ var car3DState = {
     controls: null,
     pitchEl: null,
     rollEl: null,
-    yawEl: null
+    yawEl: null,
+    lastRenderTs: 0,
+    renderInterval: 1000 / 30,
+    needsRender: true
 };
 
 var CAR_3D_CONFIG = {
@@ -91,6 +94,9 @@ function initCar3D() {
         car3DState.controls.dampingFactor = 0.05;
         car3DState.controls.target.set(0, 0.4, 0);
         car3DState.controls.update();
+        car3DState.controls.addEventListener('change', function() {
+            car3DState.needsRender = true;
+        });
     } catch (e) {
         console.warn('[CAR_3D] OrbitControls initialization failed:', e);
         car3DState.controls = null;
@@ -128,6 +134,7 @@ function initCar3D() {
                 car3DState.camera.aspect = w / h;
                 car3DState.camera.updateProjectionMatrix();
                 car3DState.renderer.setSize(w, h);
+                car3DState.needsRender = true;
             }
         }
     });
@@ -141,16 +148,26 @@ function initCar3D() {
     car3DState.yawEl   = document.getElementById('car-3d-yaw');
 
     // レンダーループ開始
-    function animate() {
+    function animate(now) {
         car3DState.animationId = requestAnimationFrame(animate);
-        if (car3DState.controls) {
-            car3DState.controls.update();
+        if (!car3DState.renderer || !car3DState.scene || !car3DState.camera) {
+            return;
         }
-        if (car3DState.renderer && car3DState.scene && car3DState.camera) {
+        if (now === undefined) {
+            now = performance.now();
+        }
+
+        var elapsed = now - car3DState.lastRenderTs;
+        if (car3DState.needsRender || elapsed >= car3DState.renderInterval) {
+            if (car3DState.controls) {
+                car3DState.controls.update();
+            }
             car3DState.renderer.render(car3DState.scene, car3DState.camera);
+            car3DState.lastRenderTs = now;
+            car3DState.needsRender = false;
         }
     }
-    animate();
+    animate(performance.now());
 
     debugLog('CAR_3D', 'Initialized 3D car model');
 }
@@ -575,6 +592,7 @@ function updateCar3D(pitch, yaw, roll) {
     car3DState.carGroup.rotation.x = car3DState.pitch;
     car3DState.carGroup.rotation.y = 0;
     car3DState.carGroup.rotation.z = car3DState.roll;
+    car3DState.needsRender = true;
 
     // CAR ATTITUDEカード内の数値表示を更新（initCar3D でキャッシュ済みの参照を使用）
     if (car3DState.pitchEl) car3DState.pitchEl.textContent = (pitch * 180 / Math.PI).toFixed(2) + '\u00B0';

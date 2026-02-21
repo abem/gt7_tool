@@ -23,6 +23,7 @@ var brakeChart = null;
 // 加速度チャート
 var accelCanvas = null;
 var accelCtx = null;
+var chartsInitialized = false;
 
 // uPlot 共通設定
 var chartOptions = {
@@ -125,6 +126,8 @@ function updateAccelChart(accelG, accelDecel) {
 }
 
 function initCharts() {
+    if (chartsInitialized) return;
+    var initSucceeded = false;
     var chartElements = {
         'speed-chart': document.getElementById('speed-chart'),
         'rpm-chart': document.getElementById('rpm-chart'),
@@ -217,8 +220,11 @@ function initCharts() {
 
         setTimeout(resizeCharts, 50);
         setTimeout(resizeCharts, 200);
+        initSucceeded = true;
 
     } catch (e) {
         console.error('[CHART] Error:', e);
     }
+
+    chartsInitialized = initSucceeded;
 }

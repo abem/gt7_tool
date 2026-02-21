@@ -7,5 +7,5 @@ services:
     volumes:
       - ./:/app
     environment:
-      - PS5_IP=192.168.1.10
+      - PS5_IP=192.168.1.128
       - PYTHONUNBUFFERED=1

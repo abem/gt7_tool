@@ -6,6 +6,7 @@
  */
 
 function initCourseMap() {
+    if (courseMapState.domReady) return;
     var canvas = document.getElementById('course-map');
     if (!canvas) {
         console.error('[COURSE_MAP] Canvas element not found');
@@ -26,6 +27,8 @@ function initCourseMap() {
         }
     });
     resizeObserver.observe(container);
+
+    courseMapState.domReady = true;
 
     debugLog('COURSE_MAP', 'Initialized', { width: canvas.width, height: canvas.height });
 }
