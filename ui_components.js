@@ -3,10 +3,10 @@
  * 定数・ユーティリティ・DOM要素キャッシュ
  */
 
-var DEBUG_MODE = false;
+let DEBUG_MODE = false;
 
 // 共通カラー定数
-var COLORS = {
+const COLORS = {
     accentRed: '#ff4444',
     accentGreen: '#00ff88',
     accentYellow: '#ffd700',
@@ -14,9 +14,9 @@ var COLORS = {
 };
 
 // チャート設定
-var CHART_POINTS = 1200;
+const CHART_POINTS = 1200;
 
-var ACCEL_CHART_CONFIG = {
+const ACCEL_CHART_CONFIG = {
     maxPoints: 200,
     lineColor: COLORS.accentGreen,
     lineWidth: 2,
@@ -24,7 +24,7 @@ var ACCEL_CHART_CONFIG = {
 };
 
 // コースマップ設定
-var COURSE_MAP_CONFIG = {
+const COURSE_MAP_CONFIG = {
     colors: {
         grid: 'rgba(255, 255, 255, 0.05)',
         text: 'rgba(255, 255, 255, 0.5)',
@@ -38,7 +38,7 @@ var COURSE_MAP_CONFIG = {
 };
 
 // コースマップ状態
-var courseMapState = {
+const courseMapState = {
     canvas: null,
     ctx: null,
     domReady: false,
@@ -50,13 +50,13 @@ var courseMapState = {
 };
 
 // 加速度データ
-var accelData = {
+const accelData = {
     accelG: [],
     accelDecel: []
 };
 
 // DOM要素キャッシュ
-var elements = {};
+let elements = {};
 
 function cacheElements() {
     elements = {

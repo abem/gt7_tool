@@ -238,6 +238,9 @@ async def static_handler(request):
     """静的ファイル（CSS, JS等）を配信"""
     filename = request.match_info['filename']
 
+    if filename == 'favicon.ico':
+        return web.Response(status=204)
+
     # パストラバーサル防止
     if '..' in filename or filename.startswith('/'):
         return web.Response(status=403, text="Forbidden")
