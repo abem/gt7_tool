@@ -234,23 +234,23 @@ function buildWindows(carGroup) {
     var bevelT = 0.05;
     var bevelS = 0.04;
 
-    // フロント/リア用マテリアル（depthTest:false — 斜め板でシルエット内に収まる）
+    // フロント/リア用マテリアル（不透明で安定描画）
     var winBackMat = new THREE.MeshBasicMaterial({
         color: 0x080810,
-        side: THREE.DoubleSide,
-        depthTest: false,
-        depthWrite: false
+        side: THREE.FrontSide,
+        depthTest: true,
+        depthWrite: true
     });
     var winGlassMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.windows,
-        transparent: true,
-        opacity: 0.78,
+        transparent: false,
+        opacity: 1,
         shininess: 200,
         specular: new THREE.Color(0xaaaaaa),
         emissive: new THREE.Color(0x112838),
-        side: THREE.DoubleSide,
-        depthTest: false,
-        depthWrite: false
+        side: THREE.FrontSide,
+        depthTest: true,
+        depthWrite: true
     });
 
     // フロントウインドシールド（薄板クワッド）
@@ -316,20 +316,20 @@ function buildWindows(carGroup) {
     var sideBackMat = new THREE.MeshBasicMaterial({
         color: 0x081018,
         depthTest: true,
-        depthWrite: false,
+        depthWrite: true,
         polygonOffset: true,
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -4
     });
     var sideGlassMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.windows,
-        transparent: true,
-        opacity: 0.75,
+        transparent: false,
+        opacity: 1,
         shininess: 200,
         specular: new THREE.Color(0xaaaaaa),
         emissive: new THREE.Color(0x1a3848),
         depthTest: true,
-        depthWrite: false,
+        depthWrite: true,
         polygonOffset: true,
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -8
