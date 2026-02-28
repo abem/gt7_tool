@@ -75,43 +75,43 @@ var CAR_3D_CONFIG = {
 };
 
 /* ================================================================
- *  演出効果設定（増幅・バウンス・慣性・微振動）
+ *  演出効果設定（増幅・慣性のみ）
  * ================================================================ */
 var EXAGGERATION_CONFIG = {
     // 全体有効/無効
     enabled: true,
 
-    // 増幅設定
+    // 増幅設定（大きく見せる）
     amplification: {
-        pitch: 2.5,    // ピッチ増幅倍率
-        roll: 2.0      // ロール増幅倍率
+        pitch: 5.0,    // ピッチ増幅倍率（ブレーキ/加速を明確に）
+        roll: 4.0      // ロール増幅倍率（コーナリングを明確に）
     },
 
-    // バウンス（バネ）設定
+    // バウンス（バネ）設定（無効化）
     bounce: {
-        enabled: true,
-        stiffness: 150,   // バネ係数（大きいほど素早く追従）
-        damping: 12       // 減衰係数（大きいほどオーバーシュート抑える）
+        enabled: false,
+        stiffness: 0,
+        damping: 0
     },
 
-    // 慣性（遅延）設定
+    // 慣性（遅延）設定（滑らかに追従）
     inertia: {
         enabled: true,
-        lerpFactor: 0.15  // 補間係数（0.01 ~ 1.0、小さいほど遅れる）
+        lerpFactor: 0.25  // 速めに追従
     },
 
-    // 微振動設定
+    // 微振動設定（無効化）
     vibration: {
-        enabled: true,
-        baseAmplitude: 0.003,     // 基本振動振幅
-        rpmMultiplier: 0.000008,  // RPM連動係数
-        frequency: 30             // 振動周波数（Hz）
+        enabled: false,
+        baseAmplitude: 0,
+        rpmMultiplier: 0,
+        frequency: 0
     },
 
     // ステアリング（舵角）設定
     steering: {
-        amplification: 1.5,       // 舵角増幅倍率（視覚的に分かりやすく）
-        lerpFactor: 0.2           // 補間係数（滑らかに追従）
+        amplification: 1.0,      // 実寸
+        lerpFactor: 0.2          // 滑らかに追従
     }
 };
 

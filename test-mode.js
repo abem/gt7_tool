@@ -159,8 +159,8 @@ function getDemoOrientation() {
 
 function getDemoSteering() {
     // コーナーの軌道に合わせてステアリングを左右に切る
-    // sin波で左右に振る + 軌道の曲がり具合に応じた変化
-    var baseSteering = Math.sin(testTrajectoryIndex * 0.15) * 0.5;  // ±0.5 rad ≈ ±28°
-    var quickTurn = Math.sin(testTrajectoryIndex * 0.4) * 0.2;      // 早い周期の微調整
+    // 現実的な角度（最大±15度程度）
+    var baseSteering = Math.sin(testTrajectoryIndex * 0.15) * 0.25;  // ±0.25 rad ≈ ±14°
+    var quickTurn = Math.sin(testTrajectoryIndex * 0.4) * 0.05;      // 早い周期の微調整 ±3°
     return baseSteering + quickTurn;
 }
