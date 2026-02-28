@@ -234,12 +234,12 @@ function buildWindows(carGroup) {
     var bevelT = 0.05;
     var bevelS = 0.04;
 
-    // フロント/リア用マテリアル（不透明で安定描画）
+    // フロント/リア用マテリアル（薄板クワッドのため depthTest:false でボディ上に描画）
     var winBackMat = new THREE.MeshBasicMaterial({
         color: 0x080810,
         side: THREE.FrontSide,
-        depthTest: true,
-        depthWrite: true
+        depthTest: false,
+        depthWrite: false
     });
     var winGlassMat = new THREE.MeshPhongMaterial({
         color: CAR_3D_CONFIG.colors.windows,
@@ -249,8 +249,8 @@ function buildWindows(carGroup) {
         specular: new THREE.Color(0xaaaaaa),
         emissive: new THREE.Color(0x112838),
         side: THREE.FrontSide,
-        depthTest: true,
-        depthWrite: true
+        depthTest: false,
+        depthWrite: false
     });
 
     // フロントウインドシールド（薄板クワッド）
@@ -284,7 +284,7 @@ function buildWindows(carGroup) {
         -1.20, 0.85,  rwB,
         -1.20, 0.85, -rwB
     ]), 3));
-    rwGeo.setIndex([0, 1, 2,  0, 2, 3]);
+    rwGeo.setIndex([0, 2, 1,  0, 3, 2]);
     rwGeo.computeVertexNormals();
 
     var rwBack = new THREE.Mesh(rwGeo, winBackMat.clone());
@@ -297,12 +297,12 @@ function buildWindows(carGroup) {
 
     // サイドウインドウ（ExtrudeGeometryでボディと同一ベベル — 深度が完全一致）
     var swShape = new THREE.Shape();
-    swShape.moveTo(0.44, 0.74);
-    swShape.lineTo(-0.10, 1.04);
-    swShape.quadraticCurveTo(-0.30, 1.06, -0.55, 1.06);
-    swShape.lineTo(-0.85, 1.04);
-    swShape.quadraticCurveTo(-1.00, 0.92, -1.15, 0.82);
-    swShape.lineTo(0.44, 0.74);
+    swShape.moveTo(0.47, 0.73);
+    swShape.lineTo(-0.13, 1.05);
+    swShape.quadraticCurveTo(-0.33, 1.08, -0.55, 1.08);
+    swShape.lineTo(-0.85, 1.06);
+    swShape.quadraticCurveTo(-1.03, 0.92, -1.21, 0.82);
+    swShape.lineTo(0.47, 0.73);
 
     var swGeo = new THREE.ExtrudeGeometry(swShape, {
         depth: bodyW,
