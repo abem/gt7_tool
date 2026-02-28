@@ -158,13 +158,13 @@ function initCar3D() {
         }
 
         var elapsed = now - car3DState.lastRenderTs;
-        if (car3DState.needsRender || elapsed >= car3DState.renderInterval) {
+        if (car3DState.needsRender && elapsed >= car3DState.renderInterval) {
+            car3DState.needsRender = false;
             if (car3DState.controls) {
                 car3DState.controls.update();
             }
             car3DState.renderer.render(car3DState.scene, car3DState.camera);
             car3DState.lastRenderTs = now;
-            car3DState.needsRender = false;
         }
     }
     animate(performance.now());

@@ -29,6 +29,7 @@ function initCourseMap() {
     resizeObserver.observe(container);
 
     courseMapState.domReady = true;
+    courseMapState.infoEl = document.getElementById('course-map-info');
 
     debugLog('COURSE_MAP', 'Initialized', { width: canvas.width, height: canvas.height });
 }
@@ -145,7 +146,7 @@ function drawCourseMap() {
     ctx.fill();
 
     // 情報表示
-    var infoEl = document.getElementById('course-map-info');
+    var infoEl = courseMapState.infoEl;
     if (infoEl) {
         var rangeX = (courseMapState.bounds.maxX - courseMapState.bounds.minX).toFixed(0);
         var rangeZ = (courseMapState.bounds.maxZ - courseMapState.bounds.minZ).toFixed(0);
