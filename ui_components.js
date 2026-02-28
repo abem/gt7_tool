@@ -150,7 +150,9 @@ function cacheElements() {
         rotRollDisplay: document.getElementById('rot-roll-display'),
         pitchIndicator: document.getElementById('pitch-indicator'),
         yawIndicator: document.getElementById('yaw-indicator'),
-        rollIndicator: document.getElementById('roll-indicator')
+        rollIndicator: document.getElementById('roll-indicator'),
+        steeringNeedle: document.getElementById('steering-needle'),
+        steeringValue: document.getElementById('steering-value')
     };
 }
 
@@ -199,5 +201,23 @@ function updateRotation3D(pitch, yaw, roll) {
     }
     if (elements.rotRollDisplay) {
         elements.rotRollDisplay.textContent = roll.toFixed(3);
+    }
+}
+
+// 舵角メーター更新関数
+function updateSteeringGauge(steeringRad) {
+    var steeringDeg = steeringRad * 180 / Math.PI;
+
+    // メーター針の回転（-45度〜+45度を-60deg〜+60degで表示）
+    var maxDisplayAngle = 60; // CSSでの最大回転角
+    var maxInputAngle = 45;   // 入力の最大角度（これ以上はクリップ）
+    var clampedAngle = Math.max(-maxInputAngle, Math.min(maxInputAngle, steeringDeg));
+    var displayRotation = (clampedAngle / maxInputAngle) * maxDisplayAngle;
+
+    if (elements.steeringNeedle) {
+        elements.steeringNeedle.style.transform = 'translateX(-50%) rotate(' + displayRotation + 'deg)';
+    }
+    if (elements.steeringValue) {
+        elements.steeringValue.textContent = steeringDeg.toFixed(1) + '\u00B0';
     }
 }

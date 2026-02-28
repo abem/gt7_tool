@@ -1003,6 +1003,102 @@ body {
     height: 100% !important;
 }
 
+/* ===== Steering Gauge ===== */
+
+.steering-gauge-container {
+    border-top: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.1);
+    padding: 8px;
+}
+
+.steering-gauge {
+    position: relative;
+    width: 100%;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.steering-scale {
+    position: absolute;
+    width: 80%;
+    height: 4px;
+    background: linear-gradient(to right,
+        var(--accent-red) 0%,
+        var(--accent-yellow) 25%,
+        var(--accent-green) 50%,
+        var(--accent-yellow) 75%,
+        var(--accent-red) 100%
+    );
+    border-radius: 2px;
+}
+
+.steering-scale-mark {
+    position: absolute;
+    width: 2px;
+    height: 12px;
+    background: var(--text-secondary);
+    top: -4px;
+}
+
+.steering-scale-mark.left-max { left: 0; }
+.steering-scale-mark.left-mid { left: 25%; }
+.steering-scale-mark.center { left: 50%; background: var(--text-primary); height: 16px; top: -6px; }
+.steering-scale-mark.right-mid { left: 75%; }
+.steering-scale-mark.right-max { left: 100%; }
+
+.steering-needle {
+    position: absolute;
+    width: 3px;
+    height: 30px;
+    background: var(--accent-cyan);
+    border-radius: 2px;
+    box-shadow: 0 0 8px var(--accent-cyan);
+    transform-origin: center bottom;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%) rotate(0deg);
+    transition: transform 0.1s ease-out;
+}
+
+.steering-center-dot {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: var(--accent-cyan);
+    border-radius: 50%;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0 0 6px var(--accent-cyan);
+}
+
+.steering-labels {
+    position: absolute;
+    width: 80%;
+    display: flex;
+    justify-content: space-between;
+    top: 20px;
+}
+
+.steering-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.steering-label.left { text-align: left; }
+.steering-label.center { color: var(--text-primary); }
+.steering-label.right { text-align: right; }
+
+.steering-value {
+    text-align: center;
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--accent-cyan);
+    margin-top: 4px;
+}
+
 /* ===== Filtered Pedal Bars ===== */
 
 .pedal-bar-bg {

@@ -26,7 +26,21 @@ var car3DState = {
     yawEl: null,
     lastRenderTs: 0,
     renderInterval: 1000 / 30,
-    needsRender: true
+    needsRender: true,
+
+    // 演出効果用状態
+    targetPitch: 0,        // 増幅後の目標ピッチ
+    targetRoll: 0,         // 増幅後の目標ロール
+    displayPitch: 0,       // 現在の表示ピッチ
+    displayRoll: 0,        // 現在の表示ロール
+    pitchVelocity: 0,      // バウンス用ピッチ速度
+    rollVelocity: 0,       // バウンス用ロール速度
+    currentRpm: 0,         // 微振動用RPM
+    lastUpdateTime: 0,     // Δt計算用
+
+    // ステアリング用状態
+    steeringAngle: 0,      // 現在のステアリング角（ラジアン）
+    displaySteering: 0     // 表示用ステアリング角（補間済み）
 };
 
 var CAR_3D_CONFIG = {
@@ -50,6 +64,47 @@ var CAR_3D_CONFIG = {
         exhaust: 0x999999,
         grid: 0x1a1a2e,
         gridLines: 0x2a2a3e
+    }
+};
+
+/* ================================================================
+ *  演出効果設定（増幅・バウンス・慣性・微振動）
+ * ================================================================ */
+var EXAGGERATION_CONFIG = {
+    // 全体有効/無効
+    enabled: true,
+
+    // 増幅設定
+    amplification: {
+        pitch: 2.5,    // ピッチ増幅倍率
+        roll: 2.0      // ロール増幅倍率
+    },
+
+    // バウンス（バネ）設定
+    bounce: {
+        enabled: true,
+        stiffness: 150,   // バネ係数（大きいほど素早く追従）
+        damping: 12       // 減衰係数（大きいほどオーバーシュート抑える）
+    },
+
+    // 慣性（遅延）設定
+    inertia: {
+        enabled: true,
+        lerpFactor: 0.15  // 補間係数（0.01 ~ 1.0、小さいほど遅れる）
+    },
+
+    // 微振動設定
+    vibration: {
+        enabled: true,
+        baseAmplitude: 0.003,     // 基本振動振幅
+        rpmMultiplier: 0.000008,  // RPM連動係数
+        frequency: 30             // 振動周波数（Hz）
+    },
+
+    // ステアリング（舵角）設定
+    steering: {
+        amplification: 1.5,       // 舵角増幅倍率（視覚的に分かりやすく）
+        lerpFactor: 0.2           // 補間係数（滑らかに追従）
     }
 };
 
@@ -141,6 +196,7 @@ function initCar3D() {
     resizeObserver.observe(container);
 
     car3DState.initialized = true;
+    car3DState.lastUpdateTime = performance.now();
 
     // DOM要素キャッシュ（updateCar3D で毎回 getElementById を呼ばないよう初期化時に保持）
     car3DState.pitchEl = document.getElementById('car-3d-pitch');
@@ -156,6 +212,9 @@ function initCar3D() {
         if (now === undefined) {
             now = performance.now();
         }
+
+        // 演出効果の継続更新（バウンス・慣性）
+        updateExaggerationEffects(now);
 
         var elapsed = now - car3DState.lastRenderTs;
         if (car3DState.needsRender && elapsed >= car3DState.renderInterval) {
@@ -577,25 +636,165 @@ function buildWheels(carGroup) {
 }
 
 /* ================================================================
- *  姿勢更新（pitch / yaw / roll）
+ *  姿勢更新（pitch / yaw / roll / rpm / steering）
+ *  演出効果（増幅・バウンス・慣性・微振動）を適用
  * ================================================================ */
-function updateCar3D(pitch, yaw, roll) {
+function updateCar3D(pitch, yaw, roll, rpm, steering) {
     if (!car3DState.initialized || !car3DState.carGroup) return;
 
+    // 元の値を保持（UI表示用）
     car3DState.pitch = pitch || 0;
     car3DState.yaw = yaw || 0;
     car3DState.roll = roll || 0;
+    car3DState.currentRpm = rpm || 0;
+    car3DState.steeringAngle = steering || 0;
 
-    // carGroup全体を回転
-    // yawはOrbitControlsのカメラ回転と干渉するため、3Dモデルには適用しない
-    // （car3DState.yawにはUI表示用に保持）
-    car3DState.carGroup.rotation.x = car3DState.pitch;
-    car3DState.carGroup.rotation.y = 0;
-    car3DState.carGroup.rotation.z = car3DState.roll;
-    car3DState.needsRender = true;
+    // 演出効果が無効な場合は直接適用
+    if (!EXAGGERATION_CONFIG.enabled) {
+        car3DState.carGroup.rotation.x = car3DState.pitch;
+        car3DState.carGroup.rotation.y = 0;
+        car3DState.carGroup.rotation.z = car3DState.roll;
+        car3DState.needsRender = true;
+    } else {
+        // 増幅を適用して目標値を計算
+        car3DState.targetPitch = applyAmplification(car3DState.pitch, 'pitch');
+        car3DState.targetRoll = applyAmplification(car3DState.roll, 'roll');
+        // 実際の回転は animate ループ内で updateExaggerationEffects() により更新
+    }
 
-    // CAR ATTITUDEカード内の数値表示を更新（initCar3D でキャッシュ済みの参照を使用）
+    // CAR ATTITUDEカード内の数値表示を更新（元の値を表示）
     if (car3DState.pitchEl) car3DState.pitchEl.textContent = (pitch * 180 / Math.PI).toFixed(2) + '\u00B0';
     if (car3DState.rollEl)  car3DState.rollEl.textContent  = (roll  * 180 / Math.PI).toFixed(2) + '\u00B0';
     if (car3DState.yawEl)   car3DState.yawEl.textContent   = (yaw   * 180 / Math.PI).toFixed(2) + '\u00B0';
+}
+
+/* ================================================================
+ *  演出効果関数
+ * ================================================================ */
+
+// 増幅適用
+function applyAmplification(value, type) {
+    var multiplier = 1;
+    if (type === 'pitch') {
+        multiplier = EXAGGERATION_CONFIG.amplification.pitch;
+    } else if (type === 'roll') {
+        multiplier = EXAGGERATION_CONFIG.amplification.roll;
+    }
+    return value * multiplier;
+}
+
+// 線形補間（lerp）
+function lerp(current, target, factor) {
+    return current + (target - current) * factor;
+}
+
+// バネ・ダンパーモデルによるバウンス計算
+function applySpringDamper(current, target, velocity, dt) {
+    var stiffness = EXAGGERATION_CONFIG.bounce.stiffness;
+    var damping = EXAGGERATION_CONFIG.bounce.damping;
+
+    // バネの力: 目標への復元力
+    var springForce = stiffness * (target - current);
+    // ダンパーの力: 速度に比例する抵抗
+    var dampingForce = damping * velocity;
+
+    // 加速度
+    var acceleration = springForce - dampingForce;
+
+    // 速度更新
+    velocity += acceleration * dt;
+
+    // 位置更新
+    current += velocity * dt;
+
+    return { value: current, velocity: velocity };
+}
+
+// 微振動生成
+function generateVibration(rpm, time) {
+    if (!EXAGGERATION_CONFIG.vibration.enabled) {
+        return { x: 0, z: 0 };
+    }
+
+    var cfg = EXAGGERATION_CONFIG.vibration;
+    var amp = cfg.baseAmplitude + rpm * cfg.rpmMultiplier;
+    var freq = cfg.frequency;
+
+    // 複数の周波数を組み合わせて自然な振動に
+    var vibX = Math.sin(time * freq * 0.001 * 2 * Math.PI) * amp;
+    var vibZ = Math.cos(time * freq * 0.001 * 2 * Math.PI * 1.3) * amp * 0.7;
+
+    // 高周波成分追加
+    vibX += Math.sin(time * freq * 0.001 * 5 * Math.PI) * amp * 0.3;
+    vibZ += Math.cos(time * freq * 0.001 * 7 * Math.PI) * amp * 0.2;
+
+    return { x: vibX, z: vibZ };
+}
+
+// アニメーションループ内で演出効果を更新
+function updateExaggerationEffects(now) {
+    if (!EXAGGERATION_CONFIG.enabled) return;
+    if (!car3DState.carGroup) return;
+
+    var dt = Math.min((now - car3DState.lastUpdateTime) / 1000, 0.1); // 最大100ms
+    car3DState.lastUpdateTime = now;
+
+    // バウンス効果（バネ・ダンパー）
+    if (EXAGGERATION_CONFIG.bounce.enabled) {
+        var pitchResult = applySpringDamper(
+            car3DState.displayPitch,
+            car3DState.targetPitch,
+            car3DState.pitchVelocity,
+            dt
+        );
+        car3DState.displayPitch = pitchResult.value;
+        car3DState.pitchVelocity = pitchResult.velocity;
+
+        var rollResult = applySpringDamper(
+            car3DState.displayRoll,
+            car3DState.targetRoll,
+            car3DState.rollVelocity,
+            dt
+        );
+        car3DState.displayRoll = rollResult.value;
+        car3DState.rollVelocity = rollResult.velocity;
+    } else {
+        // バウンス無効なら慣性のみ
+        car3DState.displayPitch = lerp(
+            car3DState.displayPitch,
+            car3DState.targetPitch,
+            EXAGGERATION_CONFIG.inertia.enabled ? EXAGGERATION_CONFIG.inertia.lerpFactor : 1
+        );
+        car3DState.displayRoll = lerp(
+            car3DState.displayRoll,
+            car3DState.targetRoll,
+            EXAGGERATION_CONFIG.inertia.enabled ? EXAGGERATION_CONFIG.inertia.lerpFactor : 1
+        );
+    }
+
+    // ステアリング（前輪舵角）更新
+    var targetSteering = car3DState.steeringAngle * EXAGGERATION_CONFIG.steering.amplification;
+    car3DState.displaySteering = lerp(
+        car3DState.displaySteering,
+        targetSteering,
+        EXAGGERATION_CONFIG.steering.lerpFactor
+    );
+
+    // 前輪（インデックス0, 1）に舵角を適用
+    if (car3DState.wheels[0]) {
+        car3DState.wheels[0].rotation.y = car3DState.displaySteering;
+    }
+    if (car3DState.wheels[1]) {
+        car3DState.wheels[1].rotation.y = car3DState.displaySteering;
+    }
+
+    // 微振動
+    var vibration = generateVibration(car3DState.currentRpm, now);
+
+    // 最終的な回転を適用
+    car3DState.carGroup.rotation.x = car3DState.displayPitch + vibration.x;
+    car3DState.carGroup.rotation.y = 0;
+    car3DState.carGroup.rotation.z = car3DState.displayRoll + vibration.z;
+
+    car3DState.needsRender = true;
 }

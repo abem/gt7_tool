@@ -132,9 +132,19 @@ function renderDemoFrame(point, demoInputs) {
     elements.posY.textContent = '0.0';
     elements.posZ.textContent = point.z.toFixed(1);
 
-    // 3Dモデル更新（テスト用のランダムな姿勢）
+    // 3Dモデル更新（テスト用のランダムな姿勢＋ステアリング）
     var demoOrientation = getDemoOrientation();
-    updateCar3D(demoOrientation.pitch, demoOrientation.yaw, demoOrientation.roll);
+    var demoSteering = getDemoSteering();
+    updateCar3D(
+        demoOrientation.pitch,
+        demoOrientation.yaw,
+        demoOrientation.roll,
+        demoInputs.rpm,
+        demoSteering
+    );
+
+    // 舵角メーター更新
+    updateSteeringGauge(demoSteering);
 
     updateCourseMap(point.x, 0, point.z, point.speed);
 }
@@ -145,4 +155,12 @@ function getDemoOrientation() {
         yaw: testTrajectoryIndex * 0.05,
         roll: Math.cos(testTrajectoryIndex * 0.08) * 0.2
     };
+}
+
+function getDemoSteering() {
+    // コーナーの軌道に合わせてステアリングを左右に切る
+    // sin波で左右に振る + 軌道の曲がり具合に応じた変化
+    var baseSteering = Math.sin(testTrajectoryIndex * 0.15) * 0.5;  // ±0.5 rad ≈ ±28°
+    var quickTurn = Math.sin(testTrajectoryIndex * 0.4) * 0.2;      // 早い周期の微調整
+    return baseSteering + quickTurn;
 }

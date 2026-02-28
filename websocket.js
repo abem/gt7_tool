@@ -403,7 +403,9 @@ function handleTelemetryMessage(data, nowTs) {
     updateCar3D(
         data.rotation_pitch || 0,
         data.rotation_yaw || 0,
-        data.rotation_roll || 0
+        data.rotation_roll || 0,
+        data.rpm || 0,
+        data.wheel_rotation || 0
     );
 
     if (doRotation) {
@@ -417,6 +419,8 @@ function handleTelemetryMessage(data, nowTs) {
             data.rotation_yaw || 0,
             data.rotation_roll || 0
         );
+        // 舵角メーター更新
+        updateSteeringGauge(data.wheel_rotation || 0);
         lastRotationTs = now;
     }
 

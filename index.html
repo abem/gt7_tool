@@ -168,6 +168,26 @@
                     <div class="card-title" style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase; padding: 4px 10px;">TOP VIEW</div>
                     <div id="car-top-view"></div>
                 </div>
+                <div class="steering-gauge-container">
+                    <div class="card-title" style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase; padding: 4px 10px;">STEERING ANGLE</div>
+                    <div class="steering-gauge">
+                        <div class="steering-scale">
+                            <div class="steering-scale-mark left-max"></div>
+                            <div class="steering-scale-mark left-mid"></div>
+                            <div class="steering-scale-mark center"></div>
+                            <div class="steering-scale-mark right-mid"></div>
+                            <div class="steering-scale-mark right-max"></div>
+                        </div>
+                        <div class="steering-needle" id="steering-needle"></div>
+                        <div class="steering-center-dot"></div>
+                        <div class="steering-labels">
+                            <span class="steering-label left">-45&deg;</span>
+                            <span class="steering-label center">0&deg;</span>
+                            <span class="steering-label right">+45&deg;</span>
+                        </div>
+                    </div>
+                    <div class="steering-value" id="steering-value">0.0&deg;</div>
+                </div>
             </div>
 
             <div class="card course-map-card">
