@@ -79,25 +79,25 @@ var CAR_3D_CONFIG = {
  * ================================================================ */
 var EXAGGERATION_CONFIG = {
     // 全体有効/無効
-    enabled: true,
+    enabled: false,
 
     // 増幅設定（大きく見せる）
     amplification: {
-        pitch: 5.0,    // ピッチ増幅倍率（ブレーキ/加速を明確に）
-        roll: 4.0      // ロール増幅倍率（コーナリングを明確に）
+        pitch: 20.0,    // ピッチ増幅倍率（ブレーキ/加速を明確に）
+        roll: 15.0      // ロール増幅倍率（コーナリングを明確に）
     },
 
     // バウンス（バネ）設定（無効化）
     bounce: {
         enabled: false,
-        stiffness: 0,
-        damping: 0
+        stiffness: 120,
+        damping: 8
     },
 
     // 慣性（遅延）設定（滑らかに追従）
     inertia: {
-        enabled: true,
-        lerpFactor: 0.25  // 速めに追従
+        enabled: false,
+        lerpFactor: 0.4  // 速めに追従
     },
 
     // 微振動設定（無効化）
