@@ -297,3 +297,36 @@ function updateSteeringGauge(steeringRad) {
         elements.steeringValue.textContent = steeringDeg.toFixed(1) + '\u00B0';
     }
 }
+
+/* ================================================================
+ *  接続エラー通知
+ * ================================================================ */
+
+/**
+ * 接続エラーをユーザーに通知
+ * @param {string} message - エラーメッセージ
+ */
+function showConnectionError(message) {
+    // 既存のエラー表示があれば更新、なければ作成
+    let errorDiv = document.getElementById('connection-error');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.id = 'connection-error';
+        errorDiv.style.cssText = 
+            'position: fixed; top: 20px; left: 50%; transform: translateX(-50%);' +
+            'background: rgba(220, 53, 69, 0.95); color: white;' +
+            'padding: 12px 24px; border-radius: 8px; z-index: 9999;' +
+            'font-size: 14px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
+        document.body.appendChild(errorDiv);
+    }
+    
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    
+    // 5秒後に自動で非表示
+    setTimeout(function() {
+        if (errorDiv) {
+            errorDiv.style.display = 'none';
+        }
+    }, 5000);
+}

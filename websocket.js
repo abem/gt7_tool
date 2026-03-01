@@ -35,7 +35,9 @@ const wsState = {
     /** 前回マップ更新時刻 */
     lastMapTs: 0,
     /** 前回回転更新時刻 */
-    lastRotationTs: 0
+    lastRotationTs: 0,
+    /** JSONパースエラー連続回数 */
+    parseErrorCount: 0
 };
 
 /* ================================================================
@@ -517,9 +519,21 @@ function processTelemetryFrame(now) {
 
     try {
         const data = JSON.parse(raw);
+        wsState.parseErrorCount = 0;  // 成功時はリセット
         handleTelemetryMessage(data, now);
     } catch (e) {
+        wsState.parseErrorCount++;
         console.error('WebSocket message error:', e);
+        
+        // 連続エラー時にユーザー通知
+        if (wsState.parseErrorCount === 5) {
+            showConnectionError('データ受信エラーが続いています。PS5との接続を確認してください。');
+        } else if (wsState.parseErrorCount >= 20) {
+            showConnectionError('深刻な通信エラー。再接続を試みます...');
+            wsState.parseErrorCount = 0;
+            disconnectWebSocket();
+            scheduleReconnect();
+        }
     }
 }
 
