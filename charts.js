@@ -2,31 +2,55 @@
  * GT7 Telemetry Dashboard
  * チャート初期化・管理（uPlot + 加速度Canvas）
  *
- * 依存: ui_components.js (CHART_POINTS, ACCEL_CHART_CONFIG, accelData, debugLog)
+ * @module charts
+ * @depends constants.js (CHART_POINTS, COLORS, ACCEL_CHART_CONFIG)
+ * @depends ui_components.js (accelData, debugLog)
  */
 
-var timeCounter = 0;
+/* ================================================================
+ *  チャートデータ
+ * ================================================================ */
+/** タイムカウンター */
+let timeCounter = 0;
 
-// チャートデータ配列
-var timeData = new Array(CHART_POINTS).fill(0);
-var speedData = new Array(CHART_POINTS).fill(0);
-var rpmData = new Array(CHART_POINTS).fill(0);
-var throttleData = new Array(CHART_POINTS).fill(0);
-var brakeData = new Array(CHART_POINTS).fill(0);
+/** 時刻データ配列 */
+const timeData = new Array(CHART_POINTS).fill(0);
+/** 速度データ配列 */
+const speedData = new Array(CHART_POINTS).fill(0);
+/** RPMデータ配列 */
+const rpmData = new Array(CHART_POINTS).fill(0);
+/** スロットルデータ配列 */
+const throttleData = new Array(CHART_POINTS).fill(0);
+/** ブレーキデータ配列 */
+const brakeData = new Array(CHART_POINTS).fill(0);
 
-// チャートインスタンス
-var speedChart = null;
-var rpmChart = null;
-var throttleChart = null;
-var brakeChart = null;
+/* ================================================================
+ *  チャートインスタンス
+ * ================================================================ */
+/** 速度チャート */
+let speedChart = null;
+/** RPMチャート */
+let rpmChart = null;
+/** スロットルチャート */
+let throttleChart = null;
+/** ブレーキチャート */
+let brakeChart = null;
 
-// 加速度チャート
-var accelCanvas = null;
-var accelCtx = null;
-var chartsInitialized = false;
+/* ================================================================
+ *  加速度チャート（Canvas）
+ * ================================================================ */
+/** 加速度チャートCanvas要素 */
+let accelCanvas = null;
+/** 加速度チャート描画コンテキスト */
+let accelCtx = null;
 
-// uPlot 共通設定
-var chartOptions = {
+/** チャート初期化済みフラグ */
+let chartsInitialized = false;
+
+/* ================================================================
+ *  uPlot共通設定
+ * ================================================================ */
+const chartOptions = {
     width: 200,
     height: 100,
     pxAlign: 0,
@@ -47,18 +71,28 @@ var chartOptions = {
     points: { show: false }
 };
 
+/* ================================================================
+ *  加速度チャート描画
+ * ================================================================ */
+
+/**
+ * 加速度チャートを描画
+ */
 function drawAccelChart() {
-    if (!accelCanvas || !accelCtx) return;
+    if (!accelCanvas || !accelCtx) {
+        return;
+    }
 
-    var width = accelCanvas.width;
-    var height = accelCanvas.height;
-    var config = ACCEL_CHART_CONFIG;
+    const width = accelCanvas.width;
+    const height = accelCanvas.height;
+    const config = ACCEL_CHART_CONFIG;
 
+    // 背景クリア
     accelCtx.fillStyle = '#1a1a2e';
     accelCtx.fillRect(0, 0, width, height);
 
-    var maxDataPoints = Math.max(accelData.accelG.length, accelData.accelDecel.length);
-    var stepX = width / Math.max(maxDataPoints - 1, 1);
+    const maxDataPoints = Math.max(accelData.accelG.length, accelData.accelDecel.length);
+    const stepX = width / Math.max(maxDataPoints - 1, 1);
 
     // 基準線（0G）
     accelCtx.strokeStyle = 'rgba(100, 100, 100, 0.3)';
@@ -73,11 +107,16 @@ function drawAccelChart() {
         accelCtx.strokeStyle = config.lineColor;
         accelCtx.lineWidth = config.lineWidth;
         accelCtx.beginPath();
-        for (var i = 0; i < accelData.accelG.length; i++) {
-            var x = i * stepX;
-            var y = height / 2 - (accelData.accelG[i] / 10) * (height / 2);
-            if (i === 0) accelCtx.moveTo(x, y);
-            else accelCtx.lineTo(x, y);
+
+        for (let i = 0; i < accelData.accelG.length; i++) {
+            const x = i * stepX;
+            const y = height / 2 - (accelData.accelG[i] / 10) * (height / 2);
+
+            if (i === 0) {
+                accelCtx.moveTo(x, y);
+            } else {
+                accelCtx.lineTo(x, y);
+            }
         }
         accelCtx.stroke();
     }
@@ -87,28 +126,39 @@ function drawAccelChart() {
         accelCtx.strokeStyle = COLORS.accentRed;
         accelCtx.lineWidth = config.lineWidth;
         accelCtx.beginPath();
-        for (var i = 0; i < accelData.accelDecel.length; i++) {
-            var x = i * stepX;
-            var y = height / 2 - (accelData.accelDecel[i] / 10) * (height / 2);
-            if (i === 0) accelCtx.moveTo(x, y);
-            else accelCtx.lineTo(x, y);
+
+        for (let i = 0; i < accelData.accelDecel.length; i++) {
+            const x = i * stepX;
+            const y = height / 2 - (accelData.accelDecel[i] / 10) * (height / 2);
+
+            if (i === 0) {
+                accelCtx.moveTo(x, y);
+            } else {
+                accelCtx.lineTo(x, y);
+            }
         }
         accelCtx.stroke();
     }
 
     // テキスト表示
     accelCtx.font = '12px sans-serif';
-    var lastAccelG = accelData.accelG[accelData.accelG.length - 1] || 0;
+
+    const lastAccelG = accelData.accelG[accelData.accelG.length - 1] || 0;
     accelCtx.textAlign = 'right';
     accelCtx.fillStyle = COLORS.accentGreen;
     accelCtx.fillText('ACCEL: ' + lastAccelG.toFixed(2) + ' G', width - 10, 20);
 
-    var lastAccelDecel = accelData.accelDecel[accelData.accelDecel.length - 1] || 0;
+    const lastAccelDecel = accelData.accelDecel[accelData.accelDecel.length - 1] || 0;
     accelCtx.textAlign = 'left';
     accelCtx.fillStyle = COLORS.accentRed;
     accelCtx.fillText('DECEL: ' + lastAccelDecel.toFixed(2) + ' G', 10, 20);
 }
 
+/**
+ * 加速度チャートのデータを更新
+ * @param {number} accelG - 加速G
+ * @param {number} accelDecel - 減速G
+ */
 function updateAccelChart(accelG, accelDecel) {
     if (accelG !== undefined) {
         accelData.accelG.push(accelG);
@@ -116,19 +166,32 @@ function updateAccelChart(accelG, accelDecel) {
             accelData.accelG.shift();
         }
     }
+
     if (accelDecel !== undefined) {
         accelData.accelDecel.push(accelDecel);
         if (accelData.accelDecel.length > ACCEL_CHART_CONFIG.maxPoints) {
             accelData.accelDecel.shift();
         }
     }
+
     drawAccelChart();
 }
 
+/* ================================================================
+ *  チャート初期化
+ * ================================================================ */
+
+/**
+ * チャートを初期化
+ */
 function initCharts() {
-    if (chartsInitialized) return;
-    var initSucceeded = false;
-    var chartElements = {
+    if (chartsInitialized) {
+        return;
+    }
+
+    let initSucceeded = false;
+
+    const chartElements = {
         'speed-chart': document.getElementById('speed-chart'),
         'rpm-chart': document.getElementById('rpm-chart'),
         'throttle-chart': document.getElementById('throttle-chart'),
@@ -136,28 +199,10 @@ function initCharts() {
     };
 
     // 加速度チャート初期化
-    var accelCanvasEl = document.getElementById('accel-chart');
-    if (accelCanvasEl) {
-        accelCanvas = accelCanvasEl;
-        accelCtx = accelCanvas.getContext('2d');
-
-        var resizeAccelChart = function() {
-            var container = accelCanvas.parentElement;
-            if (container) {
-                accelCanvas.width = container.clientWidth;
-                accelCanvas.height = container.clientHeight;
-                drawAccelChart();
-            }
-        };
-
-        var accelResizeObserver = new ResizeObserver(resizeAccelChart);
-        if (accelCanvas.parentElement) {
-            accelResizeObserver.observe(accelCanvas.parentElement);
-        }
-        resizeAccelChart();
-    }
+    initAccelChart(chartElements);
 
     try {
+        // 速度チャート
         speedChart = new uPlot(
             Object.assign({}, chartOptions, {
                 series: [{}, { stroke: COLORS.accentGreen, width: 1.5, fill: 'rgba(0, 255, 136, 0.1)' }]
@@ -166,6 +211,7 @@ function initCharts() {
             chartElements['speed-chart']
         );
 
+        // RPMチャート
         rpmChart = new uPlot(
             Object.assign({}, chartOptions, {
                 series: [{}, { stroke: COLORS.accentYellow, width: 1.5, fill: 'rgba(255, 215, 0, 0.1)' }]
@@ -174,6 +220,7 @@ function initCharts() {
             chartElements['rpm-chart']
         );
 
+        // スロットルチャート
         throttleChart = new uPlot(
             Object.assign({}, chartOptions, {
                 series: [{}, { stroke: COLORS.accentGreen, width: 1.5, fill: 'rgba(0, 255, 136, 0.15)' }]
@@ -182,6 +229,7 @@ function initCharts() {
             chartElements['throttle-chart']
         );
 
+        // ブレーキチャート
         brakeChart = new uPlot(
             Object.assign({}, chartOptions, {
                 series: [{}, { stroke: COLORS.accentRed, width: 1.5, fill: 'rgba(255, 68, 68, 0.15)' }]
@@ -192,34 +240,9 @@ function initCharts() {
 
         drawAccelChart();
 
-        // リサイズ処理（デバウンス付き）
-        var resizeTimeout;
-        var resizeCharts = function() {
-            var ids = ['speed-chart', 'rpm-chart', 'throttle-chart', 'brake-chart'];
-            var charts = [speedChart, rpmChart, throttleChart, brakeChart];
-            ids.forEach(function(id, i) {
-                var el = document.getElementById(id);
-                if (el && charts[i]) {
-                    var rect = el.getBoundingClientRect();
-                    charts[i].setSize({ width: rect.width, height: rect.height });
-                }
-            });
-        };
+        // リサイズ処理設定
+        setupChartResize(chartElements);
 
-        var debouncedResize = function() {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(resizeCharts, 100);
-        };
-
-        window.addEventListener('resize', debouncedResize);
-
-        var resizeObserver = new ResizeObserver(debouncedResize);
-        Object.values(chartElements).forEach(function(el) {
-            if (el) resizeObserver.observe(el);
-        });
-
-        setTimeout(resizeCharts, 50);
-        setTimeout(resizeCharts, 200);
         initSucceeded = true;
 
     } catch (e) {
@@ -227,4 +250,74 @@ function initCharts() {
     }
 
     chartsInitialized = initSucceeded;
+}
+
+/**
+ * 加速度チャートを初期化
+ * @param {Object} chartElements - チャート要素マップ
+ */
+function initAccelChart(chartElements) {
+    const accelCanvasEl = document.getElementById('accel-chart');
+
+    if (!accelCanvasEl) {
+        return;
+    }
+
+    accelCanvas = accelCanvasEl;
+    accelCtx = accelCanvas.getContext('2d');
+
+    const resizeAccelChart = function() {
+        const container = accelCanvas.parentElement;
+        if (container) {
+            accelCanvas.width = container.clientWidth;
+            accelCanvas.height = container.clientHeight;
+            drawAccelChart();
+        }
+    };
+
+    const accelResizeObserver = new ResizeObserver(resizeAccelChart);
+    if (accelCanvas.parentElement) {
+        accelResizeObserver.observe(accelCanvas.parentElement);
+    }
+
+    resizeAccelChart();
+}
+
+/**
+ * チャートのリサイズ処理を設定
+ * @param {Object} chartElements - チャート要素マップ
+ */
+function setupChartResize(chartElements) {
+    let resizeTimeout;
+
+    const resizeCharts = function() {
+        const ids = ['speed-chart', 'rpm-chart', 'throttle-chart', 'brake-chart'];
+        const charts = [speedChart, rpmChart, throttleChart, brakeChart];
+
+        ids.forEach(function(id, i) {
+            const el = document.getElementById(id);
+            if (el && charts[i]) {
+                const rect = el.getBoundingClientRect();
+                charts[i].setSize({ width: rect.width, height: rect.height });
+            }
+        });
+    };
+
+    const debouncedResize = function() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(resizeCharts, 100);
+    };
+
+    window.addEventListener('resize', debouncedResize);
+
+    const resizeObserver = new ResizeObserver(debouncedResize);
+    Object.values(chartElements).forEach(function(el) {
+        if (el) {
+            resizeObserver.observe(el);
+        }
+    });
+
+    // 遅延リサイズ（初期レイアウト安定後）
+    setTimeout(resizeCharts, 50);
+    setTimeout(resizeCharts, 200);
 }

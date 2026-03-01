@@ -244,7 +244,6 @@ function initCar3D() {
 function buildCarModel(carGroup) {
     buildCarBody(carGroup);
     buildHoodAndRoof(carGroup);
-    buildPillars(carGroup);
     buildWindows(carGroup);
     buildSideMirrors(carGroup);
     buildAeroAndIntakes(carGroup);
@@ -330,38 +329,6 @@ function buildHoodAndRoof(carGroup) {
     var roof = new THREE.Mesh(roofGeo, bodyMat);
     roof.position.set(-0.55, H + 0.02, 0);
     carGroup.add(roof);
-}
-
-// ─── ピラー（A/B/Cピラー）───
-function buildPillars(carGroup) {
-    var bodyW = CAR_3D_CONFIG.bodyWidth * 0.92;
-    var pillarMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.pillar });
-
-    // Aピラー（フロントガラス枠）
-    var aPillarGeo = new THREE.BoxGeometry(0.04, 0.35, 0.04);
-    [-1, 1].forEach(function(side) {
-        var aPillar = new THREE.Mesh(aPillarGeo, pillarMat);
-        aPillar.position.set(0.35, 0.90, side * (bodyW / 2 - 0.02));
-        aPillar.rotation.z = -0.35;
-        carGroup.add(aPillar);
-    });
-
-    // Bピラー（サイドウインドウ間）
-    var bPillarGeo = new THREE.BoxGeometry(0.03, 0.30, 0.04);
-    [-1, 1].forEach(function(side) {
-        var bPillar = new THREE.Mesh(bPillarGeo, pillarMat);
-        bPillar.position.set(-0.55, 1.05, side * (bodyW / 2 - 0.02));
-        carGroup.add(bPillar);
-    });
-
-    // Cピラー（リアウインドウ枠）
-    var cPillarGeo = new THREE.BoxGeometry(0.04, 0.25, 0.04);
-    [-1, 1].forEach(function(side) {
-        var cPillar = new THREE.Mesh(cPillarGeo, pillarMat);
-        cPillar.position.set(-1.05, 0.95, side * (bodyW / 2 - 0.02));
-        cPillar.rotation.z = 0.4;
-        carGroup.add(cPillar);
-    });
 }
 
 // ─── サイドミラー ───
@@ -499,7 +466,7 @@ function buildWindows(carGroup) {
     car3DState.windows.push(rwMesh);
     carGroup.add(rwMesh);
 
-    // サイドウインドウ（ExtrudeGeometryでボディと同一ベベル — 深度が完全一致）
+    // サイドウインドウ
     var swShape = new THREE.Shape();
     swShape.moveTo(0.47, 0.73);
     swShape.lineTo(-0.13, 1.05);
@@ -511,8 +478,8 @@ function buildWindows(carGroup) {
     var swGeo = new THREE.ExtrudeGeometry(swShape, {
         depth: bodyW,
         bevelEnabled: true,
-        bevelThickness: bevelT,
-        bevelSize: bevelS,
+        bevelThickness: 0.05,
+        bevelSize: 0.04,
         bevelSegments: 3
     });
     swGeo.translate(0, 0, -bodyW / 2);
