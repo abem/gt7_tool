@@ -1,11 +1,12 @@
 services:
   gt7_tool:
     build: .
-    container_name: gt7_tool_car_attitude2
+    # container_name removed: allows multiple instances and auto-naming
     restart: unless-stopped
     network_mode: "host"
     volumes:
-      - ./:/app
+      # Only mount data directory (excludes .git, node_modules, etc.)
+      - ./gt7data:/app/gt7data
     environment:
       - PS5_IP=192.168.1.128
       - PYTHONUNBUFFERED=1
