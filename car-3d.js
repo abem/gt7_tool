@@ -110,7 +110,7 @@ var EXAGGERATION_CONFIG = {
 
     // ステアリング（舵角）設定
     steering: {
-        amplification: 1.0,      // 実寸
+        amplification: 0.3,      // 実寸
         lerpFactor: 0.2          // 滑らかに追従
     }
 };
