@@ -545,20 +545,3 @@ function scheduleReconnect() {
 }
 
 /* ================================================================
- *  グローバル露出（後方互換性）
- * ================================================================ */
-var ws = null;
-var reconnectDelay = 2000;
-var maxReconnectDelay = 30000;
-var reconnectTimer = null;
-var packetCount = 0;
-var latestMessage = null;
-var processingScheduled = false;
-var lastUiTs = 0;
-var lastChartsTs = 0;
-var lastMapTs = 0;
-var lastRotationTs = 0;
-var UI_UPDATE_INTERVAL = 1000 / 30;
-var CHART_UPDATE_INTERVAL = 1000 / 20;
-var MAP_UPDATE_INTERVAL = 1000 / 10;
-var ROTATION_UPDATE_INTERVAL = 1000 / 30;

@@ -186,13 +186,15 @@ async def telemetry_background_task():
                         )
                         parsed.update(fuel_data)
 
-                        # ラップデータ蓄積・保存
+                        # ラップデータ蓄積・保存（lap_count変化検知）
+                        lap_count = parsed.get("lap_count", 1)
                         current_lap_data.append(parsed)
-                        # 固定サンプル数トリガー（lap_count変化検知ではない）
-                        if len(current_lap_data) >= 1800:
+
+                        # ラップ境界検出：lap_countが変化したら保存
+                        if lap_count > current_lap_number and current_lap_number > 0:
                             save_lap_to_file(current_lap_data, current_lap_number)
                             current_lap_data = []
-                            current_lap_number += 1
+                        current_lap_number = lap_count
 
                         # WebSocket配信
                         await broadcast_to_clients(json.dumps(parsed))
