@@ -79,7 +79,7 @@ var CAR_3D_CONFIG = {
  * ================================================================ */
 var EXAGGERATION_CONFIG = {
     // 全体有効/無効
-    enabled: false,
+    enabled: true,
 
     // 増幅設定（大きく見せる）
     amplification: {
@@ -90,14 +90,14 @@ var EXAGGERATION_CONFIG = {
     // バウンス（バネ）設定（無効化）
     bounce: {
         enabled: false,
-        stiffness: 120,
-        damping: 8
+        stiffness: 0,
+        damping: 0
     },
 
     // 慣性（遅延）設定（滑らかに追従）
     inertia: {
-        enabled: false,
-        lerpFactor: 0.4  // 速めに追従
+        enabled: true,
+        lerpFactor: 0.3  // 速めに追従
     },
 
     // 微振動設定（無効化）
