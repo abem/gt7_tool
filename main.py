@@ -247,10 +247,13 @@ async def static_handler(request):
     if '..' in filename or filename.startswith('/'):
         return web.Response(status=403, text="Forbidden")
 
-    if not os.path.isfile(filename):
+    # node_modules配下のファイルも許可
+    filepath = filename
+    
+    if not os.path.isfile(filepath):
         return web.Response(status=404, text="File not found")
 
-    return web.FileResponse(filename)
+    return web.FileResponse(filepath)
 
 
 @web.middleware
@@ -282,7 +285,7 @@ def main():
     app = web.Application(middlewares=[logging_middleware])
     app.router.add_get('/', index_handler)
     app.router.add_get('/ws', websocket_handler)
-    app.router.add_get('/{filename}', static_handler)
+    app.router.add_get('/{filename:.*}', static_handler)
 
     app.on_startup.append(on_startup)
 
