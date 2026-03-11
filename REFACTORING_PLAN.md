@@ -90,10 +90,14 @@ app.js → websocket.js → ui_components.js → constants.js
 - [x] ANGULAR VELOCITY 3DをCAR ATTITUDEに統合
 - [x] websocket.js末尾の不完全なコードを補完
 - [x] 二重初期化の削除
-- [ ] 未使用コードの削除
-- [ ] 重複コードの統合
-- [ ] エラーハンドリング強化
+- [x] 未使用コードの削除（angX/Y/Z, rotationCube, rotPitchDisplay等）
+- [x] updateRotation3D()関数の削除
+- [x] test-glass.jsをtests/に移動
+- [x] README.md更新
+- [ ] エラーハンドリング強化（必要に応じて）
+- [ ] パフォーマンス最適化（必要に応じて）
 
 ---
 作成日: 2026-03-12
+更新日: 2026-03-12
 作業者: Lacia (OpenClaw Agent)
