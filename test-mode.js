@@ -110,7 +110,7 @@ function startTestMode() {
 
         const demoInputs = getDemoInputs();
         renderDemoFrame(point, demoInputs);
-        packetCount++;
+        wsState.packetCount++;
     }, TEST_MODE_CONFIG.intervalMs);
 }
 
@@ -138,7 +138,7 @@ function setTestModeUiState(active) {
     }
 
     // 接続状態に応じた表示に戻す
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (wsState.ws && wsState.ws.readyState === WebSocket.OPEN) {
         elements.connectionStatus.textContent = 'Connected';
         elements.connectionStatus.className = 'connected';
     } else {

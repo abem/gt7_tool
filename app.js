@@ -12,7 +12,7 @@
         console.error('[CRITICAL] uPlot library not loaded!');
     }
 
-    cacheElements();
-    connectWebSocket();
+    // 初期化は websocket.js の DOMContentLoaded で実行
+    // ここではテストモード初期化のみ行う
     initTestMode();
 })();
