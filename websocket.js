@@ -559,3 +559,36 @@ function scheduleReconnect() {
 }
 
 /* ================================================================
+ *  切断処理
+ * ================================================================ */
+
+function disconnectWebSocket() {
+    if (wsState.reconnectTimer) {
+        clearTimeout(wsState.reconnectTimer);
+        wsState.reconnectTimer = null;
+    }
+    if (wsState.ws) {
+        wsState.ws.close();
+        wsState.ws = null;
+    }
+}
+
+/**
+ * 接続エラー表示
+ */
+function showConnectionError(message) {
+    console.error('[WS] ' + message);
+    if (elements.connectionStatus) {
+        elements.connectionStatus.textContent = message;
+        elements.connectionStatus.className = 'error';
+    }
+}
+
+/* ================================================================
+ *  初期化
+ * ================================================================ */
+
+document.addEventListener('DOMContentLoaded', function() {
+    cacheElements();
+    connectWebSocket();
+});
