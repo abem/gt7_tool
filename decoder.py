@@ -186,7 +186,7 @@ class GT7Decoder:
             d = decrypted_data
             result = self._extract_fields(d)
 
-            # コース推定は未実装（CourseEstimatorクラスは将来用に保持）
+            # コース推定はmain.pyで実行
             result["course"] = {"id": "unknown", "name": "", "confidence": 0}
 
             self._parse_count += 1
