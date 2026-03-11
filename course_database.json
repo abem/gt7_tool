@@ -66,10 +66,10 @@
             }
         },
         {
-            "id": "bb_raceway",
-            "name": "ブリティッシュ・ブランド・レースウェイ",
-            "name_en": "Brand Hatch Raceway",
-            "description": "レガシーのサーキットコース",
+            "id": "brands_hatch",
+            "name": "ブランズ・ハッチ",
+            "name_en": "Brands Hatch",
+            "description": "イギリスの伝統あるサーキット",
             "bounds": {
                 "min_x": -400,
                 "max_x": 400,
@@ -127,7 +127,7 @@
         },
         {
             "id": "tsukuba",
-            "name": "ツバサ サーキット",
+            "name": "筑波サーキット",
             "name_en": "Tsukuba Circuit",
             "description": "日本の代表的なショートサーキット",
             "bounds": {

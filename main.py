@@ -6,7 +6,7 @@ import aiohttp
 from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
-from decoder import GT7Decoder
+from decoder import GT7Decoder, CourseEstimator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -142,6 +142,7 @@ async def telemetry_background_task():
         CONFIG["heartbeat_interval"]
     )
     decoder = GT7Decoder()
+    course_estimator = CourseEstimator()
     fuel_tracker = FuelTracker()
 
     ensure_log_dir()
@@ -177,6 +178,13 @@ async def telemetry_background_task():
                         parsed["accel_decel"] = decel_g
                         last_speed_kmh = parsed["speed_kmh"]
                         last_time = current_time
+
+                        # コース推定
+                        course_info = course_estimator.estimate_course(
+                            parsed.get("position_x", 0),
+                            parsed.get("position_z", 0)
+                        )
+                        parsed["course"] = course_info
 
                         # 燃料計算
                         fuel_data = fuel_tracker.update(
