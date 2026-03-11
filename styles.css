@@ -986,6 +986,12 @@ body {
     font-family: 'Segoe UI Mono', monospace;
 }
 
+.car-3d-rate {
+    font-size: 9px;
+    color: var(--text-secondary);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
 /* トップビュー（車両表示） */
 .car-top-view-container {
     border-top: 1px solid var(--border-color);

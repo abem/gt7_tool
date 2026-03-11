@@ -153,14 +153,17 @@
                         <div class="car-3d-info-row">
                             <span class="car-3d-label">PITCH</span>
                             <span class="car-3d-value" id="car-3d-pitch">0.00&deg;</span>
+                            <span class="car-3d-rate" id="pitch-rate">0.00</span>
                         </div>
                         <div class="car-3d-info-row">
                             <span class="car-3d-label">ROLL</span>
                             <span class="car-3d-value" id="car-3d-roll">0.00&deg;</span>
+                            <span class="car-3d-rate" id="roll-rate">0.00</span>
                         </div>
                         <div class="car-3d-info-row">
                             <span class="car-3d-label">YAW</span>
                             <span class="car-3d-value" id="car-3d-yaw">0.00&deg;</span>
+                            <span class="car-3d-rate" id="yaw-rate">0.00</span>
                         </div>
                     </div>
                 </div>
@@ -372,49 +375,6 @@
                     <span class="position-value" id="orientation">--</span>
                     <span class="position-label" style="margin-left:8px">HGT</span>
                     <span class="position-value" id="body-height">--</span>
-                </div>
-            </div>
-
-            <div class="card angular-velocity-card">
-                <div class="card-title">ANGULAR VELOCITY 3D</div>
-
-                <!-- 3D表示エリア -->
-                <div class="rotation-3d-container">
-                    <div class="cube-scene">
-                        <div class="cube" id="rotation-cube">
-                            <div class="cube-face cube-front"></div>
-                            <div class="cube-face cube-back"></div>
-                            <div class="cube-face cube-left"></div>
-                            <div class="cube-face cube-right"></div>
-                            <div class="cube-face cube-top"></div>
-                            <div class="cube-face cube-bottom"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 角度数値表示 -->
-                <div class="position-row">
-                    <span class="position-label">PIT</span>
-                    <span class="position-value" id="rot-pitch-display">--</span>
-                    <span class="position-label">YAW</span>
-                    <span class="position-value" id="rot-yaw-display">--</span>
-                    <span class="position-label">ROL</span>
-                    <span class="position-value" id="rot-roll-display">--</span>
-                </div>
-
-                <!-- 回転矢印 -->
-                <div class="rotation-indicators">
-                    <div class="rotation-arrow" id="pitch-indicator">→</div>
-                    <div class="rotation-arrow" id="yaw-indicator">→</div>
-                    <div class="rotation-arrow" id="roll-indicator">→</div>
-                </div>
-
-                <!-- 角速度数値表示 -->
-                <div class="position-row">
-                    <span class="position-label">RATE</span>
-                    <span class="position-value" id="pitch-rate">--</span>
-                    <span class="position-value" id="yaw-rate">--</span>
-                    <span class="position-value" id="roll-rate">--</span>
                 </div>
             </div>
 
