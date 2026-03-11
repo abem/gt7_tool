@@ -4,7 +4,7 @@
  *
  * @module websocket
  * @depends constants.js (UPDATE_INTERVALS, WEBSOCKET_CONFIG)
- * @depends ui_components.js (elements, debugLog, updateRotation3D, updateSteeringGauge)
+ * @depends ui_components.js (elements, debugLog, updateSteeringGauge)
  * @depends lap-manager.js (updateLapState, updateMaxSpeed)
  * @depends charts.js (timeCounter, timeData, speedData, rpmData, throttleData, brakeData,
  *                     speedChart, rpmChart, throttleChart, brakeChart, initCharts, updateAccelChart)
@@ -318,10 +318,7 @@ function updatePositionText(data) {
     elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
     elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
 
-    // 角速度
-    if (elements.angX) elements.angX.textContent = (data.angular_velocity_x || 0).toFixed(3);
-    if (elements.angY) elements.angY.textContent = (data.angular_velocity_y || 0).toFixed(3);
-    if (elements.angZ) elements.angZ.textContent = (data.angular_velocity_z || 0).toFixed(3);
+    // 角速度（CAR ATTITUDEセクション）
     if (elements.pitchRate) elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
     if (elements.yawRate) elements.yawRate.textContent = (data.angular_velocity_y || 0).toFixed(3);
     if (elements.rollRate) elements.rollRate.textContent = (data.angular_velocity_z || 0).toFixed(3);
@@ -421,11 +418,6 @@ function handleTelemetryMessage(data, nowTs) {
     );
 
     if (doRotation) {
-        updateRotation3D(
-            data.rotation_pitch || 0,
-            data.rotation_yaw || 0,
-            data.rotation_roll || 0
-        );
         updateRotationArrows(
             data.rotation_pitch || 0,
             data.rotation_yaw || 0,

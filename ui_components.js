@@ -130,10 +130,7 @@ function cacheElements() {
         bodyHeave: document.getElementById('body-heave'),
         bodySurge: document.getElementById('body-surge'),
 
-        // 角速度
-        angX: document.getElementById('ang-x'),
-        angY: document.getElementById('ang-y'),
-        angZ: document.getElementById('ang-z'),
+        // 角速度（CAR ATTITUDEセクションに統合）
         pitchRate: document.getElementById('pitch-rate'),
         yawRate: document.getElementById('yaw-rate'),
         rollRate: document.getElementById('roll-rate'),
@@ -159,11 +156,7 @@ function cacheElements() {
         flagsBar: document.getElementById('flags-bar'),
         connectionStatus: document.getElementById('connection-status'),
 
-        // 3D回転表示
-        rotationCube: document.getElementById('rotation-cube'),
-        rotPitchDisplay: document.getElementById('rot-pitch-display'),
-        rotYawDisplay: document.getElementById('rot-yaw-display'),
-        rotRollDisplay: document.getElementById('rot-roll-display'),
+        // 回転矢印インジケーター
         pitchIndicator: document.getElementById('pitch-indicator'),
         yawIndicator: document.getElementById('yaw-indicator'),
         rollIndicator: document.getElementById('roll-indicator'),
