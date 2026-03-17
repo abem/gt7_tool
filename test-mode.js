@@ -275,6 +275,8 @@ function getDemoSteering() {
  * @param {Object} demoInputs - デモ入力データ
  */
 function renderDemoFrame(point, demoInputs) {
+    const t = testTrajectoryIndex;
+    
     // 速度・ギア・RPM表示
     elements.speed.textContent = Math.round(point.speed);
     const gearEl = elements.gear;
@@ -375,6 +377,23 @@ function renderDemoFrame(point, demoInputs) {
     if (typeof updateGForceMeter === 'function') {
         updateGForceMeter(gforceData.sway, gforceData.surge);
     }
+    
+    // セクターデータ（デモ）
+    if (elements.sector1) {
+        const s1 = 20 + Math.sin(t * 0.02) * 2 + Math.random() * 0.5;
+        elements.sector1.textContent = s1.toFixed(3);
+        elements.sector1.className = 'sector-value ' + getSectorClass(s1, 20);
+    }
+    if (elements.sector2) {
+        const s2 = 25 + Math.cos(t * 0.02) * 3 + Math.random() * 0.5;
+        elements.sector2.textContent = s2.toFixed(3);
+        elements.sector2.className = 'sector-value ' + getSectorClass(s2, 25);
+    }
+    if (elements.sector3) {
+        const s3 = 18 + Math.sin(t * 0.03) * 2 + Math.random() * 0.5;
+        elements.sector3.textContent = s3.toFixed(3);
+        elements.sector3.className = 'sector-value ' + getSectorClass(s3, 18);
+    }
 
     // 3Dモデル更新
     const demoOrientation = getDemoOrientation();
@@ -392,4 +411,15 @@ function renderDemoFrame(point, demoInputs) {
 
     // コースマップ更新（heading付き）
     updateCourseMap(point.x, 0, point.z, point.speed, demoOrientation.yaw);
+}
+
+/**
+ * セクタータイムの色を決定（テストモード用）
+ */
+function getSectorClass(current, best) {
+    const diff = current - best;
+    if (diff < 0) return 'purple';
+    if (diff < 0.3) return 'green';
+    if (diff < 0.6) return 'yellow';
+    return 'red';
 }

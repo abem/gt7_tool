@@ -439,6 +439,43 @@ function updateTyreState(data) {
 }
 
 /**
+ * セクタータイムの色を決定
+ * @param {number} current - 現在のセクタータイム
+ * @param {number} best - ベストセクタータイム
+ * @returns {string} CSSクラス名
+ */
+function getSectorClass(current, best) {
+    if (!best || best <= 0) return '';
+    const diff = current - best;
+    if (diff < 0) return 'purple';  // 新ベスト
+    if (diff < 0.1) return 'green';  // ベストに近い
+    if (diff < 0.3) return 'yellow'; // 普通
+    return 'red';  // 遅い
+}
+
+/**
+ * セクター表示を更新
+ * @param {Object} data - テレメトリデータ
+ */
+function updateSectors(data) {
+    if (data.sector_1 !== undefined && elements.sector1) {
+        elements.sector1.textContent = data.sector_1.toFixed(3);
+        elements.sector1.className = 'sector-value ' + 
+            getSectorClass(data.sector_1, data.best_sector_1);
+    }
+    if (data.sector_2 !== undefined && elements.sector2) {
+        elements.sector2.textContent = data.sector_2.toFixed(3);
+        elements.sector2.className = 'sector-value ' + 
+            getSectorClass(data.sector_2, data.best_sector_2);
+    }
+    if (data.sector_3 !== undefined && elements.sector3) {
+        elements.sector3.textContent = data.sector_3.toFixed(3);
+        elements.sector3.className = 'sector-value ' + 
+            getSectorClass(data.sector_3, data.best_sector_3);
+    }
+}
+
+/**
  * 位置情報の表示を更新
  * @param {Object} data - テレメトリデータ
  */
@@ -545,6 +582,7 @@ function handleTelemetryMessage(data, nowTs) {
         updateFuelState(data);
         updateTyreState(data);
         updatePositionText(data);
+        updateSectors(data);
         wsState.lastUiTs = now;
     }
 

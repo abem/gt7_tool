@@ -947,6 +947,53 @@ body {
     color: var(--accent-green);
 }
 
+/* Sector Display */
+.sector-display {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 10px;
+    padding: 6px 0;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sector-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.sector-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.sector-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+.sector-value.purple {
+    color: #ff00ff;
+    text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+}
+
+.sector-value.green {
+    color: var(--accent-green);
+}
+
+.sector-value.yellow {
+    color: var(--accent-yellow);
+}
+
+.sector-value.red {
+    color: var(--accent-red);
+}
+
 /* Lap time animation */
 @keyframes lap-time-flash {
     0% { 

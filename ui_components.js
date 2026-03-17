@@ -161,6 +161,11 @@ function cacheElements() {
         lapList: document.getElementById('lap-list'),
         racePosition: document.getElementById('race-position'),
         courseName: document.getElementById('course-name'),
+        
+        // セクター
+        sector1: document.getElementById('sector-1'),
+        sector2: document.getElementById('sector-2'),
+        sector3: document.getElementById('sector-3'),
 
         // フラグ・ステータス
         flagsBar: document.getElementById('flags-bar'),
