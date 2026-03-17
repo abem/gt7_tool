@@ -168,11 +168,77 @@ function resetCourseMap() {
  * @returns {Object} デモ入力データ
  */
 function getDemoInputs() {
+    const t = testTrajectoryIndex;
+    
+    // リアルなパターンを生成
+    const throttleBase = 60 + Math.sin(t * 0.05) * 40;
+    const brakeBase = Math.max(0, Math.sin(t * 0.1 + 2) * 50);
+    
     return {
-        rpm: 3000 + Math.random() * 4000,
-        gear: Math.floor(Math.random() * 6) + 1,
-        throttle: Math.random() * 100,
-        brake: Math.random() * 30
+        rpm: 3000 + Math.sin(t * 0.03) * 3000 + Math.random() * 500,
+        gear: Math.floor((t % 60) / 10) + 1,  // 10フレームごとにギアアップ
+        throttle: Math.max(0, Math.min(100, throttleBase)),
+        brake: Math.max(0, Math.min(100, brakeBase)),
+        clutch: t % 60 < 2 ? 100 : 0,  // ギアチェンジ時のみ
+        boost: Math.random() * 0.3,
+        oilPressure: 2.5 + Math.random() * 0.5
+    };
+}
+
+/**
+ * デモタイヤデータを取得
+ * @returns {Object} タイヤデータ
+ */
+function getDemoTyreData() {
+    const t = testTrajectoryIndex;
+    const baseTemp = 70 + Math.sin(t * 0.02) * 15;
+    
+    return {
+        temps: [
+            baseTemp + Math.random() * 10,
+            baseTemp + Math.random() * 10,
+            baseTemp - 5 + Math.random() * 10,
+            baseTemp - 5 + Math.random() * 10
+        ],
+        rps: [
+            10 + Math.random() * 5,
+            10 + Math.random() * 5,
+            10 + Math.random() * 5,
+            10 + Math.random() * 5
+        ],
+        susp: [
+            50 + Math.sin(t * 0.1) * 20,
+            50 + Math.cos(t * 0.1) * 20,
+            55 + Math.sin(t * 0.12) * 15,
+            55 + Math.cos(t * 0.12) * 15
+        ]
+    };
+}
+
+/**
+ * デモ燃料データを取得
+ * @returns {Object} 燃料データ
+ */
+function getDemoFuelData() {
+    const t = testTrajectoryIndex;
+    return {
+        current: Math.max(5, 50 - t * 0.01),
+        capacity: 100,
+        perLap: 2.5 + Math.random() * 0.5,
+        lapsRemaining: Math.floor((50 - t * 0.01) / 2.5)
+    };
+}
+
+/**
+ * デモG-Forceデータを取得
+ * @returns {Object} G-Forceデータ
+ */
+function getDemoGForceData() {
+    const t = testTrajectoryIndex;
+    return {
+        sway: Math.sin(t * 0.15) * 0.8 + Math.random() * 0.2,  // 横G
+        surge: Math.cos(t * 0.1) * 0.5 + Math.random() * 0.1,  // 縦G
+        heave: Math.sin(t * 0.2) * 0.2 + Math.random() * 0.05  // 上下G
     };
 }
 
@@ -211,20 +277,104 @@ function getDemoSteering() {
 function renderDemoFrame(point, demoInputs) {
     // 速度・ギア・RPM表示
     elements.speed.textContent = Math.round(point.speed);
-    elements.gear.textContent = demoInputs.gear;
-    elements.rpmBar.style.width = (demoInputs.rpm / 9000 * 100) + '%';
+    const gearEl = elements.gear;
+    gearEl.textContent = demoInputs.gear;
+    gearEl.classList.remove('reverse', 'low');
+    if (demoInputs.gear <= 2) gearEl.classList.add('low');
+    
+    const rpmPct = (demoInputs.rpm / 9000 * 100);
+    elements.rpmBar.style.width = rpmPct + '%';
     elements.rpmText.textContent = Math.round(demoInputs.rpm) + ' RPM';
+    
+    // シフトライト更新
+    if (typeof updateShiftLights === 'function') {
+        updateShiftLights(demoInputs.rpm, 9000);
+    }
 
-    // ペダル表示
+    // ペダル表示（トップバー）
     elements.throttleBar.style.width = demoInputs.throttle + '%';
     elements.throttleValue.textContent = Math.round(demoInputs.throttle) + '%';
     elements.brakeBar.style.width = demoInputs.brake + '%';
     elements.brakeValue.textContent = Math.round(demoInputs.brake) + '%';
+    
+    // ペダル表示（左パネル詳細）
+    if (elements.throttleBarDetail) {
+        elements.throttleBarDetail.style.width = demoInputs.throttle + '%';
+    }
+    if (elements.throttleValueDetail) {
+        elements.throttleValueDetail.textContent = Math.round(demoInputs.throttle) + '%';
+    }
+    if (elements.brakeBarDetail) {
+        elements.brakeBarDetail.style.width = demoInputs.brake + '%';
+    }
+    if (elements.brakeValueDetail) {
+        elements.brakeValueDetail.textContent = Math.round(demoInputs.brake) + '%';
+    }
+    elements.clutchBar.style.width = demoInputs.clutch + '%';
+    elements.clutchValue.textContent = Math.round(demoInputs.clutch) + '%';
+    
+    // ペダルトレース更新
+    if (typeof updatePedalTrace === 'function') {
+        updatePedalTrace(demoInputs.throttle, demoInputs.brake);
+    }
+    
+    // エンジンデータ
+    elements.boost.textContent = Math.round(demoInputs.boost * 100);
+    elements.oilPressure.textContent = demoInputs.oilPressure.toFixed(1);
 
     // 位置表示
     elements.posX.textContent = point.x.toFixed(1);
     elements.posY.textContent = '0.0';
     elements.posZ.textContent = point.z.toFixed(1);
+
+    // タイヤデータ
+    const tyreData = getDemoTyreData();
+    if (elements.flTemp) elements.flTemp.textContent = Math.round(tyreData.temps[0]);
+    if (elements.frTemp) elements.frTemp.textContent = Math.round(tyreData.temps[1]);
+    if (elements.rlTemp) elements.rlTemp.textContent = Math.round(tyreData.temps[2]);
+    if (elements.rrTemp) elements.rrTemp.textContent = Math.round(tyreData.temps[3]);
+    
+    // タイヤ温度バー更新
+    if (typeof updateTyreTempBar === 'function') {
+        updateTyreTempBar('fl', tyreData.temps[0]);
+        updateTyreTempBar('fr', tyreData.temps[1]);
+        updateTyreTempBar('rl', tyreData.temps[2]);
+        updateTyreTempBar('rr', tyreData.temps[3]);
+    }
+    
+    // サスペンション
+    if (elements.flSusp) elements.flSusp.textContent = Math.round(tyreData.susp[0]);
+    if (elements.frSusp) elements.frSusp.textContent = Math.round(tyreData.susp[1]);
+    if (elements.rlSusp) elements.rlSusp.textContent = Math.round(tyreData.susp[2]);
+    if (elements.rrSusp) elements.rrSusp.textContent = Math.round(tyreData.susp[3]);
+    
+    // 燃料データ
+    const fuelData = getDemoFuelData();
+    elements.fuel.textContent = fuelData.current.toFixed(1);
+    elements.fuelCapacity.textContent = fuelData.capacity;
+    elements.fuelPerLap.textContent = fuelData.perLap.toFixed(2);
+    elements.fuelLapsRemaining.textContent = fuelData.lapsRemaining;
+    
+    // 燃料バー更新
+    const fuelBar = document.getElementById('fuel-bar');
+    if (fuelBar) {
+        const pct = (fuelData.current / fuelData.capacity) * 100;
+        fuelBar.style.width = pct + '%';
+        fuelBar.classList.remove('low', 'warning');
+        if (pct < 15) fuelBar.classList.add('low');
+        else if (pct < 30) fuelBar.classList.add('warning');
+    }
+    
+    // G-Forceデータ
+    const gforceData = getDemoGForceData();
+    if (elements.bodySway) elements.bodySway.textContent = gforceData.sway.toFixed(3);
+    if (elements.bodyHeave) elements.bodyHeave.textContent = gforceData.heave.toFixed(3);
+    if (elements.bodySurge) elements.bodySurge.textContent = gforceData.surge.toFixed(3);
+    
+    // G-Forceメーター更新
+    if (typeof updateGForceMeter === 'function') {
+        updateGForceMeter(gforceData.sway, gforceData.surge);
+    }
 
     // 3Dモデル更新
     const demoOrientation = getDemoOrientation();
@@ -240,6 +390,6 @@ function renderDemoFrame(point, demoInputs) {
     // 舵角メーター更新
     updateSteeringGauge(demoSteering);
 
-    // コースマップ更新
-    updateCourseMap(point.x, 0, point.z, point.speed);
+    // コースマップ更新（heading付き）
+    updateCourseMap(point.x, 0, point.z, point.speed, demoOrientation.yaw);
 }
