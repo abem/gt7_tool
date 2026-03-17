@@ -103,6 +103,36 @@ function renderGearRatios(ratios, currentGear) {
  * ================================================================ */
 
 /**
+ * シフトライトの表示を更新
+ * @param {number} rpm - 現在のRPM
+ * @param {number} maxRpm - 最大RPM
+ */
+function updateShiftLights(rpm, maxRpm) {
+    if (!elements.shiftLights) return;
+    
+    const lights = elements.shiftLights.querySelectorAll('.shift-light');
+    const rpmPct = (rpm / maxRpm) * 100;
+    
+    // シフトライトの閾値設定（RPM%で指定）
+    // 8個のライト: 75%, 80%, 85%, 88%, 91%, 94%, 96%, 98%
+    const thresholds = [75, 80, 85, 88, 91, 94, 96, 98];
+    
+    lights.forEach((light, index) => {
+        light.className = 'shift-light'; // リセット
+        
+        if (rpmPct >= thresholds[index]) {
+            if (index < 3) {
+                light.classList.add('green');
+            } else if (index < 6) {
+                light.classList.add('yellow');
+            } else {
+                light.classList.add('red');
+            }
+        }
+    });
+}
+
+/**
  * 車両状態の表示を更新
  * @param {Object} data - テレメトリデータ
  */
@@ -125,6 +155,9 @@ function updateVehicleState(data) {
     if (data.wheel_rotation !== undefined) {
         const deg = (data.wheel_rotation * 180 / Math.PI).toFixed(1);
         elements.wheelRotation.textContent = deg + '\u00B0';
+        if (elements.wheelRotationDetail) {
+            elements.wheelRotationDetail.textContent = deg + '\u00B0';
+        }
     }
 
     // RPM
@@ -141,7 +174,10 @@ function updateVehicleState(data) {
     }
     elements.rpmText.textContent = rpm + ' RPM';
 
-    // ペダル
+    // シフトライト更新
+    updateShiftLights(rpm, maxRpm);
+
+    // ペダル（トップバー用）
     const throttle = Math.round(data.throttle_pct || 0);
     const brake = Math.round(data.brake_pct || 0);
     const clutch = Math.round((data.clutch || 0) * 100);
@@ -150,6 +186,26 @@ function updateVehicleState(data) {
     elements.throttleValue.textContent = throttle + '%';
     elements.brakeBar.style.width = brake + '%';
     elements.brakeValue.textContent = brake + '%';
+    
+    // ペダルトレース更新
+    if (typeof updatePedalTrace === 'function') {
+        updatePedalTrace(throttle, brake);
+    }
+    
+    // ペダル（左パネル詳細用）
+    if (elements.throttleBarDetail) {
+        elements.throttleBarDetail.style.width = throttle + '%';
+    }
+    if (elements.throttleValueDetail) {
+        elements.throttleValueDetail.textContent = throttle + '%';
+    }
+    if (elements.brakeBarDetail) {
+        elements.brakeBarDetail.style.width = brake + '%';
+    }
+    if (elements.brakeValueDetail) {
+        elements.brakeValueDetail.textContent = brake + '%';
+    }
+    
     elements.clutchBar.style.width = clutch + '%';
     elements.clutchValue.textContent = clutch + '%';
 
@@ -219,15 +275,75 @@ function renderFlags(flags) {
  * @param {Object} data - テレメトリデータ
  */
 function updateFuelState(data) {
-    elements.fuel.textContent = (data.current_fuel || 0).toFixed(1);
-    elements.fuelCapacity.textContent = (data.fuel_capacity || 0).toFixed(0);
+    const currentFuel = data.current_fuel || 0;
+    const capacity = data.fuel_capacity || 100;
+    
+    elements.fuel.textContent = currentFuel.toFixed(1);
+    elements.fuelCapacity.textContent = capacity.toFixed(0);
+    
+    // 燃料バー更新
+    const fuelBar = document.getElementById('fuel-bar');
+    if (fuelBar) {
+        const pct = Math.min(100, (currentFuel / capacity) * 100);
+        fuelBar.style.width = pct + '%';
+        
+        // 残量に応じた色変更
+        fuelBar.classList.remove('low', 'warning');
+        if (pct < 15) {
+            fuelBar.classList.add('low');
+        } else if (pct < 30) {
+            fuelBar.classList.add('warning');
+        }
+    }
 
     if (data.fuel_per_lap !== undefined) {
         elements.fuelPerLap.textContent = (data.fuel_per_lap || 0).toFixed(2);
     }
     if (data.fuel_laps_remaining !== undefined) {
-        elements.fuelLapsRemaining.textContent = data.fuel_laps_remaining || '--';
+        const lapsRemaining = data.fuel_laps_remaining;
+        elements.fuelLapsRemaining.textContent = lapsRemaining || '--';
+        
+        // 残り周回数に応じた色変更
+        if (elements.fuelLapsRemaining.style) {
+            if (lapsRemaining < 3) {
+                elements.fuelLapsRemaining.style.color = COLORS.accentRed;
+            } else if (lapsRemaining < 5) {
+                elements.fuelLapsRemaining.style.color = COLORS.accentYellow;
+            } else {
+                elements.fuelLapsRemaining.style.color = COLORS.accentCyan;
+            }
+        }
     }
+}
+
+/**
+ * タイヤ温度に応じたCSSクラスを取得
+ * @param {number} temp - タイヤ温度
+ * @returns {string} CSSクラス名
+ */
+function getTyreTempClass(temp) {
+    if (temp < TYRE_TEMP.COLD_THRESHOLD) return 'cold';
+    if (temp < TYRE_TEMP.OPTIMAL_HIGH) return 'optimal';
+    if (temp < TYRE_TEMP.HOT_THRESHOLD) return 'warm';
+    return 'hot';
+}
+
+/**
+ * タイヤ温度バーを更新
+ * @param {string} position - タイヤ位置（fl, fr, rl, rr）
+ * @param {number} temp - 温度
+ */
+function updateTyreTempBar(position, temp) {
+    const bar = document.getElementById(position + '-temp-bar');
+    if (!bar) return;
+    
+    // 温度を0-120°Cの範囲でバー幅に変換（120°C = 100%）
+    const maxTemp = 120;
+    const minTemp = 20;
+    const pct = Math.min(100, Math.max(0, ((temp - minTemp) / (maxTemp - minTemp)) * 100));
+    
+    bar.style.width = pct + '%';
+    bar.className = 'tyre-temp-bar ' + getTyreTempClass(temp);
 }
 
 /**
@@ -254,6 +370,12 @@ function updateTyreState(data) {
         elements.frTemp.style.color = getTyreTempColor(temps[1]);
         elements.rlTemp.style.color = getTyreTempColor(temps[2]);
         elements.rrTemp.style.color = getTyreTempColor(temps[3]);
+        
+        // 温度バー更新
+        updateTyreTempBar('fl', temps[0]);
+        updateTyreTempBar('fr', temps[1]);
+        updateTyreTempBar('rl', temps[2]);
+        updateTyreTempBar('rr', temps[3]);
     }
 
     // ホイール回転速度
@@ -284,6 +406,14 @@ function updateTyreState(data) {
         elements.bodySway.textContent = (data.body_accel_sway || 0).toFixed(3);
         elements.bodyHeave.textContent = (data.body_accel_heave || 0).toFixed(3);
         elements.bodySurge.textContent = (data.body_accel_surge || 0).toFixed(3);
+        
+        // G-Forceメーター更新（sway = 横G, surge = 縦G）
+        if (typeof updateGForceMeter === 'function') {
+            updateGForceMeter(
+                data.body_accel_sway || 0,
+                data.body_accel_surge || 0
+            );
+        }
     }
 
     // トルクベクタリング

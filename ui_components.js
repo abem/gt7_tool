@@ -45,6 +45,16 @@ let elements = {};
  */
 function cacheElements() {
     elements = {
+        // Racing Style Top Bar
+        shiftLights: document.getElementById('shift-lights'),
+        
+        // ペダル詳細（左パネル用）
+        throttleBarDetail: document.getElementById('throttle-bar-detail'),
+        throttleValueDetail: document.getElementById('throttle-value-detail'),
+        brakeBarDetail: document.getElementById('brake-bar-detail'),
+        brakeValueDetail: document.getElementById('brake-value-detail'),
+        wheelRotationDetail: document.getElementById('wheel-rotation-detail'),
+
         // 速度・ギア
         speed: document.getElementById('speed'),
         gear: document.getElementById('gear'),
@@ -289,6 +299,300 @@ function updateSteeringGauge(steeringRad) {
     if (elements.steeringValue) {
         elements.steeringValue.textContent = steeringDeg.toFixed(1) + '\u00B0';
     }
+}
+
+/* ================================================================
+ *  G-Forceメーター
+ * ================================================================ */
+
+const gforceState = {
+    canvas: null,
+    ctx: null,
+    initialized: false,
+    // 履歴データ（トレール表示用）
+    history: [],
+    maxHistory: 30,
+    // 現在値
+    lat: 0,
+    long: 0
+};
+
+/**
+ * G-Forceメーターを初期化
+ */
+function initGForceMeter() {
+    gforceState.canvas = document.getElementById('gforce-canvas');
+    if (!gforceState.canvas) return;
+    
+    gforceState.ctx = gforceState.canvas.getContext('2d');
+    gforceState.initialized = true;
+    
+    // 初期描画
+    drawGForceMeter(0, 0);
+}
+
+/**
+ * G-Forceメーターを描画
+ * @param {number} lat - 横G（左右）
+ * @param {number} long - 縦G（加速/減速）
+ */
+function drawGForceMeter(lat, long) {
+    const ctx = gforceState.ctx;
+    const canvas = gforceState.canvas;
+    if (!ctx) return;
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(width, height) / 2 - 10;
+    
+    // キャンバスをクリア
+    ctx.clearRect(0, 0, width, height);
+    
+    // 背景円
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    // 同心円（Gの目盛り）
+    const gLevels = [0.5, 1.0, 1.5, 2.0];
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    
+    gLevels.forEach(g => {
+        const r = (g / 2.0) * radius; // 2G = 最大半径
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
+        ctx.stroke();
+    });
+    
+    // 十字線
+    ctx.beginPath();
+    ctx.moveTo(centerX - radius, centerY);
+    ctx.lineTo(centerX + radius, centerY);
+    ctx.moveTo(centerX, centerY - radius);
+    ctx.lineTo(centerX, centerY + radius);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    // トレール（履歴表示）
+    gforceState.history.push({ lat, long });
+    if (gforceState.history.length > gforceState.maxHistory) {
+        gforceState.history.shift();
+    }
+    
+    // 履歴を描画（フェードアウト）
+    gforceState.history.forEach((point, index) => {
+        const alpha = (index / gforceState.maxHistory) * 0.5;
+        const x = centerX + (point.lat / 2.0) * radius;
+        const y = centerY - (point.long / 2.0) * radius;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(68, 255, 255, ${alpha})`;
+        ctx.fill();
+    });
+    
+    // 現在位置のドット
+    const dotX = centerX + (lat / 2.0) * radius;
+    const dotY = centerY - (long / 2.0) * radius;
+    
+    // ドットのグロー
+    const gradient = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, 15);
+    gradient.addColorStop(0, 'rgba(68, 255, 255, 0.8)');
+    gradient.addColorStop(1, 'rgba(68, 255, 255, 0)');
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, 15, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    
+    // ドット本体
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#44ffff';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Gラベル
+    ctx.font = '10px Segoe UI';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.textAlign = 'center';
+    gLevels.forEach(g => {
+        const r = (g / 2.0) * radius;
+        ctx.fillText(g + 'G', centerX + r - 12, centerY + 4);
+    });
+}
+
+/**
+ * G-Forceメーターを更新
+ * @param {number} lat - 横G（左右）
+ * @param {number} long - 縦G（加速/減速）
+ */
+function updateGForceMeter(lat, long) {
+    if (!gforceState.initialized) {
+        initGForceMeter();
+    }
+    
+    gforceState.lat = lat;
+    gforceState.long = long;
+    
+    drawGForceMeter(lat, long);
+    
+    // 数値表示も更新
+    const latEl = document.getElementById('gforce-lat');
+    const longEl = document.getElementById('gforce-long');
+    
+    if (latEl) latEl.textContent = lat.toFixed(2);
+    if (longEl) longEl.textContent = long.toFixed(2);
+}
+
+/* ================================================================
+ *  ペダルトレース
+ * ================================================================ */
+
+const pedalTraceState = {
+    canvas: null,
+    ctx: null,
+    initialized: false,
+    // 履歴データ
+    throttleHistory: [],
+    brakeHistory: [],
+    maxPoints: 100,
+    // 更新間隔制御
+    lastUpdate: 0,
+    updateInterval: 50 // 20fps
+};
+
+/**
+ * ペダルトレースを初期化
+ */
+function initPedalTrace() {
+    pedalTraceState.canvas = document.getElementById('pedal-trace-canvas');
+    if (!pedalTraceState.canvas) return;
+    
+    // キャンバスサイズを設定
+    const container = pedalTraceState.canvas.parentElement;
+    pedalTraceState.canvas.width = container.offsetWidth || 300;
+    pedalTraceState.canvas.height = container.offsetHeight || 30;
+    
+    pedalTraceState.ctx = pedalTraceState.canvas.getContext('2d');
+    pedalTraceState.initialized = true;
+    
+    // 初期データで埋める
+    for (let i = 0; i < pedalTraceState.maxPoints; i++) {
+        pedalTraceState.throttleHistory.push(0);
+        pedalTraceState.brakeHistory.push(0);
+    }
+    
+    drawPedalTrace();
+}
+
+/**
+ * ペダルトレースを描画
+ */
+function drawPedalTrace() {
+    const ctx = pedalTraceState.ctx;
+    const canvas = pedalTraceState.canvas;
+    if (!ctx || !canvas) return;
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // クリア
+    ctx.clearRect(0, 0, width, height);
+    
+    // 背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(0, 0, width, height);
+    
+    const points = pedalTraceState.maxPoints;
+    const stepX = width / (points - 1);
+    
+    // スロットル描画（上半分）
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    
+    for (let i = 0; i < pedalTraceState.throttleHistory.length; i++) {
+        const x = i * stepX;
+        const y = (height / 2) - (pedalTraceState.throttleHistory[i] / 100) * (height / 2);
+        ctx.lineTo(x, y);
+    }
+    
+    ctx.strokeStyle = '#00ff88';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    
+    // スロットル塗りつぶし
+    ctx.lineTo(width, height / 2);
+    ctx.lineTo(0, height / 2);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
+    ctx.fill();
+    
+    // ブレーキ描画（下半分）
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    
+    for (let i = 0; i < pedalTraceState.brakeHistory.length; i++) {
+        const x = i * stepX;
+        const y = (height / 2) + (pedalTraceState.brakeHistory[i] / 100) * (height / 2);
+        ctx.lineTo(x, y);
+    }
+    
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    
+    // ブレーキ塗りつぶし
+    ctx.lineTo(width, height / 2);
+    ctx.lineTo(0, height / 2);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+    ctx.fill();
+    
+    // センターライン
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+/**
+ * ペダルトレースを更新
+ * @param {number} throttle - スロットル率（0-100）
+ * @param {number} brake - ブレーキ率（0-100）
+ */
+function updatePedalTrace(throttle, brake) {
+    if (!pedalTraceState.initialized) {
+        initPedalTrace();
+    }
+    
+    const now = performance.now();
+    if (now - pedalTraceState.lastUpdate < pedalTraceState.updateInterval) {
+        return;
+    }
+    pedalTraceState.lastUpdate = now;
+    
+    // 履歴を更新
+    pedalTraceState.throttleHistory.push(throttle);
+    pedalTraceState.brakeHistory.push(brake);
+    
+    if (pedalTraceState.throttleHistory.length > pedalTraceState.maxPoints) {
+        pedalTraceState.throttleHistory.shift();
+        pedalTraceState.brakeHistory.shift();
+    }
+    
+    drawPedalTrace();
 }
 
 /* ================================================================

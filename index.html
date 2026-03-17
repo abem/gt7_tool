@@ -15,44 +15,68 @@
             <div id="connection-status" class="disconnected">Disconnected</div>
         </div>
 
+        <!-- Racing Style Top Bar -->
+        <div class="racing-top-bar">
+            <div class="racing-speed-section">
+                <div class="racing-speed-value" id="speed">0</div>
+                <div class="racing-speed-unit">km/h</div>
+            </div>
+            
+            <div class="racing-gear-section">
+                <div class="shift-lights" id="shift-lights">
+                    <div class="shift-light"></div>
+                    <div class="shift-light"></div>
+                    <div class="shift-light"></div>
+                    <div class="shift-light"></div>
+                    <div class="shift-light"></div>
+                    <div class="shift-light"></div>
+                    <div class="shift-light"></div>
+                    <div class="shift-light"></div>
+                </div>
+                <div class="racing-gear-value" id="gear">N</div>
+                <div class="racing-gear-rpm" id="rpm-text">0 RPM</div>
+            </div>
+            
+            <div class="racing-pedals-section">
+                <div class="racing-pedal-row">
+                    <span class="racing-pedal-label">THROTTLE</span>
+                    <div class="racing-pedal-bar-bg">
+                        <div class="racing-throttle-bar" id="throttle-bar"></div>
+                    </div>
+                    <span class="racing-pedal-value" id="throttle-value">100%</span>
+                </div>
+                <div class="racing-pedal-row">
+                    <span class="racing-pedal-label">BRAKE</span>
+                    <div class="racing-pedal-bar-bg">
+                        <div class="racing-brake-bar" id="brake-bar"></div>
+                    </div>
+                    <span class="racing-pedal-value" id="brake-value">0%</span>
+                </div>
+                <div class="pedal-trace-container">
+                    <canvas id="pedal-trace-canvas"></canvas>
+                </div>
+            </div>
+        </div>
+
         <!-- Left Panel -->
         <div class="left-panel">
-            <div class="card speed-card">
-                <div class="speed-value" id="speed">0</div>
-                <div class="speed-unit">km/h</div>
-            </div>
-
-            <div class="card gear-rpm-card">
-                <div class="gear-display">
-                    <div class="gear-value" id="gear">N</div>
-                    <div class="gear-label">GEAR</div>
-                    <div class="suggested-gear" id="suggested-gear"></div>
-                    <div class="wheel-rotation" id="wheel-rotation">0.0&deg;</div>
-                </div>
-                <div class="rpm-display">
-                    <div class="rpm-bar-bg">
-                        <div class="rpm-bar" id="rpm-bar"></div>
-                    </div>
-                    <div class="rpm-text" id="rpm-text">0 RPM</div>
-                </div>
-            </div>
-
-            <div class="card pedals-card">
+            <div class="card pedals-detail-card">
+                <div class="card-title">PEDALS</div>
                 <div class="pedal-row">
                     <span class="pedal-label">THR</span>
                     <div class="pedal-bar-bg">
-                        <div class="throttle-bar" id="throttle-bar"></div>
+                        <div class="throttle-bar" id="throttle-bar-detail"></div>
                         <div class="filtered-bar throttle-filtered-bar" id="throttle-filtered-bar"></div>
                     </div>
-                    <span class="pedal-value" id="throttle-value">0%</span>
+                    <span class="pedal-value" id="throttle-value-detail">0%</span>
                 </div>
                 <div class="pedal-row">
                     <span class="pedal-label">BRK</span>
                     <div class="pedal-bar-bg">
-                        <div class="brake-bar" id="brake-bar"></div>
+                        <div class="brake-bar" id="brake-bar-detail"></div>
                         <div class="filtered-bar brake-filtered-bar" id="brake-filtered-bar"></div>
                     </div>
-                    <span class="pedal-value" id="brake-value">0%</span>
+                    <span class="pedal-value" id="brake-value-detail">0%</span>
                 </div>
                 <div class="pedal-row">
                     <span class="pedal-label">CLT</span>
@@ -61,26 +85,54 @@
                     </div>
                     <span class="pedal-value" id="clutch-value">0%</span>
                 </div>
+                <div class="pedal-row">
+                    <span class="pedal-label">STEER</span>
+                    <span class="pedal-value" id="wheel-rotation-detail">0.0&deg;</span>
+                </div>
             </div>
 
             <div class="card fuel-card">
                 <div class="card-title">FUEL</div>
-                <div class="fuel-grid">
-                    <div class="fuel-item">
-                        <div class="fuel-value" id="fuel">--</div>
-                        <div class="fuel-label">LEVEL (L)</div>
+                <div class="fuel-bar-container">
+                    <div class="fuel-bar-bg">
+                        <div class="fuel-bar" id="fuel-bar"></div>
                     </div>
-                    <div class="fuel-item">
-                        <div class="fuel-value" id="fuel-capacity">--</div>
-                        <div class="fuel-label">CAPACITY</div>
+                    <div class="fuel-bar-info">
+                        <span class="fuel-bar-value" id="fuel">--</span>
+                        <span class="fuel-bar-unit">L</span>
+                        <span class="fuel-bar-separator">/</span>
+                        <span class="fuel-bar-capacity" id="fuel-capacity">--</span>
+                        <span class="fuel-bar-unit">L</span>
                     </div>
-                    <div class="fuel-item">
-                        <div class="fuel-value" id="fuel-per-lap">--</div>
-                        <div class="fuel-label">PER LAP</div>
+                </div>
+                <div class="fuel-stats-grid">
+                    <div class="fuel-stat-item">
+                        <div class="fuel-stat-value" id="fuel-per-lap">--</div>
+                        <div class="fuel-stat-label">PER LAP</div>
                     </div>
-                    <div class="fuel-item">
-                        <div class="fuel-value" id="fuel-laps-remaining">--</div>
-                        <div class="fuel-label">LAPS LEFT</div>
+                    <div class="fuel-stat-item">
+                        <div class="fuel-stat-value" id="fuel-laps-remaining">--</div>
+                        <div class="fuel-stat-label">LAPS LEFT</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- G-Force Meter -->
+            <div class="card gforce-card">
+                <div class="card-title">G-FORCE</div>
+                <div class="gforce-container">
+                    <canvas id="gforce-canvas" width="140" height="140"></canvas>
+                    <div class="gforce-values">
+                        <div class="gforce-value-row">
+                            <span class="gforce-label">LAT</span>
+                            <span class="gforce-num" id="gforce-lat">0.00</span>
+                            <span class="gforce-unit">G</span>
+                        </div>
+                        <div class="gforce-value-row">
+                            <span class="gforce-label">LONG</span>
+                            <span class="gforce-num" id="gforce-long">0.00</span>
+                            <span class="gforce-unit">G</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -207,14 +259,53 @@
 
             <div class="card tyres-card">
                 <div class="card-title">TYRES</div>
+                <div class="tyres-visual-grid">
+                    <div class="tyre-visual-item">
+                        <div class="tyre-visual-pos">FL</div>
+                        <div class="tyre-temp-bar-container">
+                            <div class="tyre-temp-bar" id="fl-temp-bar"></div>
+                        </div>
+                        <div class="tyre-temp-display">
+                            <span class="tyre-temp-value" id="fl-temp">--</span>
+                            <span class="tyre-temp-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="tyre-visual-item">
+                        <div class="tyre-visual-pos">FR</div>
+                        <div class="tyre-temp-bar-container">
+                            <div class="tyre-temp-bar" id="fr-temp-bar"></div>
+                        </div>
+                        <div class="tyre-temp-display">
+                            <span class="tyre-temp-value" id="fr-temp">--</span>
+                            <span class="tyre-temp-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="tyre-visual-item">
+                        <div class="tyre-visual-pos">RL</div>
+                        <div class="tyre-temp-bar-container">
+                            <div class="tyre-temp-bar" id="rl-temp-bar"></div>
+                        </div>
+                        <div class="tyre-temp-display">
+                            <span class="tyre-temp-value" id="rl-temp">--</span>
+                            <span class="tyre-temp-unit">°C</span>
+                        </div>
+                    </div>
+                    <div class="tyre-visual-item">
+                        <div class="tyre-visual-pos">RR</div>
+                        <div class="tyre-temp-bar-container">
+                            <div class="tyre-temp-bar" id="rr-temp-bar"></div>
+                        </div>
+                        <div class="tyre-temp-display">
+                            <span class="tyre-temp-value" id="rr-temp">--</span>
+                            <span class="tyre-temp-unit">°C</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-title" style="margin-top: 8px;">TYRE DETAILS</div>
                 <div class="tyres-grid">
                     <div class="tyre-item">
                         <div class="tyre-pos">FL</div>
                         <div class="tyre-data-row">
-                            <div class="tyre-temp-row">
-                                <span class="tyre-temp" id="fl-temp">--</span>
-                                <span class="tyre-temp-unit">&deg;C</span>
-                            </div>
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="fl-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
@@ -228,10 +319,6 @@
                     <div class="tyre-item">
                         <div class="tyre-pos">FR</div>
                         <div class="tyre-data-row">
-                            <div class="tyre-temp-row">
-                                <span class="tyre-temp" id="fr-temp">--</span>
-                                <span class="tyre-temp-unit">&deg;C</span>
-                            </div>
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="fr-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
@@ -245,10 +332,6 @@
                     <div class="tyre-item">
                         <div class="tyre-pos">RL</div>
                         <div class="tyre-data-row">
-                            <div class="tyre-temp-row">
-                                <span class="tyre-temp" id="rl-temp">--</span>
-                                <span class="tyre-temp-unit">&deg;C</span>
-                            </div>
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="rl-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>
@@ -262,10 +345,6 @@
                     <div class="tyre-item">
                         <div class="tyre-pos">RR</div>
                         <div class="tyre-data-row">
-                            <div class="tyre-temp-row">
-                                <span class="tyre-temp" id="rr-temp">--</span>
-                                <span class="tyre-temp-unit">&deg;C</span>
-                            </div>
                             <div class="tyre-rps-row">
                                 <span class="tyre-rps" id="rr-rps">--</span>
                                 <span class="tyre-rps-unit">rps</span>

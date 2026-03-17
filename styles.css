@@ -39,13 +39,181 @@ body {
 .dashboard {
     display: grid;
     grid-template-columns: clamp(220px, 18vw, 260px) 1fr clamp(260px, 20vw, 300px);
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     gap: clamp(8px, 1vh, 12px);
     padding: clamp(8px, 1vh, 12px);
     height: 100vh;
     max-width: 1920px;
     margin: 0 auto;
     overflow: hidden;
+}
+
+/* ===== Racing Style Top Bar ===== */
+
+.racing-top-bar {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 200px 1fr 300px;
+    gap: 20px;
+    align-items: center;
+    padding: 12px 20px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.2) 100%);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    min-height: 100px;
+}
+
+/* Speed Section */
+.racing-speed-section {
+    text-align: center;
+}
+
+.racing-speed-value {
+    font-size: 64px;
+    font-weight: 700;
+    color: var(--accent-green);
+    line-height: 1;
+    font-family: 'Segoe UI Mono', monospace;
+    text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.racing-speed-unit {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    letter-spacing: 2px;
+}
+
+/* Gear Section */
+.racing-gear-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.shift-lights {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 20px;
+}
+
+.shift-light {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.05s;
+}
+
+.shift-light.green {
+    background: #00ff88;
+    box-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88;
+}
+
+.shift-light.yellow {
+    background: #ffd700;
+    box-shadow: 0 0 10px #ffd700, 0 0 20px #ffd700;
+}
+
+.shift-light.red {
+    background: #ff4444;
+    box-shadow: 0 0 10px #ff4444, 0 0 20px #ff4444;
+    animation: pulse 0.3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+.racing-gear-value {
+    font-size: 96px;
+    font-weight: 700;
+    color: var(--accent-yellow);
+    line-height: 1;
+    font-family: 'Segoe UI Mono', monospace;
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
+    min-width: 120px;
+    text-align: center;
+}
+
+.racing-gear-rpm {
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+/* Pedals Section */
+.racing-pedals-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.racing-pedal-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.racing-pedal-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    min-width: 70px;
+    text-align: right;
+}
+
+.racing-pedal-bar-bg {
+    flex: 1;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.racing-throttle-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #006633, #00ff88);
+    border-radius: 3px;
+    transition: width 0.05s;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+.racing-brake-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #660000, #ff4444);
+    border-radius: 3px;
+    transition: width 0.05s;
+    box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+}
+
+.racing-pedal-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    min-width: 50px;
+    text-align: right;
+    font-family: 'Segoe UI Mono', monospace;
+    font-weight: 600;
+}
+
+/* Pedal Trace */
+.pedal-trace-container {
+    margin-top: 6px;
+    height: 30px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#pedal-trace-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
 }
 
 /* ===== Header ===== */
@@ -223,8 +391,9 @@ body {
     margin-top: 3px;
 }
 
-/* Pedals */
-.pedals-card {
+/* ===== Pedals Detail ===== */
+
+.pedals-detail-card {
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -276,6 +445,59 @@ body {
     color: var(--text-primary);
     min-width: 30px;
     text-align: right;
+}
+
+/* ===== G-Force Meter ===== */
+
+.gforce-card {
+    padding: 8px;
+}
+
+.gforce-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+#gforce-canvas {
+    width: 140px;
+    height: 140px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+}
+
+.gforce-values {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    justify-content: center;
+}
+
+.gforce-value-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.gforce-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.gforce-num {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    font-family: 'Segoe UI Mono', monospace;
+    min-width: 40px;
+    text-align: right;
+}
+
+.gforce-unit {
+    font-size: 9px;
+    color: var(--text-secondary);
 }
 
 /* Fuel & Boost */
@@ -452,6 +674,78 @@ body {
     min-height: 120px;
     overflow-y: auto;
     overflow-x: hidden;
+}
+
+/* Tyre Temperature Visual Grid */
+.tyres-visual-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.tyre-visual-item {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    padding: 8px;
+    text-align: center;
+}
+
+.tyre-visual-pos {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.tyre-temp-bar-container {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.tyre-temp-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 4px;
+    transition: width 0.2s, background 0.2s;
+}
+
+.tyre-temp-bar.cold {
+    background: linear-gradient(90deg, #0088ff, #44ffff);
+}
+
+.tyre-temp-bar.optimal {
+    background: linear-gradient(90deg, #00aa44, #00ff88);
+}
+
+.tyre-temp-bar.warm {
+    background: linear-gradient(90deg, #aaaa00, #ffd700);
+}
+
+.tyre-temp-bar.hot {
+    background: linear-gradient(90deg, #aa0000, #ff4444);
+}
+
+.tyre-temp-display {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 2px;
+}
+
+.tyre-temp-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-green);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+.tyre-temp-unit {
+    font-size: 10px;
+    color: var(--text-secondary);
 }
 
 .tyres-grid {
@@ -824,10 +1118,105 @@ body {
 
 /* ===== Fuel Card ===== */
 
+.fuel-card {
+    padding: 8px;
+}
+
 .fuel-card .card-title {
+    margin-bottom: 6px;
+}
+
+/* Fuel Bar */
+.fuel-bar-container {
+    margin-bottom: 8px;
+}
+
+.fuel-bar-bg {
+    height: 20px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     margin-bottom: 4px;
 }
 
+.fuel-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-green), #00ff88);
+    border-radius: 9px;
+    transition: width 0.3s, background 0.3s;
+    position: relative;
+}
+
+.fuel-bar.low {
+    background: linear-gradient(90deg, var(--accent-red), #ff6644);
+}
+
+.fuel-bar.warning {
+    background: linear-gradient(90deg, var(--accent-yellow), #ffcc00);
+}
+
+.fuel-bar-info {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 4px;
+}
+
+.fuel-bar-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-green);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+.fuel-bar-unit {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.fuel-bar-separator {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0 2px;
+}
+
+.fuel-bar-capacity {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+/* Fuel Stats Grid */
+.fuel-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.fuel-stat-item {
+    text-align: center;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    padding: 6px;
+}
+
+.fuel-stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+.fuel-stat-label {
+    font-size: 8px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+
+/* Old fuel-grid fallback */
 .fuel-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
