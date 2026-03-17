@@ -27,7 +27,7 @@
 }
 
 body {
-    background: var(--bg-primary);
+    background: linear-gradient(135deg, #0a0e1a 0%, #0d1220 50%, #0a0e1a 100%);
     color: var(--text-primary);
     font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
     overflow: hidden;
@@ -245,8 +245,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 14px;
-    background: var(--bg-card);
+    padding: 8px 16px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
     border-radius: 6px;
     border: 1px solid var(--border-color);
 }
@@ -255,7 +255,8 @@ body {
     font-size: 13px;
     font-weight: 600;
     color: var(--text-secondary);
-    letter-spacing: 1px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
 }
 
 .header-flags {
@@ -316,6 +317,12 @@ body {
     border: 1px solid var(--border-color);
     padding: clamp(6px, 1vh, 10px);
     contain: layout style;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .card-title {
@@ -938,6 +945,27 @@ body {
 
 .lap-time-value.best {
     color: var(--accent-green);
+}
+
+/* Lap time animation */
+@keyframes lap-time-flash {
+    0% { 
+        background: rgba(0, 255, 136, 0.3);
+        transform: scale(1.05);
+    }
+    100% { 
+        background: transparent;
+        transform: scale(1);
+    }
+}
+
+.lap-time-item.flash {
+    animation: lap-time-flash 0.5s ease-out;
+}
+
+.lap-time-item.new-best {
+    background: rgba(0, 255, 136, 0.15);
+    border: 1px solid var(--accent-green);
 }
 
 /* Legacy lap-row for backward compatibility */
