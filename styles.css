@@ -864,9 +864,61 @@ body {
 .lap-times-card {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    padding: 10px;
 }
 
+.lap-main-display {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.lap-number-big {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.lap-time-big {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    font-family: 'Segoe UI Mono', monospace;
+    letter-spacing: 1px;
+}
+
+.lap-times-row {
+    display: flex;
+    gap: 8px;
+}
+
+.lap-time-item {
+    flex: 1;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    padding: 6px;
+}
+
+.lap-time-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 2px;
+}
+
+.lap-time-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'Segoe UI Mono', monospace;
+}
+
+.lap-time-value.best {
+    color: var(--accent-green);
+}
+
+/* Legacy lap-row for backward compatibility */
 .lap-row {
     display: flex;
     justify-content: space-between;
@@ -897,19 +949,59 @@ body {
     padding: 8px;
 }
 
+.delta-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.delta-bar-container {
+    display: flex;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.delta-bar-negative {
+    flex: 1;
+    background: transparent;
+    transition: background 0.2s;
+}
+
+.delta-bar-negative.active {
+    background: linear-gradient(90deg, transparent, var(--accent-green));
+}
+
+.delta-bar-center {
+    width: 2px;
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.delta-bar-positive {
+    flex: 1;
+    background: transparent;
+    transition: background 0.2s;
+}
+
+.delta-bar-positive.active {
+    background: linear-gradient(90deg, var(--accent-red), transparent);
+}
+
 .delta-value {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 700;
     color: var(--accent-green);
+    font-family: 'Segoe UI Mono', monospace;
 }
 
 .delta-value.negative {
     color: var(--accent-red);
 }
 
-.delta-label {
-    font-size: 9px;
-    color: var(--text-secondary);
+.delta-value.positive {
+    color: var(--accent-green);
 }
 
 /* Lap History */
@@ -968,6 +1060,26 @@ body {
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.position-card.compact {
+    padding: 6px 8px;
+}
+
+.position-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.position-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    padding: 4px 2px;
 }
 
 /* Angular Velocity Card with 3D */

@@ -401,27 +401,30 @@
             </div>
 
             <div class="card lap-times-card">
-                <div class="lap-row">
-                    <span class="lap-label">LAP</span>
-                    <span class="lap-value" id="current-lap">--</span>
+                <div class="lap-main-display">
+                    <div class="lap-number-big" id="current-lap">--/--</div>
+                    <div class="lap-time-big lap-time-running" id="running-lap-time">--:--.---</div>
                 </div>
-                <div class="lap-row">
-                    <span class="lap-label">TIME</span>
-                    <span class="lap-value lap-time-running" id="running-lap-time">--:--.---</span>
-                </div>
-                <div class="lap-row">
-                    <span class="lap-label">CURRENT</span>
-                    <span class="lap-value" id="current-lap-time">--:--.---</span>
-                </div>
-                <div class="lap-row">
-                    <span class="lap-label">BEST</span>
-                    <span class="lap-value" id="best-lap-time">--:--.---</span>
+                <div class="lap-times-row">
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">LAST</span>
+                        <span class="lap-time-value" id="current-lap-time">--:--.---</span>
+                    </div>
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">BEST</span>
+                        <span class="lap-time-value best" id="best-lap-time">--:--.---</span>
+                    </div>
                 </div>
             </div>
 
             <div class="card delta-card">
+                <div class="delta-label">DELTA VS BEST</div>
+                <div class="delta-bar-container">
+                    <div class="delta-bar-negative" id="delta-bar-negative"></div>
+                    <div class="delta-bar-center"></div>
+                    <div class="delta-bar-positive" id="delta-bar-positive"></div>
+                </div>
                 <div class="delta-value" id="lap-delta">--</div>
-                <div class="delta-label">SPEED VS BEST</div>
             </div>
 
             <div class="card lap-history-card">
@@ -429,25 +432,35 @@
                 <div id="lap-list" class="lap-history-list"></div>
             </div>
 
-            <div class="card position-card">
-                <div class="card-title">POSITION / DYNAMICS</div>
-                <div class="position-row">
-                    <span class="position-label">POS</span>
-                    <span class="position-value" id="pos-x">--</span>
-                    <span class="position-value" id="pos-y">--</span>
-                    <span class="position-value" id="pos-z">--</span>
+            <div class="card position-card compact">
+                <div class="card-title">POSITION</div>
+                <div class="position-grid">
+                    <div class="position-item">
+                        <span class="position-label">X</span>
+                        <span class="position-value" id="pos-x">--</span>
+                    </div>
+                    <div class="position-item">
+                        <span class="position-label">Y</span>
+                        <span class="position-value" id="pos-y">--</span>
+                    </div>
+                    <div class="position-item">
+                        <span class="position-label">Z</span>
+                        <span class="position-value" id="pos-z">--</span>
+                    </div>
                 </div>
-                <div class="position-row">
-                    <span class="position-label">VEL</span>
-                    <span class="position-value" id="vel-x">--</span>
-                    <span class="position-value" id="vel-y">--</span>
-                    <span class="position-value" id="vel-z">--</span>
-                </div>
-                <div class="position-row">
-                    <span class="position-label">ROT</span>
-                    <span class="position-value" id="rot-pitch">--</span>
-                    <span class="position-value" id="rot-yaw">--</span>
-                    <span class="position-value" id="rot-roll">--</span>
+                <div class="position-grid">
+                    <div class="position-item">
+                        <span class="position-label">VX</span>
+                        <span class="position-value" id="vel-x">--</span>
+                    </div>
+                    <div class="position-item">
+                        <span class="position-label">VY</span>
+                        <span class="position-value" id="vel-y">--</span>
+                    </div>
+                    <div class="position-item">
+                        <span class="position-label">VZ</span>
+                        <span class="position-value" id="vel-z">--</span>
+                    </div>
                 </div>
                 <div class="position-row">
                     <span class="position-label">HDG</span>
@@ -468,54 +481,28 @@
                 </div>
             </div>
 
-            <div class="stats-grid">
-                <div class="card stat-card">
-                    <div class="stat-value" id="accel-g">--</div>
-                    <div class="stat-label">ACCEL G</div>
-                </div>
-                <div class="card stat-card">
-                    <div class="stat-value" id="accel-decel">--</div>
-                    <div class="stat-label">DECEL G</div>
-                </div>
-            </div>
-
             <div class="card body-accel-card">
-                <div class="card-title">BODY ACCELERATION</div>
+                <div class="card-title">BODY ACCEL</div>
                 <div class="stats-grid" style="margin:0">
                     <div class="body-accel-item">
                         <div class="body-accel-value" id="body-sway">--</div>
-                        <div class="body-accel-label">SWAY (LAT)</div>
+                        <div class="body-accel-label">LAT</div>
                     </div>
                     <div class="body-accel-item">
                         <div class="body-accel-value" id="body-heave">--</div>
-                        <div class="body-accel-label">HEAVE (VERT)</div>
+                        <div class="body-accel-label">VERT</div>
                     </div>
                     <div class="body-accel-item">
                         <div class="body-accel-value" id="body-surge">--</div>
-                        <div class="body-accel-label">SURGE (LONG)</div>
+                        <div class="body-accel-label">LONG</div>
                     </div>
                 </div>
             </div>
 
             <div class="card accel-chart-card">
-                <div class="chart-title">ACCELERATION (G)</div>
+                <div class="chart-title">ACCEL (G)</div>
                 <div class="accel-chart-container">
                     <canvas id="accel-chart"></canvas>
-                </div>
-            </div>
-
-            <div class="card extended-data-card">
-                <div class="card-title">EXTENDED</div>
-                <div class="position-row">
-                    <span class="position-label">TRQ</span>
-                    <span class="position-value" id="torque-1">--</span>
-                    <span class="position-value" id="torque-2">--</span>
-                    <span class="position-value" id="torque-3">--</span>
-                    <span class="position-value" id="torque-4">--</span>
-                </div>
-                <div class="position-row">
-                    <span class="position-label">RGN</span>
-                    <span class="position-value" id="energy-recovery">--</span>
                 </div>
             </div>
         </div>

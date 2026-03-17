@@ -160,6 +160,26 @@ function updateSpeedDelta(data) {
 
     elements.lapDelta.textContent = (delta >= 0 ? '+' : '') + delta.toFixed(1) + ' km/h';
     elements.lapDelta.className = 'delta-value' + (delta < 0 ? ' negative' : '');
+    
+    // デルタバー更新
+    const barNegative = document.getElementById('delta-bar-negative');
+    const barPositive = document.getElementById('delta-bar-positive');
+    
+    if (barNegative && barPositive) {
+        // ±50km/hを最大としてバーを表示
+        const maxDelta = 50;
+        const normalizedDelta = Math.max(-maxDelta, Math.min(maxDelta, delta));
+        
+        if (delta < 0) {
+            // 遅い（赤）
+            barNegative.classList.remove('active');
+            barPositive.classList.add('active');
+        } else {
+            // 速い（緑）
+            barNegative.classList.add('active');
+            barPositive.classList.remove('active');
+        }
+    }
 }
 
 /**
