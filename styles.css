@@ -121,8 +121,19 @@ body {
 
 .shift-light.red {
     background: #ff4444;
-    box-shadow: 0 0 10px #ff4444, 0 0 20px #ff4444;
-    animation: pulse 0.3s ease-in-out infinite;
+    box-shadow: 0 0 10px #ff4444, 0 0 20px #ff4444, 0 0 30px #ff4444;
+    animation: shift-light-flash 0.15s ease-in-out infinite;
+}
+
+@keyframes shift-light-flash {
+    0%, 100% { 
+        transform: scale(1); 
+        opacity: 1;
+    }
+    50% { 
+        transform: scale(1.3); 
+        opacity: 0.8;
+    }
 }
 
 @keyframes pulse {
@@ -139,6 +150,17 @@ body {
     text-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
     min-width: 120px;
     text-align: center;
+    transition: color 0.1s, text-shadow 0.1s;
+}
+
+.racing-gear-value.reverse {
+    color: var(--accent-red);
+    text-shadow: 0 0 30px rgba(255, 68, 68, 0.5);
+}
+
+.racing-gear-value.low {
+    color: var(--accent-orange);
+    text-shadow: 0 0 30px rgba(255, 136, 0, 0.4);
 }
 
 .racing-gear-rpm {
@@ -1731,9 +1753,24 @@ body {
     }
 }
 
+@media (max-width: 1600px) {
+    .racing-top-bar {
+        grid-template-columns: 160px 1fr 260px;
+        padding: 10px 16px;
+    }
+    
+    .racing-speed-value {
+        font-size: 52px;
+    }
+    
+    .racing-gear-value {
+        font-size: 80px;
+    }
+}
+
 @media (max-width: 1400px) {
     .dashboard {
-        grid-template-columns: 220px 1fr 260px;
+        grid-template-columns: 200px 1fr 240px;
         gap: 8px;
         padding: 8px;
     }
@@ -1741,15 +1778,36 @@ body {
     .charts-container {
         gap: 4px;
     }
+    
+    .racing-top-bar {
+        grid-template-columns: 140px 1fr 220px;
+        min-height: 80px;
+    }
+    
+    .racing-speed-value {
+        font-size: 44px;
+    }
+    
+    .racing-gear-value {
+        font-size: 64px;
+    }
 }
 
 @media (max-width: 1200px) {
     .dashboard {
-        grid-template-columns: 200px 1fr 240px;
+        grid-template-columns: 180px 1fr 220px;
     }
 
     .tyres-grid {
         gap: 4px;
+    }
+    
+    .racing-top-bar {
+        grid-template-columns: 120px 1fr 180px;
+    }
+    
+    .pedal-trace-container {
+        display: none;
     }
 }
 
@@ -1774,6 +1832,14 @@ body {
         gap: 6px;
         padding: 6px;
     }
+    
+    .racing-top-bar {
+        min-height: 70px;
+    }
+    
+    .racing-gear-value {
+        font-size: 72px;
+    }
 }
 
 @media (max-height: 700px) {
@@ -1788,5 +1854,13 @@ body {
 
     .lap-history-card {
         max-height: 90px;
+    }
+    
+    .racing-top-bar {
+        min-height: 60px;
+    }
+    
+    .racing-gear-value {
+        font-size: 56px;
     }
 }

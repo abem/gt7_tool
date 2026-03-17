@@ -139,11 +139,27 @@ function drawCourseMap() {
     ctx.arc(carPos.x, carPos.y, 15, 0, Math.PI * 2);
     ctx.fill();
 
-    // 車両マーカー
-    ctx.fillStyle = COURSE_MAP_CONFIG.colors.car;
+    // 車両マーカー（向きを考慮した矢印）
+    var heading = courseMapState.currentPosition.heading || 0;
+    ctx.save();
+    ctx.translate(carPos.x, carPos.y);
+    ctx.rotate(-heading); // キャンバス座標系に合わせて反転
+    
+    // 矢印形状
     ctx.beginPath();
-    ctx.arc(carPos.x, carPos.y, 6, 0, Math.PI * 2);
+    ctx.moveTo(0, -8);  // 先端
+    ctx.lineTo(5, 6);   // 右後ろ
+    ctx.lineTo(0, 3);   // 中心後ろ
+    ctx.lineTo(-5, 6);  // 左後ろ
+    ctx.closePath();
+    
+    ctx.fillStyle = COURSE_MAP_CONFIG.colors.car;
     ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    ctx.restore();
 
     // 情報表示
     var infoEl = courseMapState.infoEl;
@@ -157,8 +173,13 @@ function drawCourseMap() {
     }
 }
 
-function updateCourseMap(positionX, positionY, positionZ, speed) {
-    courseMapState.currentPosition = { x: positionX, y: positionY, z: positionZ };
+function updateCourseMap(positionX, positionY, positionZ, speed, heading) {
+    courseMapState.currentPosition = { 
+        x: positionX, 
+        y: positionY, 
+        z: positionZ,
+        heading: heading || 0
+    };
     updateCourseMapBounds(positionX, positionZ);
 
     courseMapState.sampleCount++;

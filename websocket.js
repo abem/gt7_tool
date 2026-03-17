@@ -144,7 +144,17 @@ function updateVehicleState(data) {
 
     // ギア
     const gear = data.gear || 0;
-    elements.gear.textContent = gear === 0 ? 'R' : gear;
+    const gearEl = elements.gear;
+    gearEl.textContent = gear === 0 ? 'R' : gear;
+    
+    // ギアに応じた色変更
+    gearEl.classList.remove('reverse', 'low');
+    if (gear === 0) {
+        gearEl.classList.add('reverse');
+    } else if (gear <= 2) {
+        gearEl.classList.add('low');
+    }
+    
     if (data.suggested_gear != null && data.suggested_gear !== gear) {
         elements.suggestedGear.textContent = '\u2192' + data.suggested_gear;
     } else {
@@ -562,7 +572,8 @@ function handleTelemetryMessage(data, nowTs) {
             data.position_x,
             data.position_y || 0,
             data.position_z,
-            data.speed_kmh || 0
+            data.speed_kmh || 0,
+            data.rotation_yaw || 0  // 車両の向き
         );
         wsState.lastMapTs = now;
     }
