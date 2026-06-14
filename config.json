@@ -2,6 +2,8 @@
     "ps5_ip": "192.168.1.128",
     "send_port": 33739,
     "receive_port": 33740,
-    "http_port": 18080,
-    "heartbeat_interval": 10
+    "http_port": 8080,
+    "heartbeat_interval": 10,
+    "ssl_cert": "ssl/server-cert.pem",
+    "ssl_key": "ssl/server-key.pem"
 }

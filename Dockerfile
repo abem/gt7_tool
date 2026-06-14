@@ -24,11 +24,12 @@ COPY index.html ./
 COPY styles.css ./
 COPY ui_components.js charts.js course-map.js websocket.js test-mode.js app.js car-3d.js constants.js lap-manager.js ./
 COPY uplot.min.js uplot.min.css ./
+COPY ssl ./ssl
 
 ENV PYTHONUNBUFFERED=1
 
-# ポートを公開（HTTP/WebSocketとUDP受信）
-EXPOSE 18080/tcp
+# ポートを公開（HTTPS/WebSocketとUDP受信）
+EXPOSE 8080/tcp
 EXPOSE 33740/udp
 
 CMD ["python", "main.py"]

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import ssl
 import logging
 import aiohttp
 from datetime import datetime
@@ -21,8 +22,10 @@ def load_config():
         "ps5_ip": "192.168.1.100",
         "send_port": 33739,
         "receive_port": 33740,
-        "http_port": 18080,
-        "heartbeat_interval": 10
+        "http_port": 8080,
+        "heartbeat_interval": 10,
+        "ssl_cert": "ssl/server-cert.pem",
+        "ssl_key": "ssl/server-key.pem"
     }
     try:
         with open('config.json', 'r') as f:
@@ -287,8 +290,25 @@ async def on_startup(app):
     asyncio.create_task(telemetry_background_task())
 
 
+def build_ssl_context():
+    """設定された証明書/鍵が存在すればSSLコンテキストを構築する。無ければNone（平文HTTP）。"""
+    cert = CONFIG.get("ssl_cert")
+    key = CONFIG.get("ssl_key")
+    if not cert or not key:
+        return None
+    if not (os.path.isfile(cert) and os.path.isfile(key)):
+        logger.warning(f"SSL cert/key not found (cert={cert}, key={key}); falling back to HTTP")
+        return None
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(cert, key)
+    return ctx
+
+
 def main():
     port = CONFIG.get("http_port", 8080)
+    ssl_context = build_ssl_context()
+    scheme = "https" if ssl_context else "http"
+    ws_scheme = "wss" if ssl_context else "ws"
 
     app = web.Application(middlewares=[logging_middleware])
     app.router.add_get('/', index_handler)
@@ -298,10 +318,10 @@ def main():
     app.on_startup.append(on_startup)
 
     logger.info(f"Starting GT7 Dashboard Server on port {port}...")
-    logger.info(f"HTTP: http://0.0.0.0:{port}")
-    logger.info(f"WebSocket: ws://0.0.0.0:{port}/ws")
+    logger.info(f"{scheme.upper()}: {scheme}://0.0.0.0:{port}")
+    logger.info(f"WebSocket: {ws_scheme}://0.0.0.0:{port}/ws")
 
-    web.run_app(app, host='0.0.0.0', port=port)
+    web.run_app(app, host='0.0.0.0', port=port, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":
