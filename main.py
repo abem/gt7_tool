@@ -17,7 +17,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _int_env(name, default):
+    """環境変数を整数で取得。未設定・空・非整数なら default を返す(後方互換)。"""
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(f"Invalid integer for {name}={value!r}; using default {default}")
+        return default
+
+
 def load_config():
+    """config.json を読み、環境変数があれば上書きする(env 優先・config.json フォールバック)。
+
+    .env / docker-compose の環境変数で PS5_IP と各ポートを一元管理できる。
+    env 未設定の項目は config.json(無ければ defaults)の値を使う。
+    """
     defaults = {
         "ps5_ip": "192.168.1.100",
         "send_port": 33739,
@@ -36,8 +53,13 @@ def load_config():
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in config.json: {e}, using defaults")
         cfg = defaults
+
     if os.getenv("PS5_IP"):
         cfg["ps5_ip"] = os.getenv("PS5_IP")
+    cfg["send_port"] = _int_env("SEND_PORT", cfg.get("send_port", 33739))
+    cfg["receive_port"] = _int_env("RECEIVE_PORT", cfg.get("receive_port", 33740))
+    cfg["http_port"] = _int_env("HTTP_PORT", cfg.get("http_port", 8080))
+    cfg["heartbeat_interval"] = _int_env("HEARTBEAT_INTERVAL", cfg.get("heartbeat_interval", 10))
     return cfg
 
 

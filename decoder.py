@@ -9,7 +9,11 @@ import struct
 import json
 import os
 import logging
-from Crypto.Cipher import Salsa20
+
+# NOTE: Crypto (pycryptodome) は GT7Decoder の復号処理でのみ必要。
+# CourseEstimator は Crypto に非依存なため、トップレベル import を避け
+# _try_decrypt 内で遅延 import する。これにより Crypto 未導入環境でも
+# `import decoder` が成功し、CourseEstimator/テストが利用可能になる。
 
 logger = logging.getLogger(__name__)
 
@@ -42,34 +46,90 @@ class CourseEstimator:
             logger.error(f"Failed to load course database: {e}")
 
     def estimate_course(self, x, z):
-        """位置座標(x, z)からコースを推定"""
-        for course in self.known_courses:
-            if self._point_in_bounds(x, z, course.get('bounds', {})):
-                return {
-                    "id": course.get('id', 'unknown'),
-                    "name": course.get('name', 'Unknown'),
-                    "name_en": course.get('name_en', ''),
-                    "name_ja": course.get('name_ja', ''),
-                    "confidence": 1.0,
-                }
+        """位置座標(x, z)からコースを推定
 
-        for course in self.courses:
-            if self._point_in_bounds(x, z, course.get('bounds', {})):
-                return {
-                    "id": course.get('id', 'unknown'),
-                    "name": course.get('name', 'Unknown'),
-                    "description": course.get('description', ''),
-                    "confidence": 0.8,
-                }
+        known_courses と courses(自動収集)を統合し、(x, z) を内包する
+        全候補を収集する。bounds 面積が最小=最も具体的なコースを選ぶ。
+        fallback:true の超広域ボックス(real_track 等)は通常候補から分離し、
+        他に候補が一切無い時のみ低 confidence で返す(シャドウイング解消)。
+
+        戻り値キー (id, name, name_en, name_ja, confidence) は後方互換を維持。
+        confidence は 0.0..1.0。
+        """
+        candidates = []  # 通常候補(具体コース): (area, origin_rank, origin, course)
+        fallbacks = []   # fallback:true の巨大ボックス: (area, origin, course)
+
+        # known_courses(origin='known') と courses(origin='auto') を一つに集約。
+        # known を先に無条件 return する旧構造は廃止(シャドウの元凶)。
+        for origin, course_list in (('known', self.known_courses), ('auto', self.courses)):
+            for course in course_list:
+                bounds = course.get('bounds', {})
+                if not self._point_in_bounds(x, z, bounds):
+                    continue
+                area = self._bounds_area(bounds)
+                if course.get('fallback') is True:
+                    fallbacks.append((area, origin, course))
+                else:
+                    # 面積が小さいほど具体的。同面積なら known を auto より優先。
+                    origin_rank = 0 if origin == 'known' else 1
+                    candidates.append((area, origin_rank, origin, course))
+
+        if candidates:
+            area, _origin_rank, origin, course = min(candidates, key=lambda c: (c[0], c[1]))
+            return self._build_result(course, origin, area, is_fallback=False)
+
+        if fallbacks:
+            area, origin, course = min(fallbacks, key=lambda c: c[0])
+            return self._build_result(course, origin, area, is_fallback=True)
 
         return {"id": "unknown", "name": "Unknown Track", "confidence": 0}
 
     @staticmethod
-    def _point_in_bounds(x, z, bounds):
-        return (
-            bounds.get('min_x', -99999) <= x <= bounds.get('max_x', 99999)
-            and bounds.get('min_z', -99999) <= z <= bounds.get('max_z', 99999)
+    def _build_result(course, origin, area, is_fallback):
+        """選択されたコースから戻り値 dict を構築し confidence を導出"""
+        verified = course.get('verified', False)
+        if is_fallback:
+            confidence = 0.2
+        elif verified:
+            confidence = 0.9
+        else:
+            # 推測 bounds(未検証)。面積が小さいほど具体的→やや高め。
+            # area<=250000 で 0.7、area>=2,250,000 で 0.4 になる線形。0.4..0.7 にクランプ。
+            confidence = 0.7 - (area - 250000) / 4_000_000
+            confidence = max(0.4, min(0.7, confidence))
+
+        # UI 契約(websocket.js): id と name は必須。unknown 時は id='unknown'。
+        return {
+            "id": course.get('id', 'unknown'),
+            "name": course.get('name', 'Unknown'),
+            "name_en": course.get('name_en', ''),
+            "name_ja": course.get('name_ja', ''),
+            "confidence": round(confidence, 3),
+            "verified": verified,
+            "source": 'fallback' if is_fallback else origin,  # 'known'|'auto'|'fallback'
+        }
+
+    @staticmethod
+    def _bounds_valid(bounds):
+        """bounds が4キー全てを持つ有効な矩形かを判定"""
+        return bool(bounds) and all(
+            k in bounds for k in ('min_x', 'max_x', 'min_z', 'max_z')
         )
+
+    @staticmethod
+    def _point_in_bounds(x, z, bounds):
+        # 空 dict やキー欠損の bounds は「マッチしない」(旧実装の全マッチ防止)。
+        if not CourseEstimator._bounds_valid(bounds):
+            return False
+        return (
+            bounds['min_x'] <= x <= bounds['max_x']
+            and bounds['min_z'] <= z <= bounds['max_z']
+        )
+
+    @staticmethod
+    def _bounds_area(bounds):
+        """bounds の面積 (max_x-min_x)*(max_z-min_z) を返す"""
+        return (bounds['max_x'] - bounds['min_x']) * (bounds['max_z'] - bounds['min_z'])
 
     def update_database_from_data(self, data_points, course_id, course_name):
         """テレメトリデータからコースの座標範囲を更新"""
