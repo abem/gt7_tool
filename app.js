@@ -13,6 +13,9 @@
     }
 
     // 初期化は websocket.js の DOMContentLoaded で実行
-    // ここではテストモード初期化のみ行う
+    // ここではテストモードと DRIVE/ANALYSIS ビュー切替の初期化のみ行う
     initTestMode();
+    if (typeof initDriveView === 'function') {
+        initDriveView();
+    }
 })();

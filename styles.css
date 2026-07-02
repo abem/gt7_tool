@@ -1769,6 +1769,164 @@ body {
 }
 
 /* ============================================================================
+ * DRIVE view — driver-facing minimal mode (F1 dash doctrine)
+ *
+ * 実車のドライバー表示/エンジニア解析の分離に倣う:
+ *   - DRIVE: 走行中に 0.2 秒で読める Tier-1/2 のみ。ギア+シフトライト+デルタが主役。
+ *   - ANALYSIS(既定): 全パネル=従来表示。エンジニア向け。
+ * body.drive-mode で切り替え。チャート等は display:none で完全に除去し
+ * 描画コストも削減する。
+ * ========================================================================== */
+
+/* --- Toggle button in header ------------------------------------------- */
+.view-mode-btn {
+    margin-left: auto;
+}
+
+/* --- Hero: delta section (hidden in ANALYSIS, shown in DRIVE) ----------- */
+.racing-delta-section {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.racing-delta-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.racing-delta-value {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: clamp(36px, 4.5vw, 64px);
+    line-height: 1;
+    color: var(--delta-faster);
+}
+
+.racing-delta-value.negative {
+    color: var(--delta-slower);
+}
+
+/* --- Drive strip (Tier-2: ≤7 persistent fields) -------------------------- */
+.drive-strip {
+    display: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-6);
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-lg);
+}
+
+.drive-strip-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+}
+
+.drive-strip-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.drive-strip-value {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: clamp(20px, 2.4vw, 32px);
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.drive-strip-value.best { color: var(--session-best); }
+.drive-strip-value.pb   { color: var(--session-best); }
+.drive-strip-value.warn { color: var(--warning); }
+.drive-strip-value.crit { color: var(--critical); }
+
+/* Tyre state blocks: colour = state, not numbers (MoTeC gauge convention) */
+.drive-tyre-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 22px);
+    grid-template-rows: repeat(2, 22px);
+    gap: 4px;
+}
+
+.drive-tyre {
+    border-radius: var(--r-sm);
+    background: var(--surface-3);
+    border: 1px solid var(--border-hairline);
+}
+
+.drive-tyre.cold    { background: var(--tyre-cold); }
+.drive-tyre.optimal { background: var(--tyre-optimal); }
+.drive-tyre.warm    { background: var(--tyre-warm); }
+.drive-tyre.hot     { background: var(--tyre-hot); }
+
+/* --- DRIVE mode layout switches ------------------------------------------ */
+/* Tier-3 (解析専用) を非表示にし、中央 1 カラム + ヒーロー拡大に再構成 */
+body.drive-mode .left-panel,
+body.drive-mode .right-panel,
+body.drive-mode .charts-container,
+body.drive-mode .center-split .car-3d-card,
+body.drive-mode .tyres-card {
+    display: none;
+}
+
+body.drive-mode .dashboard {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+        "header"
+        "hero"
+        "center";
+}
+
+body.drive-mode .racing-top-bar {
+    grid-template-columns: minmax(180px, 1fr) auto minmax(160px, 1fr) minmax(240px, 1fr);
+    min-height: clamp(160px, 26vh, 260px);
+}
+
+body.drive-mode .racing-delta-section {
+    display: flex;
+}
+
+body.drive-mode .drive-strip {
+    display: grid;
+}
+
+/* DRIVE 中はヒーローの主要素を拡大 (Tier-1: ギアは最大グリフ) */
+body.drive-mode {
+    --speed-size: clamp(72px, 10vw, 150px);
+    --gear-size: clamp(96px, 14vw, 220px);
+}
+
+body.drive-mode .shift-light {
+    width: clamp(18px, 2.2vw, 30px);
+    height: clamp(18px, 2.2vw, 30px);
+}
+
+/* コースマップは走行中も位置把握に有用なので中央に単独で残す */
+body.drive-mode .center-split {
+    grid-template-columns: 1fr;
+    flex: 1;
+    min-height: 0;
+}
+
+body.drive-mode .course-map-card {
+    min-height: clamp(240px, 40vh, 560px);
+}
+
+/* ============================================================================
  * Motion preferences
  * ========================================================================== */
 

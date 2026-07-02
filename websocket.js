@@ -596,6 +596,11 @@ function handleTelemetryMessage(data, nowTs) {
         analysisOnFrame(data);
     }
 
+    // DRIVE ビュー(有効時のみ内部で更新。analysisOnFrame の後 = 最新デルタを反映)
+    if (doUi && typeof driveViewOnFrame === 'function') {
+        driveViewOnFrame(data);
+    }
+
     // 3Dモデル更新
     updateCar3D(
         data.rotation_pitch || 0,

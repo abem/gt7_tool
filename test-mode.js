@@ -461,6 +461,20 @@ function renderDemoFrame(point, demoInputs) {
             flags: {}
         });
     }
+
+    // DRIVE ビュー(有効時のみ内部で更新)。TEST MODE でも走行ビューを検証可能にする
+    if (typeof driveViewOnFrame === 'function') {
+        const lapLen2 = demoTrajectory.length;
+        const stepMs2 = TEST_MODE_CONFIG.intervalMs;
+        const lapNum2 = Math.floor(testTrajectoryIndex / lapLen2) + 1;
+        driveViewOnFrame({
+            lap_count: lapNum2, total_laps: 5,
+            last_laptime: lapNum2 > 1 ? lapLen2 * stepMs2 - lapNum2 * 40 : -1,
+            best_laptime: lapNum2 > 2 ? lapLen2 * stepMs2 - lapNum2 * 40 : -1,
+            fuel_laps_remaining: Math.max(0, 6 - lapNum2),
+            tyre_temp: tyreData.temps
+        });
+    }
 }
 
 /**
