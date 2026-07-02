@@ -13,6 +13,8 @@
         <div class="header">
             <span class="header-title">GT7 TELEMETRY DASHBOARD</span>
             <div class="header-flags" id="flags-bar"></div>
+            <button id="view-mode-btn" class="test-mode-btn view-mode-btn" aria-pressed="false"
+                    title="走行用の最小表示(DRIVE)と解析用の全表示(ANALYSIS)を切り替え">ANALYSIS</button>
             <div id="connection-status" class="disconnected" role="status" aria-live="polite">Disconnected</div>
         </div>
 
@@ -40,7 +42,13 @@
                 <div class="racing-gear-value" id="gear">N</div>
                 <div class="racing-gear-rpm" id="rpm-text">0 RPM</div>
             </div>
-            
+
+            <!-- DRIVE モード時のみ表示: ギア隣接の大型デルタ (F1ディスプレイの定位置) -->
+            <div class="racing-delta-section">
+                <div class="racing-delta-label">DELTA</div>
+                <div class="racing-delta-value" id="drive-delta">--</div>
+            </div>
+
             <div class="racing-pedals-section">
                 <div class="racing-pedal-row">
                     <span class="racing-pedal-label">THROTTLE</span>
@@ -182,6 +190,39 @@
 
         <!-- Center Panel -->
         <div class="center-panel">
+            <!-- DRIVE モード時のみ表示: 走行中に必要な Tier-2 情報 (≤7項目) -->
+            <div class="drive-strip" id="drive-strip">
+                <div class="drive-strip-item">
+                    <span class="drive-strip-label">LAP</span>
+                    <span class="drive-strip-value" id="drive-lap">--/--</span>
+                </div>
+                <div class="drive-strip-item">
+                    <span class="drive-strip-label">LAST</span>
+                    <span class="drive-strip-value" id="drive-last">--:--.---</span>
+                </div>
+                <div class="drive-strip-item">
+                    <span class="drive-strip-label">BEST</span>
+                    <span class="drive-strip-value best" id="drive-best">--:--.---</span>
+                </div>
+                <div class="drive-strip-item">
+                    <span class="drive-strip-label">EST</span>
+                    <span class="drive-strip-value" id="drive-est">--:--.---</span>
+                </div>
+                <div class="drive-strip-item">
+                    <span class="drive-strip-label">FUEL LAPS</span>
+                    <span class="drive-strip-value" id="drive-fuel">--</span>
+                </div>
+                <div class="drive-strip-item drive-strip-tyres">
+                    <span class="drive-strip-label">TYRES</span>
+                    <div class="drive-tyre-grid">
+                        <span class="drive-tyre" id="drive-tyre-fl"></span>
+                        <span class="drive-tyre" id="drive-tyre-fr"></span>
+                        <span class="drive-tyre" id="drive-tyre-rl"></span>
+                        <span class="drive-tyre" id="drive-tyre-rr"></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="charts-container">
                 <div class="chart-wrapper">
                     <div class="chart-title">SPEED</div>
@@ -559,6 +600,7 @@
     <script src="/car-3d.js"></script>
     <script src="/lap-manager.js"></script>
     <script src="/telemetry-analysis.js"></script>
+    <script src="/drive-view.js"></script>
     <script src="/websocket.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>

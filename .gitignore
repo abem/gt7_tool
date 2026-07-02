@@ -73,3 +73,6 @@ FINAL_REPORT.md
 TEST_MODE_VERIFICATION_REPORT.md
 DOCS_PLAN.md
 investigation_summary.md
+
+# SSL certificates (self-signed, generated locally - never commit private keys)
+ssl/
