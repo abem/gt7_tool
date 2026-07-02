@@ -7,6 +7,30 @@
 
 ---
 
+## 2026-07-02 — 距離基準ラップ解析 + UI 全面リデザイン
+
+### feat: 距離基準ラップ解析機構（`telemetry-analysis.js` 新設、794 行）
+- gt7dashboard / SimHub / Coach Dave Delta を参考に、距離索引ラップ解析をフロントエンドに実装（バックエンド不変、データバインディング契約 103 ID 保持）。
+- **距離索引**: position(x, z) の弦長積算でトラック距離を導出（ワープ除外・速度積分フォールバック）。
+- **ライブ・タイムデルタ**: 同一距離地点でのベストラップ通過タイムとの秒差。`#lap-delta` / `#delta-bar-*` を秒差表示に一本化し、`lap-manager.js` の粗い速度デルタは no-op 化して二重書込を排除。
+- **推定ラップタイム** (`#est-lap-time`): 走行中の全周外挿 + PB 判定（紫表示）。
+- **リファレンス速度重畳**: 距離軸チャート（`#analysis-speed-chart` / `#time-delta-chart`）に現在ラップ + ベストラップを重畳。
+- **レースライン着色** (`#course-line-mode-btn`): スロットル緑 / ブレーキ赤 / コースト青 + 速度ピーク▴・バレー▾マーカー。
+- **レースエンジニア通知** (`#race-engineer-feed`): 新トップスピード / PB / 燃料 50-20-10% / 残周回 / ファイナルラップ。
+- **グリップ状態** (`#grip-status`)・**一貫性σ** (`#consistency-stat`)。
+- `websocket.js` の `handleTelemetryMessage` と `test-mode.js` の `renderDemoFrame` に `analysisOnFrame` を配線（ライブ / TEST 両対応）。
+- 検証: 契約 103 ID 保持 + 新 8 ID / 全 10 JS 構文 OK / 実描画で全新機能描画・コンソールエラー 0。
+
+### feat: ダッシュボード UI 全面リデザイン（APEX Broadcast）
+- モータースポーツ中継グラフィック風の全面刷新。dataviz 検証済みパレットで過飽和ネオンを全廃し、ニュートラルダーク面 + 単一 azure アクセント + 予約 status 色 + 等幅 tabular 数値の一貫したデザインシステム（72 トークン）に。
+- `index.html` / `styles.css`: レイアウト再構成（全 ID 保持）。`constants.js` / `charts.js` / `course-map.js` / `ui_components.js` / `car-3d.js` の配色を新パレットへ同期。
+- **fix**: `.center-split` の高さ 0 崩壊を修正（3D 姿勢 + コースマップの可視化）。
+- **fix**: 存在しない要素 ID（rpm-bar / accel-g / suggested-gear / wheel-rotation / torque / energy-recovery / rot-*）への無ガード参照を全てガードし、毎フレーム例外による表示停止を解消（ライブ / TEST 両方）。
+- **feat**: TEST MODE でチャート 4 枚 + 加速度チャート + コースマップも初期化・給餌。
+- 検証: 敵対的 3 系統 + 実ブラウザで、契約 103 ID 保持 / パレット CVD・コントラスト合格 / 全パネル描画・コンソールエラー 0。
+
+---
+
 ## 2026-06-14 — 改修一回目（コース判定修正・設定一元化・HTTPS）
 
 ### fix: コース判定ロジックのシャドウイング解消

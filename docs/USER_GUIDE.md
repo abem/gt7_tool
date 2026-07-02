@@ -104,7 +104,7 @@ docker compose up --build
 
 ```
 Starting GT7 Dashboard Server on port 8080...
-HTTP: http://0.0.0.0:8080
+HTTPS: https://0.0.0.0:8080
 WebSocket: ws://0.0.0.0:8080/ws
 [Heartbeat] Sending to 192.168.1.10:33739 - waiting for data...
 [RX] Started receiving 296 bytes from ('192.168.1.10', 33740)
@@ -119,13 +119,13 @@ WebSocket: ws://0.0.0.0:8080/ws
 ブラウザで以下のURLを開きます：
 
 ```
-http://localhost:8080
+https://localhost:8080
 ```
 
 または、LAN内の別端末からアクセスする場合：
 
 ```
-http://<PCのIPアドレス>:8080
+https://<PCのIPアドレス>:8080
 ```
 
 ### ダッシュボードレイアウト
@@ -322,7 +322,7 @@ python3 test_course_detection.py --data-dir gt7data
 
 ### Q: スマートフォンやタブレットで見られますか？
 
-A: はい。PCと同じWi-Fiネットワークに接続していれば、ブラウザから `http://<PCのIPアドレス>:8080` でアクセスできます。
+A: はい。PCと同じWi-Fiネットワークに接続していれば、ブラウザから `https://<PCのIPアドレス>:8080` でアクセスできます。
 
 ### Q: 同時に複数人で見られますか？
 
