@@ -144,42 +144,18 @@ function updateLapState(data, timeCounter) {
 }
 
 /**
- * 速度デルタを更新
+ * 速度デルタを更新（no-op化）
+ *
+ * #lap-delta / #delta-bar-* の書込は telemetry-analysis.js の updateLiveDelta に一本化した
+ * （距離基準の「対ベスト秒差」= 実テレメトリソフト級のライブ・タイムデルタへ役割強化）。
+ * ここで書き込むと後勝ちの二重書込・競合になるため当該 DOM 書込は行わない。
+ * currentLapData の蓄積・addLapData/bestLapData（ラップ履歴）は updateLapState 側で温存。
+ *
  * @param {Object} data - テレメトリデータ
  */
 function updateSpeedDelta(data) {
-    if (lapState.bestLapData.length === 0 || lapState.currentLapData.length === 0) {
-        return;
-    }
-
-    const idx = Math.min(
-        lapState.currentLapData.length - 1,
-        lapState.bestLapData.length - 1
-    );
-    const delta = lapState.currentLapData[idx].speed - lapState.bestLapData[idx].speed;
-
-    elements.lapDelta.textContent = (delta >= 0 ? '+' : '') + delta.toFixed(1) + ' km/h';
-    elements.lapDelta.className = 'delta-value' + (delta < 0 ? ' negative' : '');
-    
-    // デルタバー更新
-    const barNegative = document.getElementById('delta-bar-negative');
-    const barPositive = document.getElementById('delta-bar-positive');
-    
-    if (barNegative && barPositive) {
-        // ±50km/hを最大としてバーを表示
-        const maxDelta = 50;
-        const normalizedDelta = Math.max(-maxDelta, Math.min(maxDelta, delta));
-        
-        if (delta < 0) {
-            // 遅い（赤）
-            barNegative.classList.remove('active');
-            barPositive.classList.add('active');
-        } else {
-            // 速い（緑）
-            barNegative.classList.add('active');
-            barPositive.classList.remove('active');
-        }
-    }
+    // no-op: デルタ表示は telemetry-analysis.js (analysisOnFrame → updateLiveDelta) が担当。
+    return;
 }
 
 /**

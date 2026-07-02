@@ -1785,3 +1785,150 @@ body {
         animation: none;
     }
 }
+
+/* ============================================================================
+ * Distance-based lap analysis (APEX Broadcast — tokens only, no glow)
+ * Added feature: live time delta, estimated laptime, distance-axis overlay
+ * charts, race-engineer toasts, race-line colouring toggle.
+ * ========================================================================== */
+
+/* --- Estimated laptime states (inherits .lap-time-value) --------------- */
+#est-lap-time.tentative { color: var(--text-muted); }
+#est-lap-time.pb        { color: var(--session-best); }
+
+/* --- Live time delta reuses existing .delta-value / .delta-value.negative
+       and .delta-bar-negative/.delta-bar-positive. JS drives width + class;
+       slower side falls back to var(--delta-slower). No extra rules needed. */
+
+/* --- Distance-axis analysis card --------------------------------------- */
+.lap-analysis-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+.lap-analysis-card .chart-title {
+    margin-bottom: var(--sp-1);
+}
+
+.analysis-chart {
+    width: 100%;
+    height: clamp(72px, 10vh, 110px);
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+}
+
+#time-delta-chart {
+    height: clamp(56px, 8vh, 88px);
+}
+
+.analysis-legend {
+    display: flex;
+    gap: var(--sp-4);
+    align-items: center;
+    font-family: var(--font-num);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.analysis-legend span::before {
+    content: '';
+    display: inline-block;
+    width: 14px;
+    height: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.analysis-legend .lg-cur::before {
+    background: var(--series-speed);
+}
+
+.analysis-legend .lg-ref::before {
+    background: color-mix(in srgb, var(--series-speed) 45%, transparent);
+}
+
+/* --- Race engineer feed (subtle card + severity left-border, no glow) --- */
+.engineer-feed {
+    position: fixed;
+    top: 64px;
+    right: var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    width: clamp(200px, 20vw, 260px);
+    z-index: 40;
+    pointer-events: none;
+}
+
+.engineer-alert {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border-hairline);
+    border-left: 3px solid var(--text-muted);
+    border-radius: var(--r-sm);
+    box-shadow: var(--elev-1);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-primary);
+    opacity: 0;
+    transform: translateX(8px);
+    transition: opacity var(--t-base), transform var(--t-base);
+}
+
+.engineer-alert.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.engineer-alert .ea-label {
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.engineer-alert .ea-value {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+}
+
+.engineer-alert.good     { border-left-color: var(--good); }
+.engineer-alert.warning  { border-left-color: var(--warning); }
+.engineer-alert.serious  { border-left-color: var(--serious); }
+.engineer-alert.critical { border-left-color: var(--critical); }
+.engineer-alert.pb       { border-left-color: var(--session-best); }
+
+/* --- Optional grip / consistency --------------------------------------- */
+.grip-status {
+    font-family: var(--font-num);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+.grip-status.ok   { color: var(--good); }
+.grip-status.spin { color: var(--warning); }
+.grip-status.lock { color: var(--critical); }
+
+.lap-history-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.consistency-stat {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* #course-line-mode-btn uses class="test-mode-btn" and inherits the existing
+   .test-mode-btn / .test-mode-btn.active rules — no extra CSS required. */

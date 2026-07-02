@@ -128,6 +128,11 @@ function stopTestMode() {
     testModeInterval = null;
     setTestModeUiState(false);
     resetCourseMap();
+
+    // 再テスト時にクリーンスタートするため解析状態もリセット
+    if (typeof resetAnalysis === 'function') {
+        resetAnalysis();
+    }
 }
 
 /**
@@ -415,8 +420,9 @@ function renderDemoFrame(point, demoInputs) {
     // 舵角メーター更新
     updateSteeringGauge(demoSteering);
 
-    // コースマップ更新（heading付き）
-    updateCourseMap(point.x, 0, point.z, point.speed, demoOrientation.yaw);
+    // コースマップ更新（heading + 入力ゾーン着色用の throttle/brake 付き）
+    updateCourseMap(point.x, 0, point.z, point.speed, demoOrientation.yaw,
+        demoInputs.throttle, demoInputs.brake);
 
     // メインチャート(速度/RPM/スロットル/ブレーキ + 加速度)給餐。
     // ライブと同一経路(updateChartState)を使い、TEST MODE でもチャートが描画される。
@@ -429,6 +435,30 @@ function renderDemoFrame(point, demoInputs) {
             brake_pct: demoInputs.brake,
             accel_g: surge > 0 ? surge : 0,
             accel_decel: surge < 0 ? -surge : 0
+        });
+    }
+
+    // オフライン検証: 合成ラップ(demoTrajectory 20点=1周)で解析全経路を駆動。
+    // refLap生成/delta/estimated/overlay/peak/notif を PS5 不要で検証可能にする。
+    if (typeof analysisOnFrame === 'function') {
+        const lapLen = demoTrajectory.length;              // 20
+        const stepMs = TEST_MODE_CONFIG.intervalMs;        // 200
+        const lapNum = Math.floor(testTrajectoryIndex / lapLen) + 1;
+        const posInLap = testTrajectoryIndex % lapLen;
+        const curLapMs = posInLap * stepMs;                // 0..3800
+        const lastLapMs = lapLen * stepMs - lapNum * 40;   // 周毎に短縮→PB連発で検証
+        analysisOnFrame({
+            lap_count: lapNum, total_laps: 5,
+            current_laptime: curLapMs,
+            last_laptime: lapNum > 1 ? lastLapMs : -1,
+            best_laptime: -1,
+            position_x: point.x, position_y: 0, position_z: point.z,
+            speed_kmh: point.speed, speed_ms: point.speed / 3.6,
+            throttle_pct: demoInputs.throttle, brake_pct: demoInputs.brake,
+            gear: demoInputs.gear,
+            current_fuel: fuelData.current, fuel_capacity: fuelData.capacity,
+            wheel_rps: tyreData.rps, tyre_radius: [0.33, 0.33, 0.34, 0.34],
+            flags: {}
         });
     }
 }

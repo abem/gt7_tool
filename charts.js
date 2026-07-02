@@ -48,6 +48,16 @@ let accelCtx = null;
 let chartsInitialized = false;
 
 /* ================================================================
+ *  解析チャート（距離軸: 現在ラップ + リファレンスラップ重畳）
+ * ================================================================ */
+/** 距離軸 速度チャート（現在ラップ + ベスト半透明重畳） */
+let analysisSpeedChart = null;
+/** 距離軸 タイムデルタチャート */
+let timeDeltaChart = null;
+/** 解析チャート初期化済みフラグ */
+let analysisChartsInitialized = false;
+
+/* ================================================================
  *  uPlot共通設定
  * ================================================================ */
 const chartOptions = {
@@ -70,6 +80,13 @@ const chartOptions = {
     padding: [0, 0, 0, 0],
     points: { show: false }
 };
+
+/* ================================================================
+ *  解析チャート共通設定（距離軸: 固定 min/max を外し距離レンジ自動）
+ * ================================================================ */
+const analysisChartOptions = Object.assign({}, chartOptions, {
+    scales: { x: { time: false }, y: { auto: true } }
+});
 
 /* ================================================================
  *  加速度チャート描画
@@ -320,4 +337,129 @@ function setupChartResize(chartElements) {
     // 遅延リサイズ（初期レイアウト安定後）
     setTimeout(resizeCharts, 50);
     setTimeout(resizeCharts, 200);
+}
+
+/* ================================================================
+ *  解析チャート（距離軸: 現在ラップ + リファレンスラップ重畳）
+ *
+ *  telemetry-analysis.js の ensureAnalysisInit() から typeof ガードで
+ *  冪等呼出される。既存4チャート/chartOptions/setData は一切不変。
+ * ================================================================ */
+
+/**
+ * 解析チャート（速度重畳 / タイムデルタ）を初期化
+ * uPlot 未ロードや要素欠落は try/catch + 存在ガードでスキップ
+ */
+function initAnalysisCharts() {
+    if (analysisChartsInitialized) {
+        return;
+    }
+
+    const se = document.getElementById('analysis-speed-chart');
+    const de = document.getElementById('time-delta-chart');
+
+    try {
+        // 距離軸 速度チャート: CUR(現在ラップ実線) + REF(ベスト半透明破線)
+        if (se) {
+            analysisSpeedChart = new uPlot(
+                Object.assign({}, analysisChartOptions, {
+                    series: [
+                        {},
+                        // CUR 現在ラップ（--series-speed = azure-deep）
+                        { stroke: COLORS.accentBlue, width: 1.5, fill: 'rgba(47, 128, 214, 0.10)' },
+                        // REF ベストラップ（半透明・破線・fill なし）
+                        { stroke: 'rgba(47, 128, 214, 0.42)', width: 1, dash: [4, 3], fill: undefined }
+                    ]
+                }),
+                [[0], [null], [null]],
+                se
+            );
+        }
+
+        // 距離軸 タイムデルタチャート（0 = オンペース。y 自動レンジ）
+        if (de) {
+            timeDeltaChart = new uPlot(
+                Object.assign({}, analysisChartOptions, {
+                    series: [
+                        {},
+                        // デルタ線（azure = --accent-brand）
+                        { stroke: COLORS.accentCyan, width: 1.25 }
+                    ]
+                }),
+                [[0], [null]],
+                de
+            );
+        }
+
+        analysisChartsInitialized = !!(analysisSpeedChart || timeDeltaChart);
+
+        // リサイズ処理（既存 setupChartResize を踏襲）
+        setupAnalysisChartResize(se, de);
+
+    } catch (e) {
+        console.error('[ANALYSIS_CHART]', e);
+    }
+}
+
+/**
+ * 解析チャートを再描画（telemetry-analysis.js が 100ms スロットルで供給）
+ * @param {Object} pkg - {xs, curSpeed, refSpeed, delta}（全て等長, 未確定区間は null）
+ */
+function renderAnalysisCharts(pkg) {
+    if (!pkg || !pkg.xs) {
+        return;
+    }
+    try {
+        if (analysisSpeedChart) {
+            analysisSpeedChart.setData([pkg.xs, pkg.curSpeed, pkg.refSpeed]);
+        }
+        if (timeDeltaChart) {
+            timeDeltaChart.setData([pkg.xs, pkg.delta]);
+        }
+    } catch (e) {
+        // 描画失敗は握りつぶす（他機能に波及させない）
+    }
+}
+
+/**
+ * 解析チャートのリサイズ処理を設定
+ * @param {HTMLElement} se - 速度チャートコンテナ
+ * @param {HTMLElement} de - デルタチャートコンテナ
+ */
+function setupAnalysisChartResize(se, de) {
+    const pairs = [
+        { el: se, getChart: function() { return analysisSpeedChart; } },
+        { el: de, getChart: function() { return timeDeltaChart; } }
+    ];
+
+    const applySize = function(el, chart) {
+        if (!el || !chart) {
+            return;
+        }
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            chart.setSize({ width: rect.width, height: rect.height });
+        }
+    };
+
+    pairs.forEach(function(p) {
+        if (!p.el) {
+            return;
+        }
+        const observer = new ResizeObserver(function() {
+            applySize(p.el, p.getChart());
+        });
+        observer.observe(p.el);
+        applySize(p.el, p.getChart());
+    });
+
+    // 遅延リサイズ（初期レイアウト安定後）
+    setTimeout(function() {
+        applySize(se, analysisSpeedChart);
+        applySize(de, timeDeltaChart);
+    }, 50);
+    setTimeout(function() {
+        applySize(se, analysisSpeedChart);
+        applySize(de, timeDeltaChart);
+    }, 200);
 }

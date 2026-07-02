@@ -16,6 +16,9 @@
             <div id="connection-status" class="disconnected" role="status" aria-live="polite">Disconnected</div>
         </div>
 
+        <!-- Race engineer notifications (transient toasts, fixed top-right) -->
+        <div id="race-engineer-feed" class="engineer-feed" aria-live="polite"></div>
+
         <!-- Racing Style Top Bar -->
         <div class="racing-top-bar">
             <div class="racing-speed-section">
@@ -251,6 +254,7 @@
                 <div class="course-map-header">
                     <div class="card-title">COURSE MAP</div>
                     <span class="course-name" id="course-name"></span>
+                    <button id="course-line-mode-btn" class="test-mode-btn">SPEED</button>
                     <button id="test-mode-btn" class="test-mode-btn">TEST MODE</button>
                 </div>
                 <div class="course-map-container">
@@ -431,6 +435,10 @@
                         <span class="lap-time-label">BEST</span>
                         <span class="lap-time-value best" id="best-lap-time">--:--.---</span>
                     </div>
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">EST</span>
+                        <span class="lap-time-value" id="est-lap-time">--:--.---</span>
+                    </div>
                 </div>
             </div>
 
@@ -444,8 +452,24 @@
                 <div class="delta-value" id="lap-delta">--</div>
             </div>
 
+            <div class="card lap-analysis-card">
+                <div class="chart-title">
+                    <span>DISTANCE ANALYSIS</span>
+                    <span id="grip-status" class="grip-status">GRIP OK</span>
+                </div>
+                <div id="analysis-legend" class="analysis-legend">
+                    <span class="lg-cur">CUR</span>
+                    <span class="lg-ref">REF</span>
+                </div>
+                <div id="analysis-speed-chart" class="analysis-chart"></div>
+                <div id="time-delta-chart" class="analysis-chart"></div>
+            </div>
+
             <div class="card lap-history-card">
-                <div class="card-title">LAP HISTORY</div>
+                <div class="card-title lap-history-title">
+                    <span>LAP HISTORY</span>
+                    <span id="consistency-stat" class="consistency-stat">&sigma; --</span>
+                </div>
                 <div id="lap-list" class="lap-history-list"></div>
             </div>
 
@@ -534,6 +558,7 @@
     <script src="/course-map.js"></script>
     <script src="/car-3d.js"></script>
     <script src="/lap-manager.js"></script>
+    <script src="/telemetry-analysis.js"></script>
     <script src="/websocket.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>
