@@ -5,6 +5,21 @@
  * 依存: ui_components.js (courseMapState, COURSE_MAP_CONFIG, getSpeedColor, debugLog)
  */
 
+/**
+ * CSS カスタムプロパティ値を取得（デザイントークン再利用・発光禁止の趣旨に沿う）
+ * @param {string} name - --token 名
+ * @param {string} fallback - 取得失敗時の即値
+ * @returns {string} 色文字列
+ */
+function getCSSVar(name, fallback) {
+    try {
+        var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        return v || fallback;
+    } catch (e) {
+        return fallback;
+    }
+}
+
 function initCourseMap() {
     if (courseMapState.domReady) return;
     var canvas = document.getElementById('course-map');
@@ -107,6 +122,11 @@ function drawCourseMap() {
         return;
     }
 
+    // 着色モード（'speed' = 速度3段階 / 'line' = 入力ゾーン）。
+    // analysisState は telemetry-analysis.js 所有。未ロード時は速度着色にフォールバック。
+    var lineMode = (typeof analysisState !== 'undefined' && analysisState)
+        ? analysisState.lineMode : 'speed';
+
     // 軌跡
     if (courseMapState.trajectory.length > 1) {
         for (var i = 1; i < courseMapState.trajectory.length; i++) {
@@ -118,10 +138,41 @@ function drawCourseMap() {
             ctx.beginPath();
             ctx.moveTo(prevCanvas.x, prevCanvas.y);
             ctx.lineTo(currCanvas.x, currCanvas.y);
-            ctx.strokeStyle = getSpeedColor(curr.speed);
+            if (lineMode === 'line') {
+                // 入力ゾーン着色: スロットル=緑 / ブレーキ=赤 / コースト=青
+                var zone = (typeof classifyZone === 'function')
+                    ? classifyZone(curr.throttle, curr.brake)
+                    : (curr.brake > 5 && curr.brake >= curr.throttle ? 'brake'
+                        : curr.throttle > 5 ? 'throttle' : 'coast');
+                ctx.strokeStyle = zone === 'brake' ? getCSSVar('--series-brake', '#D84B4F')
+                    : zone === 'throttle' ? getCSSVar('--series-throttle', '#1F9E57')
+                    : getCSSVar('--accent-brand', '#3D9BFF');   // coast
+            } else {
+                ctx.strokeStyle = getSpeedColor(curr.speed);   // 既存の速度3段階（デフォルト維持）
+            }
             ctx.lineWidth = 2;
             ctx.stroke();
         }
+    }
+
+    // 速度ピーク(▴ 直線/トップスピード)/バレー(▾ コーナー頂点)マーカー
+    // LINE モードかつリファレンスラップ確定時のみ。未確定/サンプル過少では空配列でマークなし。
+    var refLap = (typeof analysisState !== 'undefined' && analysisState)
+        ? analysisState.refLap : null;
+    if (lineMode === 'line' && refLap) {
+        ctx.font = '12px "Segoe UI Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        (refLap.peaks || []).forEach(function(p) {
+            var c = gameToCanvas(p.x, p.z);
+            ctx.fillStyle = getCSSVar('--course-fast', '#8CC6FF');
+            ctx.fillText('▴', c.x, c.y - 8);
+        });
+        (refLap.valleys || []).forEach(function(v) {
+            var c = gameToCanvas(v.x, v.z);
+            ctx.fillStyle = getCSSVar('--warning', '#FAB219');
+            ctx.fillText('▾', c.x, c.y - 8);
+        });
     }
 
     // 車両位置
@@ -173,10 +224,10 @@ function drawCourseMap() {
     }
 }
 
-function updateCourseMap(positionX, positionY, positionZ, speed, heading) {
-    courseMapState.currentPosition = { 
-        x: positionX, 
-        y: positionY, 
+function updateCourseMap(positionX, positionY, positionZ, speed, heading, throttle, brake) {
+    courseMapState.currentPosition = {
+        x: positionX,
+        y: positionY,
         z: positionZ,
         heading: heading || 0
     };
@@ -188,6 +239,8 @@ function updateCourseMap(positionX, positionY, positionZ, speed, heading) {
             x: positionX,
             z: positionZ,
             speed: speed,
+            throttle: throttle || 0,
+            brake: brake || 0,
             timestamp: Date.now()
         });
 

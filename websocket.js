@@ -590,6 +590,12 @@ function handleTelemetryMessage(data, nowTs) {
         wsState.lastUiTs = now;
     }
 
+    // 距離基準ラップ解析(距離積分の精度確保のため非スロットルで毎処理フレーム呼ぶ。
+    // チャート再描画は analysisOnFrame 内部で 100ms スロットル)
+    if (typeof analysisOnFrame === 'function') {
+        analysisOnFrame(data);
+    }
+
     // 3Dモデル更新
     updateCar3D(
         data.rotation_pitch || 0,
@@ -615,7 +621,9 @@ function handleTelemetryMessage(data, nowTs) {
             data.position_y || 0,
             data.position_z,
             data.speed_kmh || 0,
-            data.rotation_yaw || 0  // 車両の向き
+            data.rotation_yaw || 0,  // 車両の向き
+            data.throttle_pct || 0,  // レースライン着色用
+            data.brake_pct || 0
         );
         wsState.lastMapTs = now;
     }
