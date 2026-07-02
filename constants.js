@@ -9,14 +9,34 @@
  *  表示色定義
  * ================================================================ */
 const COLORS = Object.freeze({
-    /** アクセント赤（警告・高回転） */
-    accentRed: '#ff4444',
-    /** アクセント緑（正常・加速） */
-    accentGreen: '#00ff88',
-    /** アクセント黄（注意・推奨ギア） */
-    accentYellow: '#ffd700',
-    /** アクセントシアン（低温・情報） */
-    accentCyan: '#44ffff'
+    /** アクセント赤（ブレーキ／減速 series-brake, --accent-red） */
+    accentRed: '#D84B4F',
+    /** アクセント緑（スロットル／加速 series-throttle, --accent-green） */
+    accentGreen: '#1F9E57',
+    /** アクセント黄（RPMテキスト／warm-tyre／caution, --accent-yellow） */
+    accentYellow: '#FAB219',
+    /** アクセントシアン（低温タイヤ／情報, azure = --accent-brand） */
+    accentCyan: '#3D9BFF',
+    /** 速度チャート線（azure-deep, --series-speed） */
+    accentBlue: '#2F80D6',
+    /** RPMチャート線（帯域内アンバー, --series-rpm） */
+    rpmLine: '#BD8410',
+    /** セッションベスト（紫, --session-best） */
+    accentPurple: '#B37BFF'
+});
+
+/* ================================================================
+ *  ステータス色（状態＝予約語彙。data系列色とは分離。必ずicon/ラベル併記）
+ * ================================================================ */
+const STATUS = Object.freeze({
+    /** 良好・接続・自己ベスト・tyre optimal (--good) */
+    good: '#0CA30C',
+    /** 注意・warm・fuel warning (--warning) */
+    warning: '#FAB219',
+    /** 重度注意・低燃料 (--serious) */
+    serious: '#EC835A',
+    /** 危険・切断・hot・delta遅い・レブリミッタ (--critical) */
+    critical: '#D03B3B'
 });
 
 /* ================================================================
@@ -34,7 +54,7 @@ const ACCEL_CHART_CONFIG = Object.freeze({
     /** ライン太さ */
     lineWidth: 2,
     /** グリッド色 */
-    gridColor: 'rgba(255, 255, 255, 0.1)'
+    gridColor: 'rgba(255, 255, 255, 0.06)'
 });
 
 /* ================================================================
@@ -57,11 +77,11 @@ const TYRE_TEMP = Object.freeze({
 const COURSE_MAP_CONFIG = Object.freeze({
     colors: Object.freeze({
         grid: 'rgba(255, 255, 255, 0.05)',
-        text: 'rgba(255, 255, 255, 0.5)',
-        car: COLORS.accentGreen,
-        trajectoryLow: COLORS.accentRed,
-        trajectoryMid: COLORS.accentYellow,
-        trajectoryHigh: COLORS.accentGreen
+        text: '#6B7480',
+        car: '#FFFFFF',
+        trajectoryLow: '#215B94',
+        trajectoryMid: '#3D8AE0',
+        trajectoryHigh: '#8CC6FF'
     }),
     /** 軌跡サンプリング間隔 */
     trajectorySampleInterval: 3,
@@ -104,8 +124,8 @@ const TEST_MODE_CONFIG = Object.freeze({
     /** ステータス表示 */
     status: Object.freeze({
         text: 'TEST MODE',
-        background: 'var(--accent-yellow)',
-        color: '#000'
+        background: 'var(--accent-brand, #3D9BFF)',
+        color: 'var(--on-accent, #06121F)'
     })
 });
 

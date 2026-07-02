@@ -65,6 +65,11 @@ function initTestMode() {
 
         if (testModeActive) {
             ensureCar3DInitialized();
+            // チャート/コースマップはライブでは ws.onopen 内で初期化されるが、
+            // TEST MODE(オフライン)では onopen が発火しないためここで初期化する。
+            // どちらも内部フラグで冪等なので二重初期化にはならない。
+            if (typeof initCharts === 'function') initCharts();
+            if (typeof initCourseMap === 'function') initCourseMap();
             startTestMode();
         } else {
             stopTestMode();
@@ -285,7 +290,8 @@ function renderDemoFrame(point, demoInputs) {
     if (demoInputs.gear <= 2) gearEl.classList.add('low');
     
     const rpmPct = (demoInputs.rpm / 9000 * 100);
-    elements.rpmBar.style.width = rpmPct + '%';
+    // #rpm-bar は現行UIには存在しない。存在時のみ更新(RPMはシフトライト+rpm-textで表現)。
+    if (elements.rpmBar) elements.rpmBar.style.width = rpmPct + '%';
     elements.rpmText.textContent = Math.round(demoInputs.rpm) + ' RPM';
     
     // シフトライト更新
@@ -411,6 +417,20 @@ function renderDemoFrame(point, demoInputs) {
 
     // コースマップ更新（heading付き）
     updateCourseMap(point.x, 0, point.z, point.speed, demoOrientation.yaw);
+
+    // メインチャート(速度/RPM/スロットル/ブレーキ + 加速度)給餐。
+    // ライブと同一経路(updateChartState)を使い、TEST MODE でもチャートが描画される。
+    if (typeof updateChartState === 'function') {
+        const surge = gforceData.surge || 0;
+        updateChartState({
+            speed_kmh: point.speed,
+            rpm: demoInputs.rpm,
+            throttle_pct: demoInputs.throttle,
+            brake_pct: demoInputs.brake,
+            accel_g: surge > 0 ? surge : 0,
+            accel_decel: surge < 0 ? -surge : 0
+        });
+    }
 }
 
 /**

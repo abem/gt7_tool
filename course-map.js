@@ -130,10 +130,10 @@ function drawCourseMap() {
         courseMapState.currentPosition.z
     );
 
-    // グロー効果
+    // グロー効果（自車=live要素の抑制ハロ, --accent-brand azure）
     var gradient = ctx.createRadialGradient(carPos.x, carPos.y, 0, carPos.x, carPos.y, 15);
-    gradient.addColorStop(0, 'rgba(0, 255, 136, 0.5)');
-    gradient.addColorStop(1, 'rgba(0, 255, 136, 0)');
+    gradient.addColorStop(0, 'rgba(61, 155, 255, 0.25)');
+    gradient.addColorStop(1, 'rgba(61, 155, 255, 0)');
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(carPos.x, carPos.y, 15, 0, Math.PI * 2);
@@ -155,7 +155,7 @@ function drawCourseMap() {
     
     ctx.fillStyle = COURSE_MAP_CONFIG.colors.car;
     ctx.fill();
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#3D9BFF';
     ctx.lineWidth = 1;
     ctx.stroke();
     

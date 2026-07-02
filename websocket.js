@@ -155,7 +155,7 @@ function updateVehicleState(data) {
         gearEl.classList.add('low');
     }
     
-    if (data.suggested_gear != null && data.suggested_gear !== gear) {
+    if (elements.suggestedGear) if (data.suggested_gear != null && data.suggested_gear !== gear) {
         elements.suggestedGear.textContent = '\u2192' + data.suggested_gear;
     } else {
         elements.suggestedGear.textContent = '';
@@ -164,7 +164,7 @@ function updateVehicleState(data) {
     // ステアリング回転
     if (data.wheel_rotation !== undefined) {
         const deg = (data.wheel_rotation * 180 / Math.PI).toFixed(1);
-        elements.wheelRotation.textContent = deg + '\u00B0';
+        if (elements.wheelRotation) elements.wheelRotation.textContent = deg + '\u00B0';
         if (elements.wheelRotationDetail) {
             elements.wheelRotationDetail.textContent = deg + '\u00B0';
         }
@@ -174,13 +174,15 @@ function updateVehicleState(data) {
     const rpm = Math.round(data.rpm || 0);
     const maxRpm = data.max_rpm || 9000;
     const rpmPct = Math.min((rpm / maxRpm) * 100, 100);
-    elements.rpmBar.style.width = rpmPct + '%';
-
-    if (data.rpm_alert_min && rpm >= data.rpm_alert_min) {
-        elements.rpmBar.style.background =
-            rpm >= maxRpm ? COLORS.accentRed : COLORS.accentYellow;
-    } else {
-        elements.rpmBar.style.background = '';
+    // #rpm-bar は現行UIには存在しない(RPMはシフトライト+rpm-textで表現)。存在時のみ更新。
+    if (elements.rpmBar) {
+        elements.rpmBar.style.width = rpmPct + '%';
+        if (data.rpm_alert_min && rpm >= data.rpm_alert_min) {
+            elements.rpmBar.style.background =
+                rpm >= maxRpm ? COLORS.accentRed : COLORS.accentYellow;
+        } else {
+            elements.rpmBar.style.background = '';
+        }
     }
     elements.rpmText.textContent = rpm + ' RPM';
 
@@ -427,13 +429,13 @@ function updateTyreState(data) {
     }
 
     // トルクベクタリング
-    if (data.torque_vector) {
+    if (data.torque_vector && elements.torque1) {
         elements.torque1.textContent = data.torque_vector[0].toFixed(2);
         elements.torque2.textContent = data.torque_vector[1].toFixed(2);
         elements.torque3.textContent = data.torque_vector[2].toFixed(2);
         elements.torque4.textContent = data.torque_vector[3].toFixed(2);
     }
-    if (data.energy_recovery !== undefined) {
+    if (data.energy_recovery !== undefined && elements.energyRecovery) {
         elements.energyRecovery.textContent = (data.energy_recovery || 0).toFixed(2);
     }
 }
@@ -491,9 +493,11 @@ function updatePositionText(data) {
     elements.velZ.textContent = (data.velocity_z || 0).toFixed(1);
 
     // 回転
-    elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
-    elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
-    elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
+    if (elements.rotPitch) {
+        elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
+        elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
+        elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
+    }
 
     // 角速度（CAR ATTITUDEセクション）
     if (elements.pitchRate) elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
@@ -528,10 +532,10 @@ function updatePositionText(data) {
  * @param {Object} data - テレメトリデータ
  */
 function updateChartState(data) {
-    // 加速度
+    // 加速度 (#accel-g/#accel-decel は現行UIには存在しない。加速度は accel-chart で表現。存在時のみ更新)
     updateAccelChart(data.accel_g || 0, data.accel_decel || 0);
-    elements.accelG.textContent = (data.accel_g || 0).toFixed(2);
-    elements.accelDecel.textContent = (data.accel_decel || 0).toFixed(2);
+    if (elements.accelG) elements.accelG.textContent = (data.accel_g || 0).toFixed(2);
+    if (elements.accelDecel) elements.accelDecel.textContent = (data.accel_decel || 0).toFixed(2);
 
     // チャートデータ更新
     timeData.shift();

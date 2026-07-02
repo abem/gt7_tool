@@ -62,8 +62,8 @@ var CAR_3D_CONFIG = {
         taillight: 0xcc0000,
         intake: 0x080808,
         exhaust: 0x999999,
-        grid: 0x1a1a2e,
-        gridLines: 0x2a2a3e,
+        grid: 0x14171C,
+        gridLines: 0x242932,
         // 追加カラー
         carbon: 0x1a1a1a,
         chrome: 0xffffff,
