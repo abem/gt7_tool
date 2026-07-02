@@ -220,15 +220,15 @@ function formatLapTime(ms) {
  */
 function getTyreTempColor(temp) {
     if (temp < TYRE_TEMP.COLD_THRESHOLD) {
-        return COLORS.accentCyan;
+        return COLORS.accentCyan;   // tyre-cold = azure #3D9BFF
     }
     if (temp < TYRE_TEMP.OPTIMAL_HIGH) {
-        return COLORS.accentGreen;
+        return STATUS.good;         // tyre-optimal = #0CA30C
     }
     if (temp < TYRE_TEMP.HOT_THRESHOLD) {
-        return COLORS.accentYellow;
+        return STATUS.warning;      // tyre-warm = #FAB219
     }
-    return COLORS.accentRed;
+    return STATUS.critical;         // tyre-hot = #D03B3B
 }
 
 /**
@@ -355,18 +355,18 @@ function drawGForceMeter(lat, long) {
     // キャンバスをクリア
     ctx.clearRect(0, 0, width, height);
     
-    // 背景円
+    // 背景円（--surface-2 インセット面）
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillStyle = '#1B1F26';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.strokeStyle = '#2C313A';
     ctx.lineWidth = 1;
     ctx.stroke();
-    
+
     // 同心円（Gの目盛り）
     const gLevels = [0.5, 1.0, 1.5, 2.0];
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
     ctx.lineWidth = 1;
     
     gLevels.forEach(g => {
@@ -382,7 +382,7 @@ function drawGForceMeter(lat, long) {
     ctx.lineTo(centerX + radius, centerY);
     ctx.moveTo(centerX, centerY - radius);
     ctx.lineTo(centerX, centerY + radius);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
     ctx.lineWidth = 1;
     ctx.stroke();
     
@@ -400,7 +400,7 @@ function drawGForceMeter(lat, long) {
         
         ctx.beginPath();
         ctx.arc(x, y, 2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(68, 255, 255, ${alpha})`;
+        ctx.fillStyle = `rgba(61, 155, 255, ${alpha})`;
         ctx.fill();
     });
     
@@ -408,21 +408,21 @@ function drawGForceMeter(lat, long) {
     const dotX = centerX + (lat / 2.0) * radius;
     const dotY = centerY - (long / 2.0) * radius;
     
-    // ドットのグロー
+    // ドットのグロー（抑制ハロ, --accent-brand azure）
     const gradient = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, 15);
-    gradient.addColorStop(0, 'rgba(68, 255, 255, 0.8)');
-    gradient.addColorStop(1, 'rgba(68, 255, 255, 0)');
+    gradient.addColorStop(0, 'rgba(61, 155, 255, 0.35)');
+    gradient.addColorStop(1, 'rgba(61, 155, 255, 0)');
     ctx.beginPath();
     ctx.arc(dotX, dotY, 15, 0, Math.PI * 2);
     ctx.fillStyle = gradient;
     ctx.fill();
     
-    // ドット本体
+    // ドット本体（--accent-brand + 2px --surface-1 リング）
     ctx.beginPath();
     ctx.arc(dotX, dotY, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#44ffff';
+    ctx.fillStyle = '#3D9BFF';
     ctx.fill();
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#14171C';
     ctx.lineWidth = 2;
     ctx.stroke();
     
@@ -514,8 +514,8 @@ function drawPedalTrace() {
     // クリア
     ctx.clearRect(0, 0, width, height);
     
-    // 背景
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    // 背景（--surface-2 プロット面）
+    ctx.fillStyle = '#1B1F26';
     ctx.fillRect(0, 0, width, height);
     
     const points = pedalTraceState.maxPoints;
@@ -531,15 +531,15 @@ function drawPedalTrace() {
         ctx.lineTo(x, y);
     }
     
-    ctx.strokeStyle = '#00ff88';
+    ctx.strokeStyle = '#1F9E57';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    
-    // スロットル塗りつぶし
+
+    // スロットル塗りつぶし（--series-throttle）
     ctx.lineTo(width, height / 2);
     ctx.lineTo(0, height / 2);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(0, 255, 136, 0.2)';
+    ctx.fillStyle = 'rgba(31, 158, 87, 0.2)';
     ctx.fill();
     
     // ブレーキ描画（下半分）
@@ -552,22 +552,22 @@ function drawPedalTrace() {
         ctx.lineTo(x, y);
     }
     
-    ctx.strokeStyle = '#ff4444';
+    ctx.strokeStyle = '#D84B4F';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    
-    // ブレーキ塗りつぶし
+
+    // ブレーキ塗りつぶし（--series-brake）
     ctx.lineTo(width, height / 2);
     ctx.lineTo(0, height / 2);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(255, 68, 68, 0.2)';
+    ctx.fillStyle = 'rgba(216, 75, 79, 0.2)';
     ctx.fill();
-    
-    // センターライン
+
+    // センターライン（--axis）
     ctx.beginPath();
     ctx.moveTo(0, height / 2);
     ctx.lineTo(width, height / 2);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.strokeStyle = '#2C313A';
     ctx.lineWidth = 1;
     ctx.stroke();
 }
@@ -616,7 +616,7 @@ function showConnectionError(message) {
         errorDiv.id = 'connection-error';
         errorDiv.style.cssText = 
             'position: fixed; top: 20px; left: 50%; transform: translateX(-50%);' +
-            'background: rgba(220, 53, 69, 0.95); color: white;' +
+            'background: #D03B3B; color: white;' +
             'padding: 12px 24px; border-radius: 8px; z-index: 9999;' +
             'font-size: 14px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
         document.body.appendChild(errorDiv);

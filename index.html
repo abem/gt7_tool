@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
     <title>GT7 Telemetry Dashboard</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/uplot.min.css">
@@ -12,7 +13,7 @@
         <div class="header">
             <span class="header-title">GT7 TELEMETRY DASHBOARD</span>
             <div class="header-flags" id="flags-bar"></div>
-            <div id="connection-status" class="disconnected">Disconnected</div>
+            <div id="connection-status" class="disconnected" role="status" aria-live="polite">Disconnected</div>
         </div>
 
         <!-- Racing Style Top Bar -->
@@ -197,6 +198,7 @@
                 </div>
             </div>
 
+            <div class="center-split">
             <div class="card car-3d-card">
                 <div class="card-title">CAR ATTITUDE</div>
                 <div class="car-3d-container">
@@ -220,11 +222,11 @@
                     </div>
                 </div>
                 <div class="car-top-view-container">
-                    <div class="card-title" style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase; padding: 4px 10px;">TOP VIEW</div>
+                    <div class="card-title mini">TOP VIEW</div>
                     <div id="car-top-view"></div>
                 </div>
                 <div class="steering-gauge-container">
-                    <div class="card-title" style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase; padding: 4px 10px;">STEERING ANGLE</div>
+                    <div class="card-title mini">STEERING ANGLE</div>
                     <div class="steering-gauge">
                         <div class="steering-scale">
                             <div class="steering-scale-mark left-max"></div>
@@ -255,6 +257,7 @@
                     <canvas id="course-map"></canvas>
                     <div class="course-map-info" id="course-map-info">Waiting for data...</div>
                 </div>
+            </div>
             </div>
 
             <div class="card tyres-card">
@@ -301,7 +304,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-title" style="margin-top: 8px;">TYRE DETAILS</div>
+                <div class="card-title subhead">TYRE DETAILS</div>
                 <div class="tyres-grid">
                     <div class="tyre-item">
                         <div class="tyre-pos">FL</div>
@@ -356,7 +359,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-title" style="margin-top: 4px;">SUSPENSION</div>
+                <div class="card-title subhead">SUSPENSION</div>
                 <div class="suspension-grid">
                     <div class="susp-item">
                         <div class="susp-pos">FL</div>
@@ -379,7 +382,7 @@
                         <div class="susp-unit">mm</div>
                     </div>
                 </div>
-                <div class="card-title" style="margin-top: 4px;">ROAD SURFACE</div>
+                <div class="card-title subhead">ROAD SURFACE</div>
                 <div class="position-row">
                     <span class="position-label">NRM</span>
                     <span class="position-value" id="road-plane-x">--</span>

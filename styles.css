@@ -1,234 +1,460 @@
-/* GT7 Telemetry Dashboard - Stylesheet */
+/* ============================================================================
+ * GT7 Telemetry Dashboard - Stylesheet
+ * "APEX Broadcast" — motorsport broadcast telemetry aesthetic.
+ * Flat neutral dark surfaces, single azure primary, reserved status colours,
+ * domain-coded data series, tabular numerics, no neon glow.
+ * ========================================================================== */
 
-* {
+*,
+*::before,
+*::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
-:root {
-    --bg-primary: #0a0e1a;
-    --bg-secondary: #121829;
-    --bg-card: rgba(255, 255, 255, 0.05);
-    --border-color: rgba(255, 255, 255, 0.08);
-    --text-primary: #ffffff;
-    --text-secondary: #6b7280;
-    --accent-green: #00ff88;
-    --accent-yellow: #ffd700;
-    --accent-red: #ff4444;
-    --accent-cyan: #44ffff;
-    --accent-orange: #ff8800;
+/* ============================================================================
+ * Design tokens (single source of truth)
+ * ========================================================================== */
 
+:root {
+    /* --- Surfaces --------------------------------------------------------- */
+    --bg-primary: #0B0D10;
+    --bg-secondary: #14171C;
+    --bg-card: #14171C;
+    --surface-0: #0B0D10;
+    --surface-1: #14171C;
+    --surface-2: #1B1F26;
+    --surface-3: #242932;
+    --surface-4: #2E343D;
+
+    /* --- Borders ---------------------------------------------------------- */
+    --border-color: rgba(255, 255, 255, 0.09);
+    --border-hairline: rgba(255, 255, 255, 0.09);
+    --border-strong: #2C313A;
+
+    /* --- Ink -------------------------------------------------------------- */
+    --text-primary: #F2F5F8;
+    --text-secondary: #A6AEBB;
+    --text-muted: #6B7480;
+    --ink-hero: #FFFFFF;
+    --on-accent: #06121F;
+
+    /* --- Brand / accent (single azure primary) --------------------------- */
+    --accent-brand: #3D9BFF;
+    --accent-brand-deep: #2F80D6;
+    --accent-wash: rgba(61, 155, 255, 0.12);
+    --focus-ring: #3D9BFF;
+
+    /* --- Legacy accent names (kept, remapped) ---------------------------- */
+    --accent-cyan: #3D9BFF;
+    --accent-green: #1F9E57;
+    --accent-red: #D84B4F;
+    --accent-yellow: #FAB219;
+    --accent-orange: #EC835A;
+
+    /* --- Reserved status vocabulary -------------------------------------- */
+    --good: #0CA30C;
+    --warning: #FAB219;
+    --serious: #EC835A;
+    --critical: #D03B3B;
+
+    /* --- Data series (categorical, domain-coded) ------------------------- */
+    --series-speed: #2F80D6;
+    --series-rpm: #BD8410;
+    --series-throttle: #1F9E57;
+    --series-brake: #D84B4F;
+    --series-accel: #C65F9D;
+
+    /* --- Domain semantics ------------------------------------------------ */
+    --session-best: #B37BFF;
+    --delta-faster: #0CA30C;
+    --delta-slower: #D03B3B;
+    --lap-running: #3D9BFF;
+
+    --tyre-cold: #3D9BFF;
+    --tyre-optimal: #0CA30C;
+    --tyre-warm: #FAB219;
+    --tyre-hot: #D03B3B;
+
+    --course-slow: #215B94;
+    --course-mid: #3D8AE0;
+    --course-fast: #8CC6FF;
+    --course-car: #FFFFFF;
+
+    --grid-hairline: #242932;
+    --axis: #2C313A;
+
+    /* --- Radii ------------------------------------------------------------ */
+    --r-sm: 4px;
+    --r-md: 10px;
+    --r-lg: 12px;
+    --r-pill: 999px;
+
+    /* --- Spacing (4px base) ---------------------------------------------- */
+    --sp-1: 2px;
+    --sp-2: 4px;
+    --sp-3: 8px;
+    --sp-4: 12px;
+    --sp-5: 16px;
+    --sp-6: 20px;
+    --sp-7: 24px;
+    --sp-8: 32px;
+
+    /* --- Elevation (surface step + hairline, not glow) ------------------- */
+    --elev-1: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.35);
+    --elev-2: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 8px rgba(0, 0, 0, 0.45);
+    --accent-live: 0 0 0 1px #3D9BFF, 0 0 12px rgba(61, 155, 255, 0.22);
+
+    /* --- Type ------------------------------------------------------------- */
+    --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    --font-num: 'Roboto Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Segoe UI Mono', monospace;
+
+    /* --- Fluid sizing ----------------------------------------------------- */
+    --speed-size: clamp(56px, 7vw, 96px);
+    --gear-size: clamp(40px, 5vw, 72px);
     --chart-height: clamp(80px, 11vh, 130px);
     --tyre-temp-size: clamp(16px, 2.2vw, 24px);
 
-    --speed-size: clamp(32px, 5vw, 48px);
-    --gear-size: clamp(24px, 3.5vw, 36px);
+    /* --- Motion ----------------------------------------------------------- */
+    --t-fast: 60ms;
+    --t-base: 120ms ease;
+}
+
+/* ============================================================================
+ * Base
+ * ========================================================================== */
+
+html {
+    color-scheme: dark;
 }
 
 body {
-    background: linear-gradient(135deg, #0a0e1a 0%, #0d1220 50%, #0a0e1a 100%);
+    background: var(--bg-primary);
     color: var(--text-primary);
-    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
     overflow: hidden;
     height: 100vh;
 }
 
-/* ===== Layout ===== */
+/* Every live numeric readout is tabular to kill digit jitter. */
+.num,
+.racing-speed-value,
+.racing-gear-value,
+.racing-gear-rpm,
+.racing-pedal-value,
+.pedal-value,
+.stat-value,
+.fuel-boost-value,
+.fuel-bar-value,
+.fuel-bar-capacity,
+.fuel-stat-value,
+.gforce-num,
+.gear-ratio-val,
+.tyre-temp-value,
+.tyre-rps,
+.tyre-radius,
+.susp-value,
+.position-value,
+.body-accel-value,
+.car-3d-value,
+.car-3d-rate,
+.steering-value,
+.race-position,
+.lap-number-big,
+.lap-time-big,
+.lap-time-value,
+.sector-value,
+.delta-value,
+.lap-hist-time,
+.lap-hist-delta,
+.course-map-info {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+
+:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/* ============================================================================
+ * Layout — declarative grid areas
+ * ========================================================================== */
 
 .dashboard {
     display: grid;
-    grid-template-columns: clamp(220px, 18vw, 260px) 1fr clamp(260px, 20vw, 300px);
-    grid-template-rows: auto auto 1fr;
-    gap: clamp(8px, 1vh, 12px);
-    padding: clamp(8px, 1vh, 12px);
+    grid-template-columns: clamp(220px, 18vw, 272px) 1fr clamp(264px, 20vw, 312px);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+        "header header header"
+        "hero   hero   hero"
+        "left   center right";
+    gap: var(--sp-4);
+    padding: var(--sp-4);
     height: 100vh;
-    max-width: 1920px;
+    max-width: 2560px;
     margin: 0 auto;
     overflow: hidden;
 }
 
-/* ===== Racing Style Top Bar ===== */
+.header       { grid-area: header; }
+.racing-top-bar { grid-area: hero; }
+.left-panel   { grid-area: left; }
+.center-panel { grid-area: center; }
+.right-panel  { grid-area: right; }
 
-.racing-top-bar {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: 200px 1fr 300px;
-    gap: 20px;
+/* ============================================================================
+ * Header
+ * ========================================================================== */
+
+.header {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    padding: 12px 20px;
-    background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.2) 100%);
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    min-height: 100px;
+    gap: var(--sp-4);
+    padding: var(--sp-2) var(--sp-5);
+    min-height: 40px;
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-md);
+    box-shadow: var(--elev-1);
 }
 
-/* Speed Section */
+.header-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.header-flags {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+    flex: 1;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.flag-on,
+.flag-warn,
+.flag-info {
+    padding: 2px 8px;
+    border-radius: var(--r-sm);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    background: var(--surface-3);
+    border: 1px solid var(--border-hairline);
+}
+
+.flag-on {
+    color: var(--good);
+    border-color: color-mix(in srgb, var(--good) 45%, transparent);
+}
+
+.flag-warn {
+    color: var(--warning);
+    border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+}
+
+.flag-info {
+    color: var(--text-secondary);
+}
+
+/* Connection status pill — JS replaces className + textContent, so style by id.
+   Dot rendered with ::before so it survives textContent writes. */
+#connection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: 4px 10px 4px 8px;
+    border-radius: var(--r-pill);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    background: var(--surface-3);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-secondary);
+}
+
+#connection-status::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: var(--r-pill);
+    background: currentColor;
+    flex: 0 0 auto;
+}
+
+#connection-status.connected {
+    color: var(--good);
+    background: color-mix(in srgb, var(--good) 14%, var(--surface-2));
+    border-color: color-mix(in srgb, var(--good) 40%, transparent);
+}
+
+#connection-status.disconnected {
+    color: var(--critical);
+    background: color-mix(in srgb, var(--critical) 14%, var(--surface-2));
+    border-color: color-mix(in srgb, var(--critical) 40%, transparent);
+}
+
+#connection-status.error {
+    color: var(--critical);
+    background: color-mix(in srgb, var(--critical) 18%, var(--surface-2));
+    border-color: color-mix(in srgb, var(--critical) 50%, transparent);
+}
+
+/* ============================================================================
+ * TIER 1 — Hero band (speed / gear / pedals)
+ * ========================================================================== */
+
+.racing-top-bar {
+    display: grid;
+    grid-template-columns: minmax(180px, 260px) 1fr minmax(240px, 340px);
+    gap: var(--sp-6);
+    align-items: center;
+    padding: var(--sp-4) var(--sp-6);
+    min-height: 112px;
+    position: relative;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 40%),
+        var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-2);
+    overflow: hidden;
+}
+
+/* --- Speed (largest, highest contrast readout) ------------------------- */
 .racing-speed-section {
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--accent-brand);
 }
 
 .racing-speed-value {
-    font-size: 64px;
+    font-size: var(--speed-size);
     font-weight: 700;
-    color: var(--accent-green);
-    line-height: 1;
-    font-family: 'Segoe UI Mono', monospace;
-    text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+    color: var(--ink-hero);
+    line-height: 0.9;
+    letter-spacing: 0.01em;
 }
 
 .racing-speed-unit {
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin-top: 4px;
-    letter-spacing: 2px;
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
 }
 
-/* Gear Section */
+/* --- Gear zone --------------------------------------------------------- */
 .racing-gear-section {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-}
-
-.shift-lights {
-    display: flex;
-    gap: 8px;
-    padding: 8px 16px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 20px;
-}
-
-.shift-light {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    transition: all 0.05s;
-}
-
-.shift-light.green {
-    background: #00ff88;
-    box-shadow: 0 0 10px #00ff88, 0 0 20px #00ff88;
-}
-
-.shift-light.yellow {
-    background: #ffd700;
-    box-shadow: 0 0 10px #ffd700, 0 0 20px #ffd700;
-}
-
-.shift-light.red {
-    background: #ff4444;
-    box-shadow: 0 0 10px #ff4444, 0 0 20px #ff4444, 0 0 30px #ff4444;
-    animation: shift-light-flash 0.15s ease-in-out infinite;
-}
-
-@keyframes shift-light-flash {
-    0%, 100% { 
-        transform: scale(1); 
-        opacity: 1;
-    }
-    50% { 
-        transform: scale(1.3); 
-        opacity: 0.8;
-    }
-}
-
-@keyframes pulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.2); }
+    justify-content: center;
+    gap: var(--sp-3);
 }
 
 .racing-gear-value {
-    font-size: 96px;
+    font-size: var(--gear-size);
     font-weight: 700;
-    color: var(--accent-yellow);
-    line-height: 1;
-    font-family: 'Segoe UI Mono', monospace;
-    text-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
-    min-width: 120px;
+    color: var(--text-primary);
+    line-height: 0.9;
+    min-width: 1.4em;
     text-align: center;
-    transition: color 0.1s, text-shadow 0.1s;
-}
-
-.racing-gear-value.reverse {
-    color: var(--accent-red);
-    text-shadow: 0 0 30px rgba(255, 68, 68, 0.5);
+    transition: color var(--t-fast);
 }
 
 .racing-gear-value.low {
-    color: var(--accent-orange);
-    text-shadow: 0 0 30px rgba(255, 136, 0, 0.4);
+    color: var(--warning);
+}
+
+.racing-gear-value.reverse {
+    color: var(--critical);
 }
 
 .racing-gear-rpm {
     font-size: 14px;
+    font-weight: 500;
     color: var(--text-secondary);
-    font-family: 'Segoe UI Mono', monospace;
+    letter-spacing: 0.04em;
 }
 
-/* Pedals Section */
+/* --- Pedals (throttle / brake, fixed position = sign) ------------------- */
 .racing-pedals-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-2);
+    min-width: 0;
 }
 
 .racing-pedal-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--sp-3);
 }
 
 .racing-pedal-label {
-    font-size: 11px;
-    color: var(--text-secondary);
-    min-width: 70px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    min-width: 62px;
     text-align: right;
 }
 
 .racing-pedal-bar-bg {
     flex: 1;
-    height: 24px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
+    height: 22px;
+    min-width: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-sm);
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-.racing-throttle-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #006633, #00ff88);
-    border-radius: 3px;
-    transition: width 0.05s;
-    box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
-}
-
+.racing-throttle-bar,
 .racing-brake-bar {
     height: 100%;
-    background: linear-gradient(90deg, #660000, #ff4444);
-    border-radius: 3px;
-    transition: width 0.05s;
-    box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+    width: 0%;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
 }
+
+.racing-throttle-bar { background: var(--series-throttle); }
+.racing-brake-bar    { background: var(--series-brake); }
 
 .racing-pedal-value {
     font-size: 14px;
-    color: var(--text-primary);
-    min-width: 50px;
-    text-align: right;
-    font-family: 'Segoe UI Mono', monospace;
     font-weight: 600;
+    color: var(--text-primary);
+    min-width: 48px;
+    text-align: right;
 }
 
-/* Pedal Trace */
 .pedal-trace-container {
-    margin-top: 6px;
+    margin-top: var(--sp-2);
     height: 30px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-sm);
     overflow: hidden;
 }
 
@@ -238,268 +464,292 @@ body {
     display: block;
 }
 
-/* ===== Header ===== */
+/* ============================================================================
+ * Shift lights — calm off, functional colour on. One flashing zone only.
+ * ========================================================================== */
 
-.header {
-    grid-column: 1 / -1;
+.shift-lights {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 16px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
+    gap: var(--sp-2);
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-pill);
 }
 
-.header-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    letter-spacing: 2px;
-    text-transform: uppercase;
+.shift-light {
+    width: 14px;
+    height: 14px;
+    border-radius: var(--r-pill);
+    background: var(--surface-3);
+    border: 1px solid var(--border-hairline);
+    transition: background var(--t-fast), box-shadow var(--t-fast);
 }
 
-.header-flags {
-    display: flex;
-    gap: 6px;
-    align-items: center;
+.shift-light.green {
+    background: var(--good);
+    border-color: transparent;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--good) 45%, transparent);
 }
 
-.flag-on {
-    background: var(--accent-green);
-    color: #000;
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 700;
+.shift-light.yellow {
+    background: var(--warning);
+    border-color: transparent;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 45%, transparent);
 }
 
-.flag-warn {
-    background: var(--accent-yellow);
-    color: #000;
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 700;
+.shift-light.red {
+    background: var(--critical);
+    border-color: transparent;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--critical) 50%, transparent);
+    animation: shift-flash var(--t-fast) steps(1, end) infinite alternate;
 }
 
-.flag-info {
-    background: rgba(255, 255, 255, 0.15);
-    color: var(--text-primary);
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 600;
+@keyframes shift-flash {
+    from { opacity: 1; }
+    to   { opacity: 0.55; }
 }
 
-#connection-status {
-    padding: 3px 10px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 600;
-}
-
-#connection-status.connected {
-    background: var(--accent-green);
-    color: #000;
-}
-
-#connection-status.disconnected {
-    background: var(--accent-red);
-    color: #fff;
-}
-
-/* ===== Cards ===== */
+/* ============================================================================
+ * Cards + eyebrow titles (shared)
+ * ========================================================================== */
 
 .card {
     background: var(--bg-card);
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    padding: clamp(6px, 1vh, 10px);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-md);
+    padding: var(--sp-4);
+    box-shadow: var(--elev-1);
     contain: layout style;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color var(--t-base);
 }
 
 .card:hover {
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.16);
 }
 
 .card-title {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 6px;
+    letter-spacing: 0.14em;
+    margin-bottom: var(--sp-3);
 }
 
-/* ===== Left Panel ===== */
+.card-title.mini {
+    font-size: 10px;
+    margin: 0;
+    padding: var(--sp-2) var(--sp-3);
+}
 
-.left-panel {
+.card-title.subhead {
+    margin-top: var(--sp-4);
+}
+
+.chart-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    margin-bottom: var(--sp-2);
+    white-space: nowrap;
+}
+
+/* ============================================================================
+ * Left panel
+ * ========================================================================== */
+
+.left-panel,
+.right-panel {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--sp-4);
     overflow-y: auto;
     overflow-x: hidden;
     contain: content;
+    min-height: 0;
 }
 
-/* Speed */
-.speed-card {
-    text-align: center;
-    padding: 12px 10px;
-}
-
-.speed-value {
-    font-size: var(--speed-size);
-    font-weight: 700;
-    color: var(--accent-green);
-    line-height: 1;
-}
-
-.speed-unit {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-top: 2px;
-}
-
-/* Gear & RPM */
-.gear-rpm-card {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.gear-display {
-    text-align: center;
-    min-width: 50px;
-}
-
-.gear-value {
-    font-size: var(--gear-size);
-    font-weight: 700;
-    color: var(--accent-yellow);
-    line-height: 1;
-}
-
-.gear-label {
-    font-size: 9px;
-    color: var(--text-secondary);
-}
-
-.suggested-gear {
-    font-size: 12px;
-    color: var(--accent-cyan);
-    font-weight: 600;
-    min-height: 16px;
-}
-
-.rpm-display {
-    flex: 1;
-}
-
-.rpm-bar-bg {
-    height: 16px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.rpm-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #00ff88, #ffff00, #ff4444);
-    border-radius: 8px;
-    transition: width 0.05s;
-}
-
-.rpm-text {
-    font-size: 11px;
-    color: var(--text-secondary);
-    text-align: center;
-    margin-top: 3px;
-}
-
-/* ===== Pedals Detail ===== */
-
+/* --- Pedals detail ----------------------------------------------------- */
 .pedals-detail-card {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--sp-3);
 }
 
 .pedal-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-3);
 }
 
 .pedal-label {
-    font-size: 9px;
-    color: var(--text-secondary);
-    min-width: 45px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    min-width: 44px;
 }
 
 .pedal-bar-bg {
+    position: relative;
     flex: 1;
     height: 12px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-sm);
     overflow: hidden;
 }
 
-.throttle-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #00aa44, #00ff88);
-    border-radius: 6px;
-    transition: width 0.05s;
-}
-
-.brake-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #aa0000, #ff4444);
-    border-radius: 6px;
-    transition: width 0.05s;
-}
-
+.throttle-bar,
+.brake-bar,
 .clutch-bar {
     height: 100%;
-    background: linear-gradient(90deg, #6644aa, #aa88ff);
-    border-radius: 6px;
-    transition: width 0.05s;
+    width: 0%;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+.throttle-bar { background: var(--series-throttle); }
+.brake-bar    { background: var(--series-brake); }
+.clutch-bar   { background: var(--accent-brand-deep); }
+
+.filtered-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    pointer-events: none;
+    box-sizing: border-box;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+.throttle-filtered-bar {
+    background: color-mix(in srgb, var(--series-throttle) 45%, transparent);
+    border-right: 2px solid var(--text-primary);
+}
+
+.brake-filtered-bar {
+    background: color-mix(in srgb, var(--series-brake) 45%, transparent);
+    border-right: 2px solid var(--text-primary);
 }
 
 .pedal-value {
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 600;
     color: var(--text-primary);
-    min-width: 30px;
+    min-width: 42px;
     text-align: right;
 }
 
-/* ===== G-Force Meter ===== */
-
-.gforce-card {
-    padding: 8px;
+/* --- Fuel -------------------------------------------------------------- */
+.fuel-bar-container {
+    margin-bottom: var(--sp-3);
 }
 
+.fuel-bar-bg {
+    height: 18px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    margin-bottom: var(--sp-2);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.fuel-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent-brand-deep);
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+    transition: width var(--t-base), background var(--t-base);
+}
+
+.fuel-bar.warning { background: var(--warning); }
+.fuel-bar.low     { background: var(--critical); }
+
+.fuel-bar-info {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: var(--sp-1);
+}
+
+.fuel-bar-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.fuel-bar-unit {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.fuel-bar-separator {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 var(--sp-1);
+}
+
+.fuel-bar-capacity {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.fuel-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-3);
+}
+
+.fuel-stat-item {
+    text-align: center;
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-3);
+}
+
+.fuel-stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.fuel-stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-top: var(--sp-1);
+}
+
+/* --- G-Force ----------------------------------------------------------- */
 .gforce-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: var(--sp-3);
 }
 
 #gforce-canvas {
     width: 140px;
     height: 140px;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--surface-2);
     border-radius: 50%;
-    border: 2px solid var(--border-color);
+    border: 1px solid var(--border-strong);
 }
 
 .gforce-values {
     display: flex;
-    gap: 12px;
+    gap: var(--sp-5);
     width: 100%;
     justify-content: center;
 }
@@ -507,185 +757,163 @@ body {
 .gforce-value-row {
     display: flex;
     align-items: baseline;
-    gap: 4px;
+    gap: var(--sp-1);
 }
 
 .gforce-label {
-    font-size: 9px;
-    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
 }
 
 .gforce-num {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--accent-cyan);
-    font-family: 'Segoe UI Mono', monospace;
-    min-width: 40px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 44px;
     text-align: right;
 }
 
 .gforce-unit {
-    font-size: 9px;
-    color: var(--text-secondary);
+    font-size: 10px;
+    color: var(--text-muted);
 }
 
-/* Fuel & Boost */
+/* --- Stat tiles (fuel/boost, max speed, ids) --------------------------- */
 .fuel-boost-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: var(--sp-3);
 }
 
-.fuel-boost-item {
+.fuel-boost-item,
+.stat-card {
     text-align: center;
 }
 
 .fuel-boost-value {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--accent-green);
+    font-size: clamp(20px, 2.4vw, 30px);
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1;
 }
 
-.fuel-boost-value.boost {
-    color: var(--accent-orange);
-}
-
-.fuel-boost-label {
-    font-size: 9px;
-    color: var(--text-secondary);
-    margin-top: 2px;
-}
-
-/* Stat Card */
-.stat-card {
-    text-align: center;
-    padding: 8px;
+.fuel-boost-label,
+.stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-top: var(--sp-2);
 }
 
 .stat-value {
-    font-size: 16px;
-    font-weight: 700;
+    font-size: clamp(20px, 2.4vw, 30px);
+    font-weight: 600;
     color: var(--text-primary);
+    line-height: 1;
 }
 
-.stat-label {
-    font-size: 8px;
+/* --- Gear ratios ------------------------------------------------------- */
+.gear-ratios-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--sp-1);
+}
+
+.gear-ratio-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-1);
+    padding: 2px 4px;
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+}
+
+.gear-ratio-item.active {
+    background: var(--accent-wash);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-brand) 45%, transparent);
+}
+
+.gear-ratio-num {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    min-width: 10px;
+}
+
+.gear-ratio-val {
+    font-size: 10px;
     color: var(--text-secondary);
-    margin-top: 2px;
 }
 
-/* ===== Center Panel ===== */
+.gear-ratio-item.active .gear-ratio-num,
+.gear-ratio-item.active .gear-ratio-val {
+    color: var(--accent-brand);
+}
+
+.gear-ratio-placeholder {
+    grid-column: 1 / -1;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* --- Clutch detail / generic key-value rows ---------------------------- */
+.position-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: 12px;
+}
+
+.position-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.position-value {
+    color: var(--text-secondary);
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+ * Center panel
+ * ========================================================================== */
 
 .center-panel {
     display: flex;
     flex-direction: column;
-    gap: clamp(10px, 1.5vh, 16px);
+    gap: var(--sp-4);
     overflow: hidden;
     min-height: 0;
 }
 
-/* Course Map */
-.course-map-card {
-    flex: 0.8;
-    display: flex;
-    flex-direction: column;
-    min-height: clamp(120px, 25vh, 200px);
-    overflow: hidden;
-}
-
-.course-map-container {
-    flex: 1;
-    position: relative;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-#course-map {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-.course-map-info {
-    position: absolute;
-    top: 6px;
-    left: 6px;
-    font-size: 9px;
-    color: var(--text-secondary);
-    background: rgba(0, 0, 0, 0.6);
-    padding: 3px 6px;
-    border-radius: 3px;
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-.course-map-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 6px;
-}
-
-.test-mode-btn {
-    font-size: 8px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-color);
-    padding: 3px 6px;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.test-mode-btn:hover {
-    background: rgba(255, 215, 0, 0.2);
-    color: var(--accent-yellow);
-    border-color: var(--accent-yellow);
-}
-
-.test-mode-btn.active {
-    background: var(--accent-yellow);
-    color: #000;
-    border-color: var(--accent-yellow);
-}
-
-.test-mode-indicator {
-    font-size: 8px;
-    color: var(--accent-yellow);
-    background: rgba(255, 215, 0, 0.1);
-    padding: 2px 4px;
-    border-radius: 2px;
-    margin-left: 4px;
-}
-
-/* Charts */
+/* --- Charts (2x2 small multiples) -------------------------------------- */
 .charts-container {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: clamp(4px, 0.8vw, 8px);
-    height: var(--chart-height);
-    min-height: 100px;
-    max-height: 140px;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: var(--sp-4);
+    height: clamp(200px, 30vh, 320px);
     flex-shrink: 0;
 }
 
 .chart-wrapper {
     background: var(--bg-card);
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    padding: 4px 4px 2px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-md);
+    box-shadow: var(--elev-1);
+    padding: var(--sp-3) var(--sp-3) var(--sp-2);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-}
-
-.chart-title {
-    font-size: clamp(7px, 0.8vw, 9px);
-    color: var(--text-secondary);
-    margin-bottom: 1px;
-    white-space: nowrap;
+    min-height: 0;
 }
 
 .chart {
@@ -694,858 +922,41 @@ body {
     width: 100%;
 }
 
-/* ===== Tyres ===== */
-
-.tyres-card {
-    flex: 0.8;
-    display: flex;
-    flex-direction: column;
-    min-height: 120px;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-/* Tyre Temperature Visual Grid */
-.tyres-visual-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    margin-bottom: 8px;
-}
-
-.tyre-visual-item {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    padding: 8px;
-    text-align: center;
-}
-
-.tyre-visual-pos {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-}
-
-.tyre-temp-bar-container {
-    height: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 6px;
-}
-
-.tyre-temp-bar {
-    height: 100%;
-    width: 0%;
-    border-radius: 4px;
-    transition: width 0.2s, background 0.2s;
-}
-
-.tyre-temp-bar.cold {
-    background: linear-gradient(90deg, #0088ff, #44ffff);
-}
-
-.tyre-temp-bar.optimal {
-    background: linear-gradient(90deg, #00aa44, #00ff88);
-}
-
-.tyre-temp-bar.warm {
-    background: linear-gradient(90deg, #aaaa00, #ffd700);
-}
-
-.tyre-temp-bar.hot {
-    background: linear-gradient(90deg, #aa0000, #ff4444);
-}
-
-.tyre-temp-display {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 2px;
-}
-
-.tyre-temp-value {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--accent-green);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-.tyre-temp-unit {
-    font-size: 10px;
-    color: var(--text-secondary);
-}
-
-.tyres-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: clamp(8px, 1.5vw, 14px);
-    margin-bottom: 12px;
-}
-
-.tyre-item {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    padding: 6px;
-    text-align: center;
-    min-width: 0;
-}
-
-.tyre-pos {
-    font-size: clamp(9px, 1.2vw, 13px);
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-}
-
-.tyre-temp-row,
-.tyre-rps-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 2px;
-    margin-bottom: 2px;
-    flex-wrap: wrap;
-}
-
-.tyre-data-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 4px;
-    margin-bottom: 4px;
-    flex-wrap: wrap;
-}
-
-.tyre-temp {
-    font-size: var(--tyre-temp-size);
-    font-weight: 700;
-    color: var(--accent-green);
-}
-
-.tyre-temp-unit {
-    font-size: clamp(8px, 1vw, 12px);
-    color: var(--text-secondary);
-}
-
-.tyre-rps {
-    font-size: 9px;
-    font-weight: 600;
-    color: #ff9800;
-}
-
-.tyre-rps-unit {
-    font-size: 8px;
-    color: var(--text-secondary);
-}
-
-.tyre-label {
-    font-size: clamp(7px, 0.8vw, 9px);
-    color: var(--text-secondary);
-}
-
-/* Suspension */
-.suspension-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: clamp(8px, 1.5vw, 14px);
-}
-
-.susp-item {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    padding: 6px 4px;
-    text-align: center;
-}
-
-.susp-pos {
-    font-size: 9px;
-    color: var(--text-secondary);
-}
-
-.susp-value {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.susp-unit {
-    font-size: 8px;
-    color: var(--text-secondary);
-}
-
-/* ===== Right Panel ===== */
-
-.right-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-.right-panel::-webkit-scrollbar {
-    width: 4px;
-}
-
-/* Lap Times */
-.lap-times-card {
-    display: flex;
-    flex-direction: column;
-    padding: 10px;
-}
-
-.lap-main-display {
-    text-align: center;
-    margin-bottom: 10px;
-}
-
-.lap-number-big {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 4px;
-}
-
-.lap-time-big {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--accent-cyan);
-    font-family: 'Segoe UI Mono', monospace;
-    letter-spacing: 1px;
-}
-
-.lap-times-row {
-    display: flex;
-    gap: 8px;
-}
-
-.lap-time-item {
-    flex: 1;
-    text-align: center;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    padding: 6px;
-}
-
-.lap-time-label {
-    font-size: 9px;
-    color: var(--text-secondary);
-    display: block;
-    margin-bottom: 2px;
-}
-
-.lap-time-value {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-.lap-time-value.best {
-    color: var(--accent-green);
-}
-
-/* Sector Display */
-.sector-display {
-    display: flex;
-    justify-content: space-around;
-    margin-bottom: 10px;
-    padding: 6px 0;
-    border-top: 1px solid var(--border-color);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.sector-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-}
-
-.sector-label {
-    font-size: 9px;
-    color: var(--text-secondary);
-    font-weight: 600;
-}
-
-.sector-value {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-primary);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-.sector-value.purple {
-    color: #ff00ff;
-    text-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
-}
-
-.sector-value.green {
-    color: var(--accent-green);
-}
-
-.sector-value.yellow {
-    color: var(--accent-yellow);
-}
-
-.sector-value.red {
-    color: var(--accent-red);
-}
-
-/* Lap time animation */
-@keyframes lap-time-flash {
-    0% { 
-        background: rgba(0, 255, 136, 0.3);
-        transform: scale(1.05);
-    }
-    100% { 
-        background: transparent;
-        transform: scale(1);
-    }
-}
-
-.lap-time-item.flash {
-    animation: lap-time-flash 0.5s ease-out;
-}
-
-.lap-time-item.new-best {
-    background: rgba(0, 255, 136, 0.15);
-    border: 1px solid var(--accent-green);
-}
-
-/* Legacy lap-row for backward compatibility */
-.lap-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 4px 0;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.lap-row:last-child {
-    border-bottom: none;
-}
-
-.lap-label {
-    font-size: 9px;
-    color: var(--text-secondary);
-}
-
-.lap-value {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--accent-green);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-/* Delta */
-.delta-card {
-    text-align: center;
-    padding: 8px;
-}
-
-.delta-label {
-    font-size: 9px;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-}
-
-.delta-bar-container {
-    display: flex;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 6px;
-}
-
-.delta-bar-negative {
-    flex: 1;
-    background: transparent;
-    transition: background 0.2s;
-}
-
-.delta-bar-negative.active {
-    background: linear-gradient(90deg, transparent, var(--accent-green));
-}
-
-.delta-bar-center {
-    width: 2px;
-    background: rgba(255, 255, 255, 0.3);
-}
-
-.delta-bar-positive {
-    flex: 1;
-    background: transparent;
-    transition: background 0.2s;
-}
-
-.delta-bar-positive.active {
-    background: linear-gradient(90deg, var(--accent-red), transparent);
-}
-
-.delta-value {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--accent-green);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-.delta-value.negative {
-    color: var(--accent-red);
-}
-
-.delta-value.positive {
-    color: var(--accent-green);
-}
-
-/* Lap History */
-.lap-history-card {
-    max-height: clamp(120px, 20vh, 180px);
-    overflow-y: auto;
-    min-height: 80px;
-}
-
-.lap-history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.lap-history-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 5px 6px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    font-size: 10px;
-}
-
-.lap-history-item.best {
-    background: rgba(0, 255, 136, 0.15);
-    border: 1px solid var(--accent-green);
-}
-
-.lap-hist-num {
-    color: var(--text-secondary);
-    font-weight: 600;
-}
-
-.lap-hist-time {
-    color: var(--accent-green);
-    font-weight: 600;
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-.lap-hist-delta {
-    font-size: 9px;
-}
-
-.lap-hist-delta.positive {
-    color: var(--accent-red);
-}
-
-.lap-hist-delta.negative {
-    color: var(--accent-green);
-}
-
-/* Position */
-.position-card {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.position-card.compact {
-    padding: 6px 8px;
-}
-
-.position-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-    margin-bottom: 4px;
-}
-
-.position-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
-    padding: 4px 2px;
-}
-
-/* Angular Velocity Card with 3D */
-.angular-velocity-card {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-height: 200px;
-}
-
-/* 3D表示コンテナ */
-.rotation-3d-container {
-    height: 140px;
-    perspective: 600px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-
-/* 3Dシーン */
-.cube-scene {
-    width: 120px;
-    height: 60px;
-    position: relative;
-    transform-style: preserve-3d;
-}
-
-/* 直方体 */
-.cube {
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    transform-style: preserve-3d;
-    transition: transform 0.016s linear;
-    will-change: transform;
-}
-
-/* 直方体の面 */
-.cube-face {
-    position: absolute;
-    background: rgba(0, 255, 136, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-sizing: border-box;
-}
-
-/* 各面の配置・寸法 */
-.cube-front {
-    width: 120px;
-    height: 60px;
-    transform: translateZ(30px);
-}
-
-.cube-back {
-    width: 120px;
-    height: 60px;
-    transform: rotateY(180deg) translateZ(30px);
-}
-
-.cube-left {
-    width: 60px;
-    height: 60px;
-    left: 30px;
-    transform: rotateY(-90deg) translateZ(30px);
-}
-
-.cube-right {
-    width: 60px;
-    height: 60px;
-    left: 30px;
-    transform: rotateY(90deg) translateZ(90px);
-}
-
-.cube-top {
-    width: 120px;
-    height: 60px;
-    top: 30px;
-    transform: rotateX(90deg) translateZ(30px);
-}
-
-.cube-bottom {
-    width: 120px;
-    height: 60px;
-    bottom: 30px;
-    transform: rotateX(-90deg) translateZ(30px);
-}
-
-.position-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 11px;
-}
-
-.position-label {
-    color: var(--text-secondary);
-}
-
-.position-value {
-    color: var(--text-primary);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-/* Stats Grid */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
-}
-
-/* Acceleration Chart */
-.accel-chart-card {
-    display: flex;
-    flex-direction: column;
-    min-height: 100px;
-}
-
-.accel-chart-container {
-    flex: 1;
-    position: relative;
-    min-height: 80px;
-}
-
-.accel-chart-container canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-/* ===== Scrollbar ===== */
-
-::-webkit-scrollbar {
-    width: 5px;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
-}
-
-/* ===== Fuel Card ===== */
-
-.fuel-card {
-    padding: 8px;
-}
-
-.fuel-card .card-title {
-    margin-bottom: 6px;
-}
-
-/* Fuel Bar */
-.fuel-bar-container {
-    margin-bottom: 8px;
-}
-
-.fuel-bar-bg {
-    height: 20px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    margin-bottom: 4px;
-}
-
-.fuel-bar {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent-green), #00ff88);
-    border-radius: 9px;
-    transition: width 0.3s, background 0.3s;
-    position: relative;
-}
-
-.fuel-bar.low {
-    background: linear-gradient(90deg, var(--accent-red), #ff6644);
-}
-
-.fuel-bar.warning {
-    background: linear-gradient(90deg, var(--accent-yellow), #ffcc00);
-}
-
-.fuel-bar-info {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 4px;
-}
-
-.fuel-bar-value {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--accent-green);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-.fuel-bar-unit {
-    font-size: 10px;
-    color: var(--text-secondary);
-}
-
-.fuel-bar-separator {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin: 0 2px;
-}
-
-.fuel-bar-capacity {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-/* Fuel Stats Grid */
-.fuel-stats-grid {
+/* --- Center split: 3D attitude + course map --------------------------- */
+.center-split {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    grid-template-rows: minmax(0, 1fr);
+    gap: var(--sp-4);
+    flex: 1 1 auto;
+    /* 実質的な最小高さを与え、tyres の高いコンテンツがあっても 0 に潰れないようにする */
+    min-height: clamp(240px, 32vh, 380px);
 }
 
-.fuel-stat-item {
-    text-align: center;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    padding: 6px;
-}
-
-.fuel-stat-value {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--accent-cyan);
-    font-family: 'Segoe UI Mono', monospace;
-}
-
-.fuel-stat-label {
-    font-size: 8px;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    margin-top: 2px;
-}
-
-/* Old fuel-grid fallback */
-.fuel-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 8px;
-}
-
-.fuel-item {
-    text-align: center;
-}
-
-.fuel-value {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--accent-green);
-}
-
-.fuel-label {
-    font-size: 8px;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-}
-
-/* ===== Race Position ===== */
-
-.race-info-card {
-    text-align: center;
-    padding: 6px 10px;
-}
-
-/* ===== 回転矢印 ===== */
-
-.rotation-indicators {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-    justify-content: center;
-    padding: 4px 0;
-}
-
-.rotation-arrow {
-    font-size: 18px;
-    font-weight: bold;
-    color: var(--accent-green);
-    min-width: 20px;
-    text-align: center;
-    transition: transform 0.1s ease-out;
-}
-
-.race-position {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--accent-yellow);
-    line-height: 1.1;
-}
-
-.race-position-label {
-    font-size: 9px;
-    color: var(--text-secondary);
-}
-
-/* ===== Course Name ===== */
-
-.course-name {
-    font-size: 11px;
-    color: var(--accent-cyan);
-    font-weight: 600;
-    flex: 1;
-    text-align: center;
-}
-
-/* ===== Lap Time Running ===== */
-
-.lap-time-running {
-    color: var(--accent-cyan);
-}
-
-/* ===== Tyre Radius ===== */
-
-.tyre-radius-row {
-    display: flex;
-    align-items: baseline;
-    gap: 2px;
-}
-
-.tyre-radius {
-    font-size: 11px;
-    color: var(--text-secondary);
-}
-
-.tyre-radius-unit {
-    font-size: 8px;
-    color: var(--text-secondary);
-    opacity: 0.6;
-}
-
-/* ===== Wheel Rotation ===== */
-
-.wheel-rotation {
-    font-size: 11px;
-    color: var(--accent-cyan);
-    font-weight: 600;
-    min-height: 14px;
-}
-
-/* ===== Car 3D Visualization ===== */
-
+/* --- 3D car attitude --------------------------------------------------- */
 .car-3d-card {
     padding: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.car-3d-card > .card-title {
+    padding: var(--sp-3) var(--sp-4) 0;
+    margin-bottom: var(--sp-2);
 }
 
 .car-3d-container {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
 }
 
 #car-3d-view {
     flex: 1;
-    min-height: 150px;
+    min-height: 140px;
     position: relative;
     cursor: move;
 }
@@ -1559,46 +970,45 @@ body {
 .car-3d-info {
     display: flex;
     justify-content: space-around;
-    padding: 6px 10px;
-    background: rgba(0, 0, 0, 0.2);
-    border-top: 1px solid var(--border-color);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--surface-2);
+    border-top: 1px solid var(--border-hairline);
 }
 
 .car-3d-info-row {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: var(--sp-1);
 }
 
 .car-3d-label {
-    font-size: 8px;
-    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
     text-transform: uppercase;
 }
 
 .car-3d-value {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
-    color: var(--accent-cyan);
-    font-family: 'Segoe UI Mono', monospace;
+    color: var(--text-primary);
 }
 
 .car-3d-rate {
-    font-size: 9px;
-    color: var(--text-secondary);
-    font-family: 'Segoe UI Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
 }
 
-/* トップビュー（車両表示） */
 .car-top-view-container {
-    border-top: 1px solid var(--border-color);
-    background: rgba(0, 0, 0, 0.1);
+    border-top: 1px solid var(--border-hairline);
+    background: var(--surface-1);
 }
 
 #car-top-view {
     width: 100%;
-    height: 100px;
+    height: 96px;
 }
 
 #car-top-view canvas {
@@ -1607,18 +1017,17 @@ body {
     height: 100% !important;
 }
 
-/* ===== Steering Gauge ===== */
-
+/* --- Steering gauge ---------------------------------------------------- */
 .steering-gauge-container {
-    border-top: 1px solid var(--border-color);
-    background: rgba(0, 0, 0, 0.1);
-    padding: 8px;
+    border-top: 1px solid var(--border-hairline);
+    background: var(--surface-1);
+    padding: var(--sp-3) var(--sp-4) var(--sp-4);
 }
 
 .steering-gauge {
     position: relative;
     width: 100%;
-    height: 50px;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1627,38 +1036,31 @@ body {
 .steering-scale {
     position: absolute;
     width: 80%;
-    height: 4px;
-    background: linear-gradient(to right,
-        var(--accent-red) 0%,
-        var(--accent-yellow) 25%,
-        var(--accent-green) 50%,
-        var(--accent-yellow) 75%,
-        var(--accent-red) 100%
-    );
-    border-radius: 2px;
+    height: 3px;
+    background: var(--surface-3);
+    border-radius: var(--r-pill);
 }
 
 .steering-scale-mark {
     position: absolute;
     width: 2px;
-    height: 12px;
-    background: var(--text-secondary);
+    height: 10px;
+    background: var(--text-muted);
     top: -4px;
 }
 
-.steering-scale-mark.left-max { left: 0; }
-.steering-scale-mark.left-mid { left: 25%; }
-.steering-scale-mark.center { left: 50%; background: var(--text-primary); height: 16px; top: -6px; }
+.steering-scale-mark.left-max  { left: 0; }
+.steering-scale-mark.left-mid  { left: 25%; }
+.steering-scale-mark.center    { left: 50%; height: 14px; top: -6px; background: var(--text-secondary); }
 .steering-scale-mark.right-mid { left: 75%; }
 .steering-scale-mark.right-max { left: 100%; }
 
 .steering-needle {
     position: absolute;
     width: 3px;
-    height: 30px;
-    background: var(--accent-cyan);
-    border-radius: 2px;
-    box-shadow: 0 0 8px var(--accent-cyan);
+    height: 28px;
+    background: var(--accent-brand);
+    border-radius: var(--r-pill);
     transform-origin: center bottom;
     left: 50%;
     bottom: 10px;
@@ -1670,12 +1072,12 @@ body {
     position: absolute;
     width: 10px;
     height: 10px;
-    background: var(--accent-cyan);
+    background: var(--surface-4);
+    border: 1px solid var(--accent-brand);
     border-radius: 50%;
     bottom: 5px;
     left: 50%;
     transform: translateX(-50%);
-    box-shadow: 0 0 6px var(--accent-cyan);
 }
 
 .steering-labels {
@@ -1683,259 +1085,703 @@ body {
     width: 80%;
     display: flex;
     justify-content: space-between;
-    top: 20px;
+    top: 22px;
 }
 
 .steering-label {
-    font-size: 9px;
-    color: var(--text-secondary);
+    font-size: 10px;
+    color: var(--text-muted);
 }
 
-.steering-label.left { text-align: left; }
-.steering-label.center { color: var(--text-primary); }
-.steering-label.right { text-align: right; }
+.steering-label.center { color: var(--text-secondary); }
 
 .steering-value {
     text-align: center;
     font-size: 14px;
-    font-weight: bold;
-    color: var(--accent-cyan);
-    margin-top: 4px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-top: var(--sp-2);
 }
 
-/* ===== Filtered Pedal Bars ===== */
+/* --- Course map -------------------------------------------------------- */
+.course-map-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
 
-.pedal-bar-bg {
+.course-map-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+
+.course-map-header .card-title {
+    margin-bottom: 0;
+}
+
+.course-name {
+    flex: 1;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.test-mode-btn {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--accent-brand);
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--accent-brand) 55%, transparent);
+    padding: 4px 10px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--t-base), color var(--t-base);
+}
+
+.test-mode-btn:hover {
+    background: var(--accent-wash);
+}
+
+.test-mode-btn.active {
+    background: var(--accent-brand);
+    color: var(--on-accent);
+    border-color: var(--accent-brand);
+}
+
+.course-map-container {
+    flex: 1;
     position: relative;
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    min-height: 120px;
 }
 
-.filtered-bar {
-    position: absolute;
-    top: 0;
-    left: 0;
+#course-map {
+    width: 100%;
     height: 100%;
-    border-radius: 6px;
-    opacity: 0.4;
-    pointer-events: none;
+    display: block;
 }
 
-.throttle-filtered-bar {
-    background: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    box-sizing: border-box;
+.course-map-info {
+    position: absolute;
+    top: var(--sp-2);
+    left: var(--sp-2);
+    font-size: 10px;
+    color: var(--text-muted);
+    background: color-mix(in srgb, var(--surface-0) 78%, transparent);
+    padding: 3px 7px;
+    border-radius: var(--r-sm);
 }
 
-.brake-filtered-bar {
-    background: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    box-sizing: border-box;
+/* --- Tyres ------------------------------------------------------------- */
+.tyres-card {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 120px;
+    /* center-split を潰さないよう上限を設けてスクロールに逃がす */
+    max-height: 34vh;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
-/* ===== Gear Ratios ===== */
-
-.gear-ratios-card {
-    padding: 6px 8px;
-}
-
-.gear-ratios-grid {
+.tyres-visual-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 2px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
 }
 
-.gear-ratio-item {
+.tyre-visual-item {
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-3);
+    text-align: center;
+}
+
+.tyre-visual-pos {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: var(--sp-2);
+}
+
+.tyre-temp-bar-container {
+    height: 8px;
+    background: var(--surface-3);
+    border-radius: var(--r-pill);
+    overflow: hidden;
+    margin-bottom: var(--sp-2);
+}
+
+.tyre-temp-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: var(--r-pill);
+    transition: background var(--t-base);
+}
+
+.tyre-temp-bar.cold    { background: var(--tyre-cold); }
+.tyre-temp-bar.optimal { background: var(--tyre-optimal); }
+.tyre-temp-bar.warm    { background: var(--tyre-warm); }
+.tyre-temp-bar.hot     { background: var(--tyre-hot); }
+
+.tyre-temp-display {
     display: flex;
     align-items: baseline;
-    gap: 3px;
-    padding: 1px 3px;
-    border-radius: 3px;
+    justify-content: center;
+    gap: var(--sp-1);
 }
 
-.gear-ratio-item.active {
-    background: rgba(0, 255, 136, 0.15);
-}
-
-.gear-ratio-num {
-    font-size: 9px;
-    color: var(--text-secondary);
-    font-weight: 700;
-    min-width: 10px;
-}
-
-.gear-ratio-val {
-    font-size: 10px;
+.tyre-temp-value {
+    font-size: 18px;
+    font-weight: 600;
     color: var(--text-primary);
-    font-family: monospace;
 }
 
-.gear-ratio-item.active .gear-ratio-num,
-.gear-ratio-item.active .gear-ratio-val {
-    color: var(--accent-green);
+.tyre-temp-unit {
+    font-size: 10px;
+    color: var(--text-muted);
 }
 
-.gear-ratio-placeholder {
-    grid-column: 1 / -1;
-    font-size: 9px;
+.tyres-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-3);
+}
+
+.tyre-item {
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-2) var(--sp-3);
+    text-align: center;
+    min-width: 0;
+}
+
+.tyre-pos {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: var(--sp-2);
+}
+
+.tyre-data-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: var(--sp-3);
+    flex-wrap: wrap;
+}
+
+.tyre-rps-row,
+.tyre-radius-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-1);
+}
+
+.tyre-rps {
+    font-size: 12px;
+    font-weight: 600;
     color: var(--text-secondary);
-    opacity: 0.5;
 }
 
-/* ===== Body Acceleration ===== */
-
-.body-accel-card {
-    padding: 6px 8px;
+.tyre-rps-unit,
+.tyre-radius-unit {
+    font-size: 9px;
+    color: var(--text-muted);
 }
 
+.tyre-radius {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* --- Suspension -------------------------------------------------------- */
+.suspension-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--sp-3);
+}
+
+.susp-item {
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-2);
+    text-align: center;
+}
+
+.susp-pos {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.susp-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.susp-unit {
+    font-size: 9px;
+    color: var(--text-muted);
+}
+
+/* ============================================================================
+ * Right panel
+ * ========================================================================== */
+
+/* --- Race position ----------------------------------------------------- */
+.race-info-card {
+    text-align: center;
+}
+
+.race-position {
+    font-size: clamp(24px, 3vw, 34px);
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.race-position-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-top: var(--sp-2);
+}
+
+/* --- Lap timing (hero card) -------------------------------------------- */
+.lap-times-card {
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--elev-2);
+}
+
+.lap-main-display {
+    text-align: center;
+    margin-bottom: var(--sp-3);
+}
+
+.lap-number-big {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    margin-bottom: var(--sp-1);
+}
+
+.lap-time-big {
+    font-size: clamp(26px, 3.2vw, 34px);
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+    line-height: 1;
+}
+
+.lap-time-running {
+    color: var(--lap-running);
+}
+
+.sector-display {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: var(--sp-3);
+    padding: var(--sp-3) 0;
+    border-top: 1px solid var(--border-hairline);
+    border-bottom: 1px solid var(--border-hairline);
+}
+
+.sector-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-1);
+}
+
+.sector-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.sector-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.sector-value.purple { color: var(--session-best); }
+.sector-value.green  { color: var(--good); }
+.sector-value.yellow { color: var(--warning); }
+.sector-value.red    { color: var(--critical); }
+
+.lap-times-row {
+    display: flex;
+    gap: var(--sp-3);
+}
+
+.lap-time-item {
+    flex: 1;
+    text-align: center;
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-3);
+}
+
+.lap-time-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: var(--sp-1);
+}
+
+.lap-time-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.lap-time-value.best {
+    color: var(--session-best);
+}
+
+/* --- Delta (diverging, position = sign) -------------------------------- */
+.delta-card {
+    text-align: center;
+}
+
+.delta-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: var(--sp-3);
+}
+
+.delta-bar-container {
+    display: flex;
+    height: 8px;
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    margin-bottom: var(--sp-3);
+}
+
+.delta-bar-negative,
+.delta-bar-positive {
+    flex: 1;
+    background: transparent;
+    transition: background var(--t-base);
+}
+
+.delta-bar-negative.active {
+    background: linear-gradient(90deg, transparent, var(--delta-faster));
+}
+
+.delta-bar-positive.active {
+    background: linear-gradient(90deg, var(--delta-slower), transparent);
+}
+
+.delta-bar-center {
+    width: 2px;
+    background: var(--text-muted);
+}
+
+.delta-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--delta-faster);
+}
+
+.delta-value.negative {
+    color: var(--delta-slower);
+}
+
+/* --- Lap history table ------------------------------------------------- */
+.lap-history-card {
+    max-height: clamp(140px, 22vh, 220px);
+    overflow-y: auto;
+    min-height: 90px;
+}
+
+.lap-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+
+.lap-history-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: 5px var(--sp-3);
+    background: var(--surface-2);
+    border-left: 3px solid transparent;
+    border-radius: var(--r-sm);
+    font-size: 12px;
+}
+
+.lap-history-item.best {
+    border-left-color: var(--session-best);
+    background: color-mix(in srgb, var(--session-best) 12%, var(--surface-2));
+}
+
+.lap-hist-num {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.lap-hist-time {
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: right;
+}
+
+.lap-history-item.best .lap-hist-time {
+    color: var(--session-best);
+}
+
+.lap-hist-delta {
+    font-size: 11px;
+    text-align: right;
+}
+
+.lap-hist-delta.negative { color: var(--delta-faster); }
+.lap-hist-delta.positive { color: var(--delta-slower); }
+
+/* --- Position / telemetry (Tier 3, muted) ------------------------------ */
+.position-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.position-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--sp-2);
+}
+
+.position-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    padding: var(--sp-2) var(--sp-1);
+}
+
+.position-item .position-value {
+    color: var(--text-secondary);
+}
+
+/* --- Stats grid (car id / pkg id) -------------------------------------- */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--sp-3);
+}
+
+/* --- Body acceleration ------------------------------------------------- */
 .body-accel-item {
     text-align: center;
 }
 
 .body-accel-value {
     font-size: 14px;
-    font-weight: 700;
-    color: var(--accent-green);
-    font-family: monospace;
-}
-
-.body-accel-label {
-    font-size: 8px;
+    font-weight: 600;
     color: var(--text-secondary);
 }
 
-/* ===== Extended Data ===== */
-
-.extended-data-card {
-    padding: 6px 8px;
+.body-accel-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-top: var(--sp-1);
 }
 
-/* ===== Clutch Detail ===== */
-
-.clutch-detail-card {
-    padding: 6px 8px;
+/* --- Acceleration canvas chart ----------------------------------------- */
+.accel-chart-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 110px;
 }
 
-/* ===== Responsive ===== */
+.accel-chart-container {
+    flex: 1;
+    position: relative;
+    min-height: 84px;
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+}
 
-@media (min-width: 1900px) and (max-width: 1950px) and (min-height: 1050px) and (max-height: 1100px) {
-    :root {
-        --chart-height: 100px;
-        --tyre-temp-size: 18px;
+.accel-chart-container canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* ============================================================================
+ * Scrollbars
+ * ========================================================================== */
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface-4) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--surface-4);
+    border-radius: var(--r-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* ============================================================================
+ * Responsive
+ * ========================================================================== */
+
+/* Tablet / narrow desktop: two columns, right panel wraps below, page scrolls. */
+@media (max-width: 1399px) {
+    body {
+        overflow-y: auto;
+        height: auto;
     }
 
     .dashboard {
-        gap: 8px;
-        padding: 8px;
+        grid-template-columns: clamp(200px, 26vw, 260px) 1fr;
+        grid-template-rows: auto auto auto auto;
+        grid-template-areas:
+            "header header"
+            "hero   hero"
+            "left   center"
+            "right  right";
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    .left-panel,
+    .center-panel,
+    .right-panel {
+        overflow: visible;
+    }
+
+    .right-panel {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        align-items: start;
     }
 }
 
-@media (max-width: 1600px) {
+/* Phone / small: single column, center content first, hero wraps. */
+@media (max-width: 999px) {
+    .dashboard {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "header"
+            "hero"
+            "center"
+            "left"
+            "right";
+    }
+
     .racing-top-bar {
-        grid-template-columns: 160px 1fr 260px;
-        padding: 10px 16px;
+        grid-template-columns: 1fr 1fr;
+        row-gap: var(--sp-4);
     }
-    
-    .racing-speed-value {
-        font-size: 52px;
-    }
-    
-    .racing-gear-value {
-        font-size: 80px;
-    }
-}
 
-@media (max-width: 1400px) {
-    .dashboard {
-        grid-template-columns: 200px 1fr 240px;
-        gap: 8px;
-        padding: 8px;
+    .racing-pedals-section {
+        grid-column: 1 / -1;
+    }
+
+    .center-split {
+        grid-template-columns: 1fr;
     }
 
     .charts-container {
-        gap: 4px;
-    }
-    
-    .racing-top-bar {
-        grid-template-columns: 140px 1fr 220px;
-        min-height: 80px;
-    }
-    
-    .racing-speed-value {
-        font-size: 44px;
-    }
-    
-    .racing-gear-value {
-        font-size: 64px;
-    }
-}
-
-@media (max-width: 1200px) {
-    .dashboard {
-        grid-template-columns: 180px 1fr 220px;
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(4, 120px);
+        height: auto;
     }
 
-    .tyres-grid {
-        gap: 4px;
+    .left-panel {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        align-items: start;
     }
-    
-    .racing-top-bar {
-        grid-template-columns: 120px 1fr 180px;
-    }
-    
+
     .pedal-trace-container {
         display: none;
     }
 }
 
-@media (max-height: 800px) {
+/* Short viewports: tighten fixed-height chrome. */
+@media (min-width: 1400px) and (max-height: 800px) {
     :root {
-        --chart-height: 85px;
-    }
-
-    .lap-history-card {
-        max-height: 110px;
-    }
-
-    .tyre-item {
-        padding: 6px 4px;
-    }
-
-    .card {
-        padding: 6px 8px;
-    }
-
-    .dashboard {
-        gap: 6px;
-        padding: 6px;
-    }
-    
-    .racing-top-bar {
-        min-height: 70px;
-    }
-    
-    .racing-gear-value {
-        font-size: 72px;
-    }
-}
-
-@media (max-height: 700px) {
-    :root {
-        --chart-height: 70px;
-        --tyre-temp-size: 14px;
+        --chart-height: 90px;
     }
 
     .charts-container {
-        gap: 4px;
+        height: clamp(160px, 24vh, 240px);
     }
 
-    .lap-history-card {
-        max-height: 90px;
-    }
-    
     .racing-top-bar {
-        min-height: 60px;
+        min-height: 96px;
     }
-    
-    .racing-gear-value {
-        font-size: 56px;
+}
+
+/* ============================================================================
+ * Motion preferences
+ * ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+
+    .shift-light.red {
+        animation: none;
     }
 }
