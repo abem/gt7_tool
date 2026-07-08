@@ -1,0 +1,794 @@
+/**
+ * GT7 Telemetry Dashboard
+ * 距離基準ラップ解析機構（実テレメトリソフト級の比較解析）
+ *
+ * 実テレメトリソフト(snipem/gt7dashboard, SimHub, Coach Dave Delta, MoTeC)が
+ * 提供する「距離基準のラップ比較」をフロント計算のみで再現するモジュール。
+ *   - 距離索引: position_x/z の弦長積算による「トラック距離」導出
+ *   - ライブ・タイムデルタ: 同一距離でのベスト通過タイム秒差(#lap-delta/#delta-bar-*)
+ *   - 推定ラップタイム: refLap.totalTime + liveDelta の全周外挿 + PB判定(#est-lap-time)
+ *   - 距離軸チャート供給: 現在ラップ speed + ベスト speed 重畳 / タイムデルタ(charts.js C 実装)
+ *   - 入力ゾーン分類: コースマップ着色(course-map.js C 実装)用の classifyZone / peaks・valleys
+ *   - レースエンジニア通知: トップスピード/PB/燃料/残周回/ファイナルラップの一過性トースト
+ *
+ * バックエンド(main.py/decoder.py)は不変。全て既存デコード済みフィールドから計算する。
+ *
+ * @module telemetry-analysis
+ * @depends constants.js  (未直接参照だが読込順を保証)
+ * @depends ui_components.js (formatLapTime, courseMapState)
+ * @depends charts.js (initAnalysisCharts, renderAnalysisCharts — C 実装, typeof ガードで呼出)
+ * @depends course-map.js (drawCourseMap — typeof ガードで呼出)
+ *
+ * 全公開関数はグローバル function 宣言(巻き上げ)。呼出側は typeof fn === 'function' でガードする。
+ */
+
+/* ================================================================
+ *  定数
+ * ================================================================ */
+const STEP = 10;               // 距離グリッド[m]
+const DISCONTINUITY_M = 120;   // 1フレーム弦長がこれ超=瞬間移動として距離加算スキップ
+                               //  (demoTrajectoryの点間50-94mを通し、pit/respawnテレポート200m+を除外)
+const MAX_DELTA_S = 1.5;       // デルタバー飽和[s]
+const ZONE_THRESH = 5;         // 入力ゾーン閾値[%]
+const SMOOTH_W = 5;            // ピーク検出平滑窓
+const MIN_PROM = 15;           // ピーク顕著性[km/h]
+const MIN_SPEED_MS = 3;        // 空転判定の下限速度[m/s]
+const TOPSPEED_MARGIN = 1;     // 新トップスピード発火マージン[km/h]
+const CHART_CADENCE_MS = 100;  // 解析チャート再描画スロットル(10fps)
+const WHEEL_SPEED_K = 2 * Math.PI; // ホイール周速換算係数(|rps|*radius*K)。grip判定用の任意係数。
+const PROM_WINDOW = 8;         // ピーク顕著性評価窓(±8サンプル=±80m)
+
+/* ================================================================
+ *  状態(単一オブジェクト)
+ * ================================================================ */
+const analysisState = {
+    initialized: false,          // lazy-init(DOMキャッシュ+ボタン配線+initAnalysisCharts)済フラグ
+    lastLapNumber: 0,
+    lastX: null, lastZ: null,    // 直前位置(距離弦長用)
+    prevLaptime: 0,              // 距離の速度積分フォールバック用
+    lastChartTs: 0,
+    _liveDelta: 0,               // 直近ライブデルタ[s](推定ラップが再利用)
+    curLap: { samples: [], cumDist: 0 },
+    // samples 要素: {dist, t, speed, throttle, brake, x, z, gear, zone}
+    refLap: null,                // {dist[],time[],speed[],throttle[],brake[],x[],z[],N,totalDist,totalTime,peaks[],valleys[]} or null
+    lapTimesMs: [],              // 一貫性σ用の確定ラップタイム履歴
+    lineMode: 'speed',           // 'speed'|'line'
+    notif: {
+        queue: [], topSpeed: 0, topSpeedFired: false,
+        prevFuelPct: 100, firedFuel: { 50: false, 20: false, 10: false },
+        firedLaps: { 15: false, 10: false, 5: false, 2: false }, finalFired: false,
+        prevBest: Infinity
+    },
+    els: {}                      // 自前 getElementById キャッシュ(lapDelta,barNeg,barPos,estLap,feed,gripStatus,consistency)
+};
+
+/* ================================================================
+ *  小ユーティリティ
+ * ================================================================ */
+
+/**
+ * 線形補間
+ * @param {number} a - 始点
+ * @param {number} b - 終点
+ * @param {number} f - 補間係数(0-1)
+ * @returns {number}
+ */
+function lerpA(a, b, f) {
+    return a + (b - a) * f;
+}
+
+/* ================================================================
+ *  初期化・リセット
+ * ================================================================ */
+
+/**
+ * 状態を全初期化する。
+ * セッション/コース変更・lap_count逆行・TESTストップ時に呼ぶ。
+ */
+function resetAnalysis() {
+    analysisState.lastLapNumber = 0;
+    analysisState.lastX = null;
+    analysisState.lastZ = null;
+    analysisState.prevLaptime = 0;
+    analysisState.lastChartTs = 0;
+    analysisState._liveDelta = 0;
+    analysisState.curLap = { samples: [], cumDist: 0 };
+    analysisState.refLap = null;
+    analysisState.lapTimesMs = [];
+
+    // 通知の残存トーストを撤去してフラグを全 false へ
+    analysisState.notif.queue.forEach(function(item) {
+        if (item.el && item.el.parentNode) {
+            item.el.parentNode.removeChild(item.el);
+        }
+    });
+    analysisState.notif.queue = [];
+    analysisState.notif.topSpeed = 0;
+    analysisState.notif.topSpeedFired = false;
+    analysisState.notif.prevFuelPct = 100;
+    analysisState.notif.firedFuel = { 50: false, 20: false, 10: false };
+    analysisState.notif.firedLaps = { 15: false, 10: false, 5: false, 2: false };
+    analysisState.notif.finalFired = false;
+    analysisState.notif.prevBest = Infinity;
+
+    // UI 初期化(存在ガード)
+    var els = analysisState.els;
+    if (els.lapDelta) {
+        els.lapDelta.textContent = '--';
+        els.lapDelta.className = 'delta-value';
+    }
+    if (els.barNeg) {
+        els.barNeg.style.width = '0%';
+        els.barNeg.classList.remove('active');
+    }
+    if (els.barPos) {
+        els.barPos.style.width = '0%';
+        els.barPos.classList.remove('active');
+    }
+    if (els.estLap) {
+        els.estLap.textContent = '--:--.---';
+        els.estLap.classList.remove('tentative', 'pb');
+    }
+
+    // 解析チャートを空データでクリア
+    if (typeof renderAnalysisCharts === 'function') {
+        renderAnalysisCharts({ xs: [0], curSpeed: [null], refSpeed: [null], delta: [null] });
+    }
+}
+
+/**
+ * 初回のみ DOM をキャッシュし、ボタン配線・解析チャート初期化を行う(lazy-init)。
+ * 既存 initGForceMeter/initPedalTrace と同じく「初回 analysisOnFrame 時」に実行。
+ */
+function ensureAnalysisInit() {
+    if (analysisState.initialized) {
+        return;
+    }
+
+    analysisState.els = {
+        lapDelta: document.getElementById('lap-delta'),
+        barNeg: document.getElementById('delta-bar-negative'),
+        barPos: document.getElementById('delta-bar-positive'),
+        estLap: document.getElementById('est-lap-time'),
+        feed: document.getElementById('race-engineer-feed'),
+        gripStatus: document.getElementById('grip-status'),
+        consistency: document.getElementById('consistency-stat')
+    };
+
+    // コースマップ着色モード SPEED↔LINE トグル(1回だけ配線)
+    var btn = document.getElementById('course-line-mode-btn');
+    if (btn) {
+        btn.addEventListener('click', function() {
+            analysisState.lineMode = (analysisState.lineMode === 'speed') ? 'line' : 'speed';
+            btn.textContent = (analysisState.lineMode === 'line') ? 'LINE' : 'SPEED';
+            btn.classList.toggle('active', analysisState.lineMode === 'line');
+            if (typeof drawCourseMap === 'function') {
+                drawCourseMap();
+            }
+        });
+    }
+
+    // 距離軸解析チャート初期化(C 実装・冪等・要素欠落時は内部でスキップ)
+    if (typeof initAnalysisCharts === 'function') {
+        initAnalysisCharts();
+    }
+
+    analysisState.initialized = true;
+}
+
+/* ================================================================
+ *  毎フレーム入口
+ * ================================================================ */
+
+/**
+ * 唯一の毎フレーム入口。websocket.js / test-mode.js から 1 行で配線される。
+ * 距離積分の精度確保のため非スロットルで毎処理フレーム呼ぶ(チャート再描画のみ内部スロットル)。
+ * @param {Object} data - テレメトリデータ(ライブ or 合成)
+ */
+function analysisOnFrame(data) {
+    if (!data) {
+        return;
+    }
+
+    ensureAnalysisInit();
+
+    var lap = data.lap_count || 0;
+
+    // (b) lap_count 逆行 → セッション/コース変更とみなし自動リセット
+    if (lap < analysisState.lastLapNumber) {
+        resetAnalysis();
+        analysisState.lastLapNumber = lap;
+        return;
+    }
+
+    // (c) ラップ切替 → 直前ラップを確定し curLap を初期化
+    if (lap > analysisState.lastLapNumber && analysisState.lastLapNumber > 0) {
+        onLapComplete(analysisState.lastLapNumber, data.last_laptime);
+        analysisState.curLap = { samples: [], cumDist: 0 };
+        analysisState.lastX = null;
+        analysisState.lastZ = null;
+        analysisState.prevLaptime = 0;
+    }
+    analysisState.lastLapNumber = lap;
+
+    // (d) 距離索引更新
+    updateDistanceIndex(data);
+
+    // (e) サンプル収集(計測中のみ)
+    if ((data.current_laptime || 0) > 0) {
+        analysisState.curLap.samples.push({
+            dist: analysisState.curLap.cumDist,
+            t: (data.current_laptime || 0) / 1000,
+            speed: data.speed_kmh || 0,
+            throttle: data.throttle_pct || 0,
+            brake: data.brake_pct || 0,
+            x: data.position_x,
+            z: data.position_z,
+            gear: data.gear || 0,
+            zone: classifyZone(data.throttle_pct || 0, data.brake_pct || 0)
+        });
+    }
+
+    // (f-i) 各表示更新
+    updateLiveDelta(data);
+    updateEstimatedLap(data);
+    checkEngineer(data);
+    updateGrip(data);
+
+    // (j) 解析チャート再描画(100ms スロットル)
+    var now = performance.now();
+    if (now - analysisState.lastChartTs >= CHART_CADENCE_MS) {
+        analysisState.lastChartTs = now;
+        if (typeof renderAnalysisCharts === 'function') {
+            renderAnalysisCharts(getAnalysisChartData());
+        }
+    }
+}
+
+/**
+ * 距離索引を更新する。
+ * position が有れば弦長積算、無ければ速度積分でフォールバック。
+ * DISCONTINUITY_M 超の弦長(pit/respawn/warp)と paused フレームは加算スキップ。
+ * @param {Object} data - テレメトリデータ
+ */
+function updateDistanceIndex(data) {
+    if (data.position_x != null && data.position_z != null) {
+        if (analysisState.lastX != null) {
+            var seg = Math.hypot(
+                data.position_x - analysisState.lastX,
+                data.position_z - analysisState.lastZ
+            );
+            var paused = !!(data.flags && data.flags.paused);
+            if (seg <= DISCONTINUITY_M && !paused) {
+                analysisState.curLap.cumDist += seg;
+            }
+        }
+        analysisState.lastX = data.position_x;
+        analysisState.lastZ = data.position_z;
+    } else {
+        // フォールバック速度積分(dt は current_laptime 差分。performance.now は不使用)
+        var dt = ((data.current_laptime || 0) - analysisState.prevLaptime) / 1000;
+        if (dt > 0 && dt < 2) {
+            analysisState.curLap.cumDist += (data.speed_ms || 0) * dt;
+        }
+    }
+    analysisState.prevLaptime = data.current_laptime || 0;
+}
+
+/* ================================================================
+ *  ラップ確定・リサンプル
+ * ================================================================ */
+
+/**
+ * ラップ確定時にベスト更新判定・リファレンスラップ生成・PB通知を行う。
+ * @param {number} lapNumber - 確定したラップ番号
+ * @param {number} lastLaptimeMs - 確定ラップタイム(ms)
+ */
+function onLapComplete(lapNumber, lastLaptimeMs) {
+    if (!(lastLaptimeMs > 0) || analysisState.curLap.samples.length <= 2) {
+        return;
+    }
+
+    var isBest = !analysisState.refLap ||
+        (lastLaptimeMs < analysisState.refLap.totalTime * 1000);
+
+    if (isBest) {
+        var r = resampleByDist(analysisState.curLap.samples, STEP);
+        r.totalTime = lastLaptimeMs / 1000;
+        r.totalDist = analysisState.curLap.cumDist;
+        detectPeaksValleys(r);
+        analysisState.refLap = r;
+    }
+
+    if (lastLaptimeMs < analysisState.notif.prevBest) {
+        pushNotification('PERSONAL BEST', formatLapTime(lastLaptimeMs), 'pb');
+        analysisState.notif.prevBest = lastLaptimeMs;
+    }
+
+    // 一貫性σ(任意/low)
+    analysisState.lapTimesMs.push(lastLaptimeMs);
+    updateConsistency();
+}
+
+/**
+ * サンプル列を距離グリッドで等間隔リサンプルする。
+ * dist 昇順走査で各グリッド境界 k*step を線形補間。境界外は端点クランプ。
+ * @param {Array} samples - {dist,t,speed,throttle,brake,x,z,...} の配列(dist昇順)
+ * @param {number} step - 距離グリッド[m]
+ * @returns {Object} {dist[],time[],speed[],throttle[],brake[],x[],z[],N}
+ */
+function resampleByDist(samples, step) {
+    var out = { dist: [], time: [], speed: [], throttle: [], brake: [], x: [], z: [], N: 0 };
+    if (!samples || samples.length === 0) {
+        return out;
+    }
+
+    var lastDist = samples[samples.length - 1].dist || 0;
+    var N = Math.floor(lastDist / step) + 1;
+    var si = 0;
+
+    for (var k = 0; k < N; k++) {
+        var d = k * step;
+        // samples[si].dist <= d <= samples[si+1].dist となるよう si を進める
+        while (si < samples.length - 2 && samples[si + 1].dist < d) {
+            si++;
+        }
+        var a = samples[si];
+        var b = samples[Math.min(si + 1, samples.length - 1)];
+        var span = b.dist - a.dist;
+        var frac = span > 0 ? (d - a.dist) / span : 0;
+        if (frac < 0) frac = 0;
+        if (frac > 1) frac = 1;
+
+        out.dist.push(d);
+        out.time.push(lerpA(a.t, b.t, frac));
+        out.speed.push(lerpA(a.speed, b.speed, frac));
+        out.throttle.push(lerpA(a.throttle, b.throttle, frac));
+        out.brake.push(lerpA(a.brake, b.brake, frac));
+        out.x.push(lerpA(a.x, b.x, frac));
+        out.z.push(lerpA(a.z, b.z, frac));
+    }
+    out.N = N;
+    return out;
+}
+
+/**
+ * リファレンスラップの指定距離における通過タイムを O(1) で線形補間する。
+ * @param {number} d - トラック距離[m]
+ * @returns {number} 通過タイム[s]
+ */
+function refTimeAtDist(d) {
+    var rl = analysisState.refLap;
+    if (!rl || !rl.time || rl.time.length === 0) {
+        return 0;
+    }
+    var N = rl.time.length;
+    if (N === 1) {
+        return rl.time[0];
+    }
+    var i = Math.floor(d / STEP);
+    if (i < 0) i = 0;
+    if (i > N - 2) i = N - 2;
+    var frac = (d - i * STEP) / STEP;
+    if (frac < 0) frac = 0;
+    if (frac > 1) frac = 1;
+    return rl.time[i] + (rl.time[i + 1] - rl.time[i]) * frac;
+}
+
+/**
+ * speed[] の平滑後に局所最大(peaks=直線/トップスピード)・局所最小(valleys=コーナー)を抽出。
+ * サンプル<窓幅 は空配列。x/z を格納しコースマップのマーカーに用いる。
+ * @param {Object} refLap - resampleByDist の戻り値(speed[],x[],z[] を含む)
+ */
+function detectPeaksValleys(refLap) {
+    refLap.peaks = [];
+    refLap.valleys = [];
+
+    var sp = refLap.speed;
+    var n = sp ? sp.length : 0;
+    if (n < SMOOTH_W) {
+        return;
+    }
+
+    // 移動平均(窓 SMOOTH_W)
+    var sm = new Array(n);
+    var half = Math.floor(SMOOTH_W / 2);
+    for (var i = 0; i < n; i++) {
+        var sum = 0, cnt = 0;
+        for (var j = i - half; j <= i + half; j++) {
+            if (j >= 0 && j < n) {
+                sum += sp[j];
+                cnt++;
+            }
+        }
+        sm[i] = sum / cnt;
+    }
+
+    for (var m = 1; m < n - 1; m++) {
+        if (sm[m] >= sm[m - 1] && sm[m] > sm[m + 1]) {
+            if (localProminence(sm, m, 'max') > MIN_PROM) {
+                refLap.peaks.push({ x: refLap.x[m], z: refLap.z[m] });
+            }
+        } else if (sm[m] <= sm[m - 1] && sm[m] < sm[m + 1]) {
+            if (localProminence(sm, m, 'min') > MIN_PROM) {
+                refLap.valleys.push({ x: refLap.x[m], z: refLap.z[m] });
+            }
+        }
+    }
+}
+
+/**
+ * 局所顕著性(prominence)を ±PROM_WINDOW 内の最小/最大との差で近似する。
+ * @param {number[]} arr - 平滑済み速度配列
+ * @param {number} i - 対象インデックス
+ * @param {string} type - 'max' | 'min'
+ * @returns {number} 顕著性[km/h]
+ */
+function localProminence(arr, i, type) {
+    var a = Math.max(0, i - PROM_WINDOW);
+    var b = Math.min(arr.length - 1, i + PROM_WINDOW);
+    if (type === 'max') {
+        var minSide = arr[i];
+        for (var j = a; j <= b; j++) {
+            if (arr[j] < minSide) minSide = arr[j];
+        }
+        return arr[i] - minSide;
+    }
+    var maxSide = arr[i];
+    for (var k = a; k <= b; k++) {
+        if (arr[k] > maxSide) maxSide = arr[k];
+    }
+    return maxSide - arr[i];
+}
+
+/**
+ * 入力ゾーンを分類する。course-map.js の着色分岐からも参照される。
+ * @param {number} throttle - スロットル率[%]
+ * @param {number} brake - ブレーキ率[%]
+ * @returns {string} 'brake' | 'throttle' | 'coast'
+ */
+function classifyZone(throttle, brake) {
+    if (brake > ZONE_THRESH && brake >= throttle) return 'brake';
+    if (throttle > ZONE_THRESH) return 'throttle';
+    return 'coast';
+}
+
+/* ================================================================
+ *  ライブ・タイムデルタ / 推定ラップ
+ * ================================================================ */
+
+/**
+ * ライブ・タイムデルタを更新し #lap-delta / #delta-bar-* を秒差表示に強化する。
+ * バー極性の契約: 速い(liveDelta<0)=negative.active(緑) / 遅い=positive.active(赤)。
+ * @param {Object} data - テレメトリデータ
+ */
+function updateLiveDelta(data) {
+    var els = analysisState.els;
+    var rl = analysisState.refLap;
+
+    if (!rl) {
+        if (els.lapDelta) {
+            els.lapDelta.textContent = '--';
+            els.lapDelta.className = 'delta-value';
+        }
+        if (els.barNeg) {
+            els.barNeg.style.width = '0%';
+            els.barNeg.classList.remove('active');
+        }
+        if (els.barPos) {
+            els.barPos.style.width = '0%';
+            els.barPos.classList.remove('active');
+        }
+        analysisState._liveDelta = 0;
+        return;
+    }
+
+    var curDist = analysisState.curLap.cumDist;
+    if (curDist > rl.totalDist) {
+        curDist = rl.totalDist;
+    }
+    var liveDelta = ((data.current_laptime || 0) / 1000) - refTimeAtDist(curDist);
+    analysisState._liveDelta = liveDelta;
+
+    if (els.lapDelta) {
+        els.lapDelta.textContent = (liveDelta >= 0 ? '+' : '') + liveDelta.toFixed(2) + 's';
+        // 既存CSS: .delta-value=緑(基準/速い), .delta-value.negative=赤(遅い)。
+        // 意味的に「遅い(liveDelta>0)=赤」となるよう negative クラスは遅い時のみ付与する
+        // (既存の速度デルタ契約=悪化時に .negative=赤 と同義。トークン再利用で発光なし)。
+        els.lapDelta.className = 'delta-value' + (liveDelta > 0 ? ' negative' : '');
+    }
+
+    var n = Math.max(-1, Math.min(1, liveDelta / MAX_DELTA_S));
+    var pct = (Math.abs(n) * 100) + '%';
+    if (liveDelta < 0) {
+        // 速い → negative バー(緑)
+        if (els.barNeg) {
+            els.barNeg.style.width = pct;
+            els.barNeg.classList.add('active');
+        }
+        if (els.barPos) {
+            els.barPos.style.width = '0%';
+            els.barPos.classList.remove('active');
+        }
+    } else {
+        // 遅い/オンペース → positive バー(赤)
+        if (els.barPos) {
+            els.barPos.style.width = pct;
+            els.barPos.classList.add('active');
+        }
+        if (els.barNeg) {
+            els.barNeg.style.width = '0%';
+            els.barNeg.classList.remove('active');
+        }
+    }
+}
+
+/**
+ * 推定ラップタイム(全周外挿)を更新し #est-lap-time に反映する。
+ * progress<0.05 は表示せず、<0.20 は .tentative(減光)、session-best 予測は .pb(紫)。
+ * @param {Object} data - テレメトリデータ
+ */
+function updateEstimatedLap(data) {
+    var els = analysisState.els;
+    if (!els.estLap) {
+        return;
+    }
+
+    var rl = analysisState.refLap;
+    if (!rl) {
+        els.estLap.textContent = '--:--.---';
+        els.estLap.classList.remove('tentative', 'pb');
+        return;
+    }
+
+    var progress = rl.totalDist > 0 ? (analysisState.curLap.cumDist / rl.totalDist) : 0;
+    var estimated = rl.totalTime + analysisState._liveDelta;
+    if (!isFinite(estimated) || estimated <= 0) {
+        return;
+    }
+
+    els.estLap.classList.remove('tentative', 'pb');
+
+    if (progress < 0.05) {
+        els.estLap.textContent = '--:--.---';
+        return;
+    }
+
+    els.estLap.textContent = formatLapTime(Math.round(estimated * 1000));
+    if (progress < 0.20) {
+        els.estLap.classList.add('tentative');
+    }
+    if (estimated * 1000 < rl.totalTime * 1000) {
+        els.estLap.classList.add('pb');
+    }
+}
+
+/* ================================================================
+ *  レースエンジニア通知
+ * ================================================================ */
+
+/**
+ * 通知をキューへ push し描画する。最大3件(超過は最古を除去)。
+ * @param {string} label - ラベル
+ * @param {string|number} value - 値
+ * @param {string} severity - good|warning|serious|critical|pb
+ */
+function pushNotification(label, value, severity) {
+    var q = analysisState.notif.queue;
+    q.push({
+        label: label,
+        value: (value == null) ? '' : String(value),
+        severity: severity || 'good',
+        ts: performance.now(),
+        el: null
+    });
+    while (q.length > 3) {
+        var removed = q.shift();
+        if (removed && removed.el && removed.el.parentNode) {
+            removed.el.parentNode.removeChild(removed.el);
+        }
+    }
+    renderNotifications();
+}
+
+/**
+ * 通知キューを #race-engineer-feed に描画する(フェードイン/4秒後自動撤去)。
+ */
+function renderNotifications() {
+    var feed = analysisState.els.feed;
+    if (!feed) {
+        return;
+    }
+
+    analysisState.notif.queue.forEach(function(item) {
+        if (item.el) {
+            return; // 既描画
+        }
+
+        var div = document.createElement('div');
+        div.className = 'engineer-alert ' + item.severity;
+
+        var label = document.createElement('span');
+        label.className = 'ea-label';
+        label.textContent = item.label;
+
+        var val = document.createElement('span');
+        val.className = 'ea-value';
+        val.textContent = item.value;
+
+        div.appendChild(label);
+        div.appendChild(val);
+        feed.appendChild(div);
+        item.el = div;
+
+        // フェードイン(opacity:0 の初期描画後に .show)
+        requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+                div.classList.add('show');
+            });
+        });
+
+        // 4秒後に .show 解除 → トランジション後 remove
+        setTimeout(function() {
+            div.classList.remove('show');
+            setTimeout(function() {
+                if (div.parentNode) {
+                    div.parentNode.removeChild(div);
+                }
+                var idx = analysisState.notif.queue.indexOf(item);
+                if (idx >= 0) {
+                    analysisState.notif.queue.splice(idx, 1);
+                }
+            }, 300);
+        }, 4000);
+    });
+}
+
+/**
+ * 各閾値クロスを fired フラグで1回だけ発火(新トップスピード/燃料/残周回/ファイナルラップ)。
+ * PB は onLapComplete 側で発火する。
+ * @param {Object} data - テレメトリデータ
+ */
+function checkEngineer(data) {
+    var notif = analysisState.notif;
+
+    // (a) 新トップスピード(起動直後の連発抑止で最初の数値だけ記録)
+    var sp = data.speed_kmh || 0;
+    if (sp > notif.topSpeed + TOPSPEED_MARGIN && notif.topSpeed > 0) {
+        pushNotification('TOP SPEED', Math.round(sp) + ' km/h', 'good');
+    }
+    if (sp > notif.topSpeed) {
+        notif.topSpeed = sp;
+    }
+
+    // (b) 燃料 50/20/10% クロス
+    var cap = data.fuel_capacity;
+    if (cap > 0) {
+        var pct = (data.current_fuel / cap) * 100;
+        [50, 20, 10].forEach(function(th) {
+            if (notif.prevFuelPct > th && pct <= th && !notif.firedFuel[th]) {
+                notif.firedFuel[th] = true;
+                pushNotification('FUEL', th + '%',
+                    th <= 10 ? 'critical' : th <= 20 ? 'serious' : 'warning');
+            }
+        });
+        notif.prevFuelPct = pct;
+    }
+
+    // (c) 残周回 / ファイナルラップ
+    if (data.total_laps > 0) {
+        var rem = data.total_laps - data.lap_count;
+        [15, 10, 5, 2].forEach(function(th) {
+            if (rem === th && !notif.firedLaps[th]) {
+                notif.firedLaps[th] = true;
+                pushNotification('LAPS LEFT', th, th <= 2 ? 'serious' : 'warning');
+            }
+        });
+        if (data.lap_count === data.total_laps && !notif.finalFired) {
+            notif.finalFired = true;
+            pushNotification('FINAL LAP', '', 'critical');
+        }
+    }
+}
+
+/* ================================================================
+ *  グリップ / 一貫性(任意/low・要素欠落時は no-op)
+ * ================================================================ */
+
+/**
+ * ホイールスピン/ロックアップを検出し #grip-status に反映する(任意)。
+ * @param {Object} data - テレメトリデータ
+ */
+function updateGrip(data) {
+    var el = analysisState.els.gripStatus;
+    if (!el) {
+        return; // 要素が無ければ何もしない
+    }
+
+    var rps = data.wheel_rps;
+    var rad = data.tyre_radius;
+    var speedMs = data.speed_ms || 0;
+    if (!rps || !rad || rps.length < 4 || rad.length < 4 || speedMs < MIN_SPEED_MS) {
+        return;
+    }
+
+    // 全輪の最大周速(駆動輪不明のため最大採用)
+    var maxSurface = 0;
+    for (var i = 0; i < 4; i++) {
+        var s = Math.abs(rps[i]) * (rad[i] || 0) * WHEEL_SPEED_K;
+        if (s > maxSurface) maxSurface = s;
+    }
+    var slip = maxSurface / Math.max(speedMs, 1);
+
+    var status = 'GRIP OK';
+    var cls = 'ok';
+    if (slip > 1.10 && (data.throttle_pct || 0) > 50) {
+        status = 'SPIN';
+        cls = 'spin';
+    } else if (slip < 0.85 && (data.brake_pct || 0) > 20) {
+        status = 'LOCK';
+        cls = 'lock';
+    }
+    el.textContent = status;
+    el.className = 'grip-status ' + cls;
+}
+
+/**
+ * 直近ラップタイムのσ(一貫性)を #consistency-stat に反映する(任意)。
+ */
+function updateConsistency() {
+    var el = analysisState.els.consistency;
+    if (!el) {
+        return;
+    }
+    var arr = analysisState.lapTimesMs;
+    if (arr.length < 2) {
+        el.textContent = 'σ --';
+        return;
+    }
+    var recent = arr.slice(-5);
+    var mean = recent.reduce(function(a, b) { return a + b; }, 0) / recent.length;
+    var varSum = 0;
+    recent.forEach(function(v) { varSum += (v - mean) * (v - mean); });
+    var sd = Math.sqrt(varSum / recent.length);
+    el.textContent = 'σ ' + (sd / 1000).toFixed(2) + 's';
+}
+
+/* ================================================================
+ *  解析チャート用データ供給
+ * ================================================================ */
+
+/**
+ * 距離軸チャート(C の renderAnalysisCharts)へ渡す等長データを組み立てる。
+ * 未確定区間は null(uPlot が gap 描画)。refLap==null の間は ref/delta を全 null。
+ * @returns {Object} {xs[],curSpeed[],refSpeed[],delta[]}
+ */
+function getAnalysisChartData() {
+    var rl = analysisState.refLap;
+    var cur = resampleByDist(analysisState.curLap.samples, STEP);
+    var curN = cur.N || 0;
+    var refN = rl ? rl.time.length : 0;
+    var N = Math.max(curN, refN, 1);
+    var curDist = analysisState.curLap.cumDist;
+
+    var xs = new Array(N);
+    var curSpeed = new Array(N);
+    var refSpeed = new Array(N);
+    var delta = new Array(N);
+
+    for (var k = 0; k < N; k++) {
+        var d = k * STEP;
+        xs[k] = d;
+
+        curSpeed[k] = (k < curN && d <= curDist) ? cur.speed[k] : null;
+        refSpeed[k] = (rl && k < refN) ? rl.speed[k] : null;
+
+        if (rl && k < curN && k < refN && d <= curDist) {
+            delta[k] = cur.time[k] - rl.time[k];
+        } else {
+            delta[k] = null;
+        }
+    }
+
+    return { xs: xs, curSpeed: curSpeed, refSpeed: refSpeed, delta: delta };
+}

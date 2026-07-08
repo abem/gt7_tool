@@ -1,8 +1,8 @@
 {
     "metadata": {
-        "version": "1.1.0",
+        "version": "1.2.0",
         "description": "GT7コースデータベース - 位置座標(x, z)からコースを推定",
-        "note": "座標範囲は実際のテレメトリーデータから収集して更新しました"
+        "note": "bounds の大半は推測値(verified:false)。実走テレメトリで検証したものだけ verified:true。real_track は fallback:true(±10000 の広域・最終手段)。"
     },
     "courses": [
         {
@@ -15,7 +15,8 @@
                 "max_x": 500,
                 "min_z": -600,
                 "max_z": 600
-            }
+            },
+            "verified": false
         },
         {
             "id": "suzuka",
@@ -27,7 +28,8 @@
                 "max_x": 500,
                 "min_z": -500,
                 "max_z": 500
-            }
+            },
+            "verified": false
         },
         {
             "id": "trial_mountain",
@@ -39,7 +41,8 @@
                 "max_x": 300,
                 "min_z": -300,
                 "max_z": 300
-            }
+            },
+            "verified": false
         },
         {
             "id": "northern_isle",
@@ -51,7 +54,8 @@
                 "max_x": 350,
                 "min_z": -350,
                 "max_z": 350
-            }
+            },
+            "verified": false
         },
         {
             "id": "goodwood",
@@ -63,19 +67,21 @@
                 "max_x": 250,
                 "min_z": -250,
                 "max_z": 250
-            }
+            },
+            "verified": false
         },
         {
-            "id": "bb_raceway",
-            "name": "ブリティッシュ・ブランド・レースウェイ",
-            "name_en": "Brand Hatch Raceway",
-            "description": "レガシーのサーキットコース",
+            "id": "brands_hatch",
+            "name": "ブランズ・ハッチ",
+            "name_en": "Brands Hatch",
+            "description": "イギリスの伝統あるサーキット",
             "bounds": {
                 "min_x": -400,
                 "max_x": 400,
                 "min_z": -400,
                 "max_z": 400
-            }
+            },
+            "verified": false
         },
         {
             "id": "daytona",
@@ -87,7 +93,8 @@
                 "max_x": 600,
                 "min_z": -600,
                 "max_z": 600
-            }
+            },
+            "verified": false
         },
         {
             "id": "laguna_seca",
@@ -99,7 +106,8 @@
                 "max_x": 400,
                 "min_z": -400,
                 "max_z": 400
-            }
+            },
+            "verified": false
         },
         {
             "id": "nurburgring",
@@ -111,7 +119,8 @@
                 "max_x": 1500,
                 "min_z": -1500,
                 "max_z": 1500
-            }
+            },
+            "verified": false
         },
         {
             "id": "fuji_speedway",
@@ -123,11 +132,12 @@
                 "max_x": 500,
                 "min_z": -500,
                 "max_z": 500
-            }
+            },
+            "verified": false
         },
         {
             "id": "tsukuba",
-            "name": "ツバサ サーキット",
+            "name": "筑波サーキット",
             "name_en": "Tsukuba Circuit",
             "description": "日本の代表的なショートサーキット",
             "bounds": {
@@ -135,7 +145,8 @@
                 "max_x": 300,
                 "min_z": -300,
                 "max_z": 300
-            }
+            },
+            "verified": false
         },
         {
             "id": "autopolis",
@@ -147,7 +158,8 @@
                 "max_x": 400,
                 "min_z": -400,
                 "max_z": 400
-            }
+            },
+            "verified": false
         },
         {
             "id": "spa",
@@ -159,7 +171,8 @@
                 "max_x": 800,
                 "min_z": -800,
                 "max_z": 800
-            }
+            },
+            "verified": false
         },
         {
             "id": "monza",
@@ -171,7 +184,8 @@
                 "max_x": 500,
                 "min_z": -500,
                 "max_z": 500
-            }
+            },
+            "verified": false
         },
         {
             "id": "catalunya",
@@ -183,7 +197,8 @@
                 "max_x": 500,
                 "min_z": -500,
                 "max_z": 500
-            }
+            },
+            "verified": false
         },
         {
             "id": "willow_springs",
@@ -195,7 +210,8 @@
                 "max_x": 400,
                 "min_z": -400,
                 "max_z": 400
-            }
+            },
+            "verified": false
         },
         {
             "id": "phoenix",
@@ -207,7 +223,8 @@
                 "max_x": 400,
                 "min_z": -400,
                 "max_z": 400
-            }
+            },
+            "verified": false
         },
         {
             "id": "indianapolis",
@@ -219,7 +236,8 @@
                 "max_x": 600,
                 "min_z": -600,
                 "max_z": 600
-            }
+            },
+            "verified": false
         },
         {
             "id": "grand_valley",
@@ -231,7 +249,8 @@
                 "max_x": 800,
                 "min_z": -800,
                 "max_z": 800
-            }
+            },
+            "verified": false
         }
     ],
     "known_courses": [
@@ -245,7 +264,8 @@
                 "max_x": 300,
                 "min_z": -400,
                 "max_z": 400
-            }
+            },
+            "verified": false
         },
         {
             "id": "grand_valley",
@@ -257,7 +277,8 @@
                 "max_x": 300,
                 "min_z": 1000,
                 "max_z": 1500
-            }
+            },
+            "verified": true
         },
         {
             "id": "tokyo_expressway_west",
@@ -269,7 +290,8 @@
                 "max_x": 500,
                 "min_z": -400,
                 "max_z": 400
-            }
+            },
+            "verified": false
         },
         {
             "id": "real_track",
@@ -280,7 +302,9 @@
                 "max_x": 10000,
                 "min_z": -10000,
                 "max_z": 10000
-            }
+            },
+            "fallback": true,
+            "verified": false
         }
     ],
     "test_mode": {

@@ -1,80 +1,95 @@
 /**
  * GT7 Telemetry Dashboard
- * WebSocket接続・メッセージ処理・ラップ管理
+ * WebSocket接続・メッセージ処理
  *
- * 依存: ui_components.js (elements, formatLapTime, getTyreTempColor, debugLog, updateRotation3D)
- *       charts.js (timeData, speedData, rpmData, throttleData, brakeData, timeCounter,
- *                  speedChart, rpmChart, throttleChart, brakeChart, updateAccelChart)
- *       course-map.js (updateCourseMap, initCourseMap)
- *       car-3d.js (initCar3D, updateCar3D)
+ * @module websocket
+ * @depends constants.js (UPDATE_INTERVALS, WEBSOCKET_CONFIG)
+ * @depends ui_components.js (elements, debugLog, updateSteeringGauge)
+ * @depends lap-manager.js (updateLapState, updateMaxSpeed)
+ * @depends charts.js (timeCounter, timeData, speedData, rpmData, throttleData, brakeData,
+ *                     speedChart, rpmChart, throttleChart, brakeChart, initCharts, updateAccelChart)
+ * @depends course-map.js (initCourseMap, updateCourseMap)
+ * @depends car-3d.js (initCar3D, updateCar3D)
  */
 
-// 回転矢印を取得
+/* ================================================================
+ *  モジュール状態
+ * ================================================================ */
+const wsState = {
+    /** WebSocketインスタンス */
+    ws: null,
+    /** 再接続遅延（ms） */
+    reconnectDelay: WEBSOCKET_CONFIG.reconnectDelayInitial,
+    /** 再接続タイマー */
+    reconnectTimer: null,
+    /** パケット受信数 */
+    packetCount: 0,
+    /** 最新メッセージ */
+    latestMessage: null,
+    /** 処理スケジュール済みフラグ */
+    processingScheduled: false,
+    /** 前回UI更新時刻 */
+    lastUiTs: 0,
+    /** 前回チャート更新時刻 */
+    lastChartsTs: 0,
+    /** 前回マップ更新時刻 */
+    lastMapTs: 0,
+    /** 前回回転更新時刻 */
+    lastRotationTs: 0,
+    /** JSONパースエラー連続回数 */
+    parseErrorCount: 0
+};
+
+/* ================================================================
+ *  回転矢印表示
+ * ================================================================ */
+
+/**
+ * 回転角に応じた矢印を取得
+ * @param {number} angle - 角度（ラジアン）
+ * @returns {string} 矢印文字
+ */
 function getRotationArrow(angle) {
     if (angle > 0.1) return '↑';
     if (angle < -0.1) return '↓';
     return '→';
 }
 
+/**
+ * 回転矢印表示を更新
+ * @param {number} pitch - ピッチ角
+ * @param {number} yaw - ヨー角
+ * @param {number} roll - ロール角
+ */
 function updateRotationArrows(pitch, yaw, roll) {
-    if (!elements.pitchIndicator) return;
+    if (!elements.pitchIndicator) {
+        return;
+    }
     elements.pitchIndicator.textContent = getRotationArrow(pitch);
     elements.yawIndicator.textContent = getRotationArrow(yaw);
     elements.rollIndicator.textContent = getRotationArrow(roll);
 }
 
-var ws = null;
-var reconnectDelay = 2000;
-var maxReconnectDelay = 30000;
-var reconnectTimer = null;
-var packetCount = 0;
-var maxSpeed = 0;
-var currentLapNumber = 0;
-var lastLapNumber = 0;
-var bestLapTime = Infinity;
-var bestLapNumber = 0;
-var lapTimes = [];
-var currentLapData = [];
-var bestLapData = [];
-function updateLapList() {
-    if (!elements.lapList) return;
-    elements.lapList.innerHTML = '';
-    lapTimes.forEach(function(lap) {
-        var item = document.createElement('div');
-        item.className = 'lap-history-item' + (lap.number === bestLapNumber ? ' best' : '');
-        var delta = lap.time - bestLapTime;
-        var deltaSign = delta > 0 ? '+' : '';
-        var deltaClass = delta < 0 ? 'negative' : 'positive';
-        item.innerHTML =
-            '<span class="lap-hist-num">L' + lap.number + '</span>' +
-            '<span class="lap-hist-time">' + formatLapTime(lap.time) + '</span>' +
-            '<span class="lap-hist-delta ' + deltaClass + '">' + deltaSign + (delta / 1000).toFixed(3) + '</span>';
-        elements.lapList.appendChild(item);
-    });
-}
+/* ================================================================
+ *  ギア比表示
+ * ================================================================ */
 
-function addLapData(lapNumber, lapTime) {
-    var idx = lapTimes.findIndex(function(l) { return l.number === lapNumber; });
-    if (idx >= 0) {
-        lapTimes[idx] = { number: lapNumber, time: lapTime };
-    } else {
-        lapTimes.push({ number: lapNumber, time: lapTime });
-    }
-    if (lapTime > 0 && lapTime < bestLapTime) {
-        bestLapTime = lapTime;
-        bestLapNumber = lapNumber;
-        bestLapData = currentLapData.slice();
-    }
-    updateLapList();
-    elements.bestLapTime.textContent = formatLapTime(bestLapTime);
-}
-
+/**
+ * ギア比表示をレンダリング
+ * @param {number[]} ratios - ギア比配列
+ * @param {number} currentGear - 現在のギア
+ */
 function renderGearRatios(ratios, currentGear) {
-    if (!elements.gearRatios || !ratios) return;
-    var html = '';
-    for (var i = 0; i < ratios.length; i++) {
-        if (ratios[i] === 0) continue;
-        var isActive = (i + 1) === currentGear;
+    if (!elements.gearRatios || !ratios) {
+        return;
+    }
+
+    let html = '';
+    for (let i = 0; i < ratios.length; i++) {
+        if (ratios[i] === 0) {
+            continue;
+        }
+        const isActive = (i + 1) === currentGear;
         html += '<div class="gear-ratio-item' + (isActive ? ' active' : '') + '">' +
             '<span class="gear-ratio-num">' + (i + 1) + '</span>' +
             '<span class="gear-ratio-val">' + ratios[i].toFixed(3) + '</span>' +
@@ -83,53 +98,64 @@ function renderGearRatios(ratios, currentGear) {
     elements.gearRatios.innerHTML = html;
 }
 
-// ラップカウント検出・ラップタイム記録・ラップデータ蓄積・速度デルタ計算
-function updateLapState(data) {
-    currentLapNumber = data.lap_count || 1;
-    elements.currentLap.textContent = currentLapNumber + '/' + (data.total_laps || '--');
+/* ================================================================
+ *  UI更新関数
+ * ================================================================ */
 
-    // ラップ切り替え検出
-    if (currentLapNumber > lastLapNumber && lastLapNumber > 0) {
-        var lastTime = data.last_laptime;
-        if (lastTime > 0) {
-            addLapData(lastLapNumber, lastTime);
-            elements.currentLapTime.textContent = formatLapTime(lastTime);
+/**
+ * シフトライトの表示を更新
+ * @param {number} rpm - 現在のRPM
+ * @param {number} maxRpm - 最大RPM
+ */
+function updateShiftLights(rpm, maxRpm) {
+    if (!elements.shiftLights) return;
+    
+    const lights = elements.shiftLights.querySelectorAll('.shift-light');
+    const rpmPct = (rpm / maxRpm) * 100;
+    
+    // シフトライトの閾値設定（RPM%で指定）
+    // 8個のライト: 75%, 80%, 85%, 88%, 91%, 94%, 96%, 98%
+    const thresholds = [75, 80, 85, 88, 91, 94, 96, 98];
+    
+    lights.forEach((light, index) => {
+        light.className = 'shift-light'; // リセット
+        
+        if (rpmPct >= thresholds[index]) {
+            if (index < 3) {
+                light.classList.add('green');
+            } else if (index < 6) {
+                light.classList.add('yellow');
+            } else {
+                light.classList.add('red');
+            }
         }
-        currentLapData = [];
-    }
-    lastLapNumber = currentLapNumber;
-
-    // ラップデータ蓄積
-    currentLapData.push({
-        time: timeCounter,
-        speed: data.speed_kmh || 0,
-        rpm: data.rpm || 0,
-        throttle: data.throttle_pct || 0,
-        brake: data.brake_pct || 0
     });
-
-    // 速度デルタ（ベストラップ同地点との速度差）
-    if (bestLapData.length > 0 && currentLapData.length > 0) {
-        var idx = Math.min(currentLapData.length - 1, bestLapData.length - 1);
-        var delta = currentLapData[idx].speed - bestLapData[idx].speed;
-        elements.lapDelta.textContent = (delta >= 0 ? '+' : '') + delta.toFixed(1) + ' km/h';
-        elements.lapDelta.className = 'delta-value' + (delta < 0 ? ' negative' : '');
-    }
 }
 
-// 速度・ギア・RPM・スロットル・ブレーキ・クラッチ・ステアリング・ブーストの表示更新
+/**
+ * 車両状態の表示を更新
+ * @param {Object} data - テレメトリデータ
+ */
 function updateVehicleState(data) {
-    var speed = Math.round(data.speed_kmh || 0);
+    // 速度
+    const speed = Math.round(data.speed_kmh || 0);
     elements.speed.textContent = speed;
-    if (speed > maxSpeed) {
-        maxSpeed = speed;
-        elements.maxSpeed.textContent = maxSpeed;
-    }
+    updateMaxSpeed(speed);
 
     // ギア
-    var gear = data.gear || 0;
-    elements.gear.textContent = gear === 0 ? 'R' : gear;
-    if (data.suggested_gear != null && data.suggested_gear !== gear) {
+    const gear = data.gear || 0;
+    const gearEl = elements.gear;
+    gearEl.textContent = gear === 0 ? 'R' : gear;
+    
+    // ギアに応じた色変更
+    gearEl.classList.remove('reverse', 'low');
+    if (gear === 0) {
+        gearEl.classList.add('reverse');
+    } else if (gear <= 2) {
+        gearEl.classList.add('low');
+    }
+    
+    if (elements.suggestedGear) if (data.suggested_gear != null && data.suggested_gear !== gear) {
         elements.suggestedGear.textContent = '\u2192' + data.suggested_gear;
     } else {
         elements.suggestedGear.textContent = '';
@@ -137,39 +163,72 @@ function updateVehicleState(data) {
 
     // ステアリング回転
     if (data.wheel_rotation !== undefined) {
-        var deg = (data.wheel_rotation * 180 / Math.PI).toFixed(1);
-        elements.wheelRotation.textContent = deg + '\u00B0';
+        const deg = (data.wheel_rotation * 180 / Math.PI).toFixed(1);
+        if (elements.wheelRotation) elements.wheelRotation.textContent = deg + '\u00B0';
+        if (elements.wheelRotationDetail) {
+            elements.wheelRotationDetail.textContent = deg + '\u00B0';
+        }
     }
 
-    // RPM (パケットからの実際のmax_rpmを使用)
-    var rpm = Math.round(data.rpm || 0);
-    var maxRpm = data.max_rpm || 9000;
-    var rpmPct = Math.min((rpm / maxRpm) * 100, 100);
-    elements.rpmBar.style.width = rpmPct + '%';
-    if (data.rpm_alert_min && rpm >= data.rpm_alert_min) {
-        elements.rpmBar.style.background = rpm >= maxRpm ? COLORS.accentRed : COLORS.accentYellow;
-    } else {
-        elements.rpmBar.style.background = '';
+    // RPM
+    const rpm = Math.round(data.rpm || 0);
+    const maxRpm = data.max_rpm || 9000;
+    const rpmPct = Math.min((rpm / maxRpm) * 100, 100);
+    // #rpm-bar は現行UIには存在しない(RPMはシフトライト+rpm-textで表現)。存在時のみ更新。
+    if (elements.rpmBar) {
+        elements.rpmBar.style.width = rpmPct + '%';
+        if (data.rpm_alert_min && rpm >= data.rpm_alert_min) {
+            elements.rpmBar.style.background =
+                rpm >= maxRpm ? COLORS.accentRed : COLORS.accentYellow;
+        } else {
+            elements.rpmBar.style.background = '';
+        }
     }
     elements.rpmText.textContent = rpm + ' RPM';
 
-    // ペダル
-    var throttle = Math.round(data.throttle_pct || 0);
-    var brake = Math.round(data.brake_pct || 0);
-    var clutch = Math.round((data.clutch || 0) * 100);
+    // シフトライト更新
+    updateShiftLights(rpm, maxRpm);
+
+    // ペダル（トップバー用）
+    const throttle = Math.round(data.throttle_pct || 0);
+    const brake = Math.round(data.brake_pct || 0);
+    const clutch = Math.round((data.clutch || 0) * 100);
+
     elements.throttleBar.style.width = throttle + '%';
     elements.throttleValue.textContent = throttle + '%';
     elements.brakeBar.style.width = brake + '%';
     elements.brakeValue.textContent = brake + '%';
+    
+    // ペダルトレース更新
+    if (typeof updatePedalTrace === 'function') {
+        updatePedalTrace(throttle, brake);
+    }
+    
+    // ペダル（左パネル詳細用）
+    if (elements.throttleBarDetail) {
+        elements.throttleBarDetail.style.width = throttle + '%';
+    }
+    if (elements.throttleValueDetail) {
+        elements.throttleValueDetail.textContent = throttle + '%';
+    }
+    if (elements.brakeBarDetail) {
+        elements.brakeBarDetail.style.width = brake + '%';
+    }
+    if (elements.brakeValueDetail) {
+        elements.brakeValueDetail.textContent = brake + '%';
+    }
+    
     elements.clutchBar.style.width = clutch + '%';
     elements.clutchValue.textContent = clutch + '%';
 
-    // フィルタ後入力（TCS/ABS補正後）
+    // フィルタ後入力
     if (data.throttle_filtered_pct !== undefined) {
-        elements.throttleFilteredBar.style.width = Math.round(data.throttle_filtered_pct) + '%';
+        elements.throttleFilteredBar.style.width =
+            Math.round(data.throttle_filtered_pct) + '%';
     }
     if (data.brake_filtered_pct !== undefined) {
-        elements.brakeFilteredBar.style.width = Math.round(data.brake_filtered_pct) + '%';
+        elements.brakeFilteredBar.style.width =
+            Math.round(data.brake_filtered_pct) + '%';
     }
 
     // ブースト・油圧
@@ -204,31 +263,105 @@ function updateVehicleState(data) {
 
     // フラグ表示
     if (data.flags) {
-        var flagParts = [];
-        if (data.flags.tcs_active) flagParts.push('<span class="flag-on">TCS</span>');
-        if (data.flags.asm_active) flagParts.push('<span class="flag-on">ASM</span>');
-        if (data.flags.rev_limiter) flagParts.push('<span class="flag-warn">REV</span>');
-        if (data.flags.hand_brake) flagParts.push('<span class="flag-warn">P-BRK</span>');
-        if (data.flags.lights) flagParts.push('<span class="flag-info">LIGHT</span>');
-        if (data.flags.has_turbo) flagParts.push('<span class="flag-info">TURBO</span>');
-        elements.flagsBar.innerHTML = flagParts.join('');
+        renderFlags(data.flags);
     }
 }
 
-// 燃料残量・燃費・走行可能周回数の表示更新
+/**
+ * フラグ表示をレンダリング
+ * @param {Object} flags - フラグオブジェクト
+ */
+function renderFlags(flags) {
+    const flagParts = [];
+    if (flags.tcs_active) flagParts.push('<span class="flag-on">TCS</span>');
+    if (flags.asm_active) flagParts.push('<span class="flag-on">ASM</span>');
+    if (flags.rev_limiter) flagParts.push('<span class="flag-warn">REV</span>');
+    if (flags.hand_brake) flagParts.push('<span class="flag-warn">P-BRK</span>');
+    if (flags.lights) flagParts.push('<span class="flag-info">LIGHT</span>');
+    if (flags.has_turbo) flagParts.push('<span class="flag-info">TURBO</span>');
+    elements.flagsBar.innerHTML = flagParts.join('');
+}
+
+/**
+ * 燃料状態の表示を更新
+ * @param {Object} data - テレメトリデータ
+ */
 function updateFuelState(data) {
-    // 燃料
-    elements.fuel.textContent = (data.current_fuel || 0).toFixed(1);
-    elements.fuelCapacity.textContent = (data.fuel_capacity || 0).toFixed(0);
+    const currentFuel = data.current_fuel || 0;
+    const capacity = data.fuel_capacity || 100;
+    
+    elements.fuel.textContent = currentFuel.toFixed(1);
+    elements.fuelCapacity.textContent = capacity.toFixed(0);
+    
+    // 燃料バー更新
+    const fuelBar = document.getElementById('fuel-bar');
+    if (fuelBar) {
+        const pct = Math.min(100, (currentFuel / capacity) * 100);
+        fuelBar.style.width = pct + '%';
+        
+        // 残量に応じた色変更
+        fuelBar.classList.remove('low', 'warning');
+        if (pct < 15) {
+            fuelBar.classList.add('low');
+        } else if (pct < 30) {
+            fuelBar.classList.add('warning');
+        }
+    }
+
     if (data.fuel_per_lap !== undefined) {
         elements.fuelPerLap.textContent = (data.fuel_per_lap || 0).toFixed(2);
     }
     if (data.fuel_laps_remaining !== undefined) {
-        elements.fuelLapsRemaining.textContent = data.fuel_laps_remaining || '--';
+        const lapsRemaining = data.fuel_laps_remaining;
+        elements.fuelLapsRemaining.textContent = lapsRemaining || '--';
+        
+        // 残り周回数に応じた色変更
+        if (elements.fuelLapsRemaining.style) {
+            if (lapsRemaining < 3) {
+                elements.fuelLapsRemaining.style.color = COLORS.accentRed;
+            } else if (lapsRemaining < 5) {
+                elements.fuelLapsRemaining.style.color = COLORS.accentYellow;
+            } else {
+                elements.fuelLapsRemaining.style.color = COLORS.accentCyan;
+            }
+        }
     }
 }
 
-// タイヤ温度・RPS・サスペンション高・タイヤ半径・ブレーキ温度の表示更新
+/**
+ * タイヤ温度に応じたCSSクラスを取得
+ * @param {number} temp - タイヤ温度
+ * @returns {string} CSSクラス名
+ */
+function getTyreTempClass(temp) {
+    if (temp < TYRE_TEMP.COLD_THRESHOLD) return 'cold';
+    if (temp < TYRE_TEMP.OPTIMAL_HIGH) return 'optimal';
+    if (temp < TYRE_TEMP.HOT_THRESHOLD) return 'warm';
+    return 'hot';
+}
+
+/**
+ * タイヤ温度バーを更新
+ * @param {string} position - タイヤ位置（fl, fr, rl, rr）
+ * @param {number} temp - 温度
+ */
+function updateTyreTempBar(position, temp) {
+    const bar = document.getElementById(position + '-temp-bar');
+    if (!bar) return;
+    
+    // 温度を0-120°Cの範囲でバー幅に変換（120°C = 100%）
+    const maxTemp = 120;
+    const minTemp = 20;
+    const pct = Math.min(100, Math.max(0, ((temp - minTemp) / (maxTemp - minTemp)) * 100));
+    
+    bar.style.width = pct + '%';
+    bar.className = 'tyre-temp-bar ' + getTyreTempClass(temp);
+}
+
+/**
+ * タイヤ状態の表示を更新
+ * @param {Object} data - テレメトリデータ
+ */
 function updateTyreState(data) {
     // サスペンション
     if (data.susp_height) {
@@ -240,7 +373,7 @@ function updateTyreState(data) {
 
     // タイヤ温度
     if (data.tyre_temp) {
-        var temps = data.tyre_temp;
+        const temps = data.tyre_temp;
         elements.flTemp.textContent = Math.round(temps[0]);
         elements.frTemp.textContent = Math.round(temps[1]);
         elements.rlTemp.textContent = Math.round(temps[2]);
@@ -249,11 +382,17 @@ function updateTyreState(data) {
         elements.frTemp.style.color = getTyreTempColor(temps[1]);
         elements.rlTemp.style.color = getTyreTempColor(temps[2]);
         elements.rrTemp.style.color = getTyreTempColor(temps[3]);
+        
+        // 温度バー更新
+        updateTyreTempBar('fl', temps[0]);
+        updateTyreTempBar('fr', temps[1]);
+        updateTyreTempBar('rl', temps[2]);
+        updateTyreTempBar('rr', temps[3]);
     }
 
     // ホイール回転速度
     if (data.wheel_rps) {
-        var rps = data.wheel_rps;
+        const rps = data.wheel_rps;
         elements.flRps.textContent = Math.abs(rps[0] || 0).toFixed(1);
         elements.frRps.textContent = Math.abs(rps[1] || 0).toFixed(1);
         elements.rlRps.textContent = Math.abs(rps[2] || 0).toFixed(1);
@@ -274,27 +413,75 @@ function updateTyreState(data) {
     elements.roadPlaneZ.textContent = (data.road_plane_z || 0).toFixed(3);
     elements.roadPlaneDist.textContent = (data.road_plane_distance || 0).toFixed(3);
 
-    // 車体加速度（Packet B拡張）
+    // 車体加速度
     if (data.body_accel_sway !== undefined) {
         elements.bodySway.textContent = (data.body_accel_sway || 0).toFixed(3);
         elements.bodyHeave.textContent = (data.body_accel_heave || 0).toFixed(3);
         elements.bodySurge.textContent = (data.body_accel_surge || 0).toFixed(3);
+        
+        // G-Forceメーター更新（sway = 横G, surge = 縦G）
+        if (typeof updateGForceMeter === 'function') {
+            updateGForceMeter(
+                data.body_accel_sway || 0,
+                data.body_accel_surge || 0
+            );
+        }
     }
 
-    // トルクベクタリング・回生（Packet ~拡張）
-    if (data.torque_vector) {
+    // トルクベクタリング
+    if (data.torque_vector && elements.torque1) {
         elements.torque1.textContent = data.torque_vector[0].toFixed(2);
         elements.torque2.textContent = data.torque_vector[1].toFixed(2);
         elements.torque3.textContent = data.torque_vector[2].toFixed(2);
         elements.torque4.textContent = data.torque_vector[3].toFixed(2);
     }
-    if (data.energy_recovery !== undefined) {
+    if (data.energy_recovery !== undefined && elements.energyRecovery) {
         elements.energyRecovery.textContent = (data.energy_recovery || 0).toFixed(2);
     }
 }
 
-// 位置・速度ベクトル・姿勢角・コースマップ・3D車両モデル更新
-function updatePositionState(data) {
+/**
+ * セクタータイムの色を決定
+ * @param {number} current - 現在のセクタータイム
+ * @param {number} best - ベストセクタータイム
+ * @returns {string} CSSクラス名
+ */
+function getSectorClass(current, best) {
+    if (!best || best <= 0) return '';
+    const diff = current - best;
+    if (diff < 0) return 'purple';  // 新ベスト
+    if (diff < 0.1) return 'green';  // ベストに近い
+    if (diff < 0.3) return 'yellow'; // 普通
+    return 'red';  // 遅い
+}
+
+/**
+ * セクター表示を更新
+ * @param {Object} data - テレメトリデータ
+ */
+function updateSectors(data) {
+    if (data.sector_1 !== undefined && elements.sector1) {
+        elements.sector1.textContent = data.sector_1.toFixed(3);
+        elements.sector1.className = 'sector-value ' + 
+            getSectorClass(data.sector_1, data.best_sector_1);
+    }
+    if (data.sector_2 !== undefined && elements.sector2) {
+        elements.sector2.textContent = data.sector_2.toFixed(3);
+        elements.sector2.className = 'sector-value ' + 
+            getSectorClass(data.sector_2, data.best_sector_2);
+    }
+    if (data.sector_3 !== undefined && elements.sector3) {
+        elements.sector3.textContent = data.sector_3.toFixed(3);
+        elements.sector3.className = 'sector-value ' + 
+            getSectorClass(data.sector_3, data.best_sector_3);
+    }
+}
+
+/**
+ * 位置情報の表示を更新
+ * @param {Object} data - テレメトリデータ
+ */
+function updatePositionText(data) {
     // 位置
     elements.posX.textContent = (data.position_x || 0).toFixed(1);
     elements.posY.textContent = (data.position_y || 0).toFixed(1);
@@ -306,35 +493,13 @@ function updatePositionState(data) {
     elements.velZ.textContent = (data.velocity_z || 0).toFixed(1);
 
     // 回転
-    elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
-    elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
-    elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
+    if (elements.rotPitch) {
+        elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
+        elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
+        elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
+    }
 
-    // 3Dモデル更新（既存の車体3Dモデル）
-    updateCar3D(
-        data.rotation_pitch || 0,
-        data.rotation_yaw || 0,
-        data.rotation_roll || 0
-    );
-
-    // 3D回転表示更新（Angular Velocityカード内の直方体）
-    updateRotation3D(
-        data.rotation_pitch || 0,
-        data.rotation_yaw || 0,
-        data.rotation_roll || 0
-    );
-
-    // 回転矢印の更新
-    updateRotationArrows(
-        data.rotation_pitch || 0,
-        data.rotation_yaw || 0,
-        data.rotation_roll || 0
-    );
-
-    // 角速度
-    if (elements.angX) elements.angX.textContent = (data.angular_velocity_x || 0).toFixed(3);
-    if (elements.angY) elements.angY.textContent = (data.angular_velocity_y || 0).toFixed(3);
-    if (elements.angZ) elements.angZ.textContent = (data.angular_velocity_z || 0).toFixed(3);
+    // 角速度（CAR ATTITUDEセクション）
     if (elements.pitchRate) elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
     if (elements.yawRate) elements.yawRate.textContent = (data.angular_velocity_y || 0).toFixed(3);
     if (elements.rollRate) elements.rollRate.textContent = (data.angular_velocity_z || 0).toFixed(3);
@@ -348,9 +513,10 @@ function updatePositionState(data) {
         elements.runningLapTime.textContent = formatLapTime(data.current_laptime);
     }
 
-    // スタート順位（レース前のみ有効）
+    // スタート順位
     if (data.pre_race_position != null && data.num_cars_pre_race != null) {
-        elements.racePosition.textContent = 'P' + data.pre_race_position + '/' + data.num_cars_pre_race;
+        elements.racePosition.textContent =
+            'P' + data.pre_race_position + '/' + data.num_cars_pre_race;
     } else if (data.pre_race_position != null) {
         elements.racePosition.textContent = 'P' + data.pre_race_position;
     }
@@ -359,39 +525,32 @@ function updatePositionState(data) {
     if (data.course && data.course.name && data.course.id !== 'unknown') {
         elements.courseName.textContent = data.course.name;
     }
-
-    // コースマップ
-    if (data.position_x !== undefined && data.position_z !== undefined) {
-        updateCourseMap(
-            data.position_x,
-            data.position_y || 0,
-            data.position_z,
-            data.speed_kmh || 0
-        );
-    }
 }
 
-// チャートデータのシフトと更新（uPlot系）
+/**
+ * チャート状態の表示を更新
+ * @param {Object} data - テレメトリデータ
+ */
 function updateChartState(data) {
-    // 加速度
+    // 加速度 (#accel-g/#accel-decel は現行UIには存在しない。加速度は accel-chart で表現。存在時のみ更新)
     updateAccelChart(data.accel_g || 0, data.accel_decel || 0);
-    elements.accelG.textContent = (data.accel_g || 0).toFixed(2);
-    elements.accelDecel.textContent = (data.accel_decel || 0).toFixed(2);
+    if (elements.accelG) elements.accelG.textContent = (data.accel_g || 0).toFixed(2);
+    if (elements.accelDecel) elements.accelDecel.textContent = (data.accel_decel || 0).toFixed(2);
 
     // チャートデータ更新
     timeData.shift();
     timeData.push(timeCounter++);
 
-    var speed = Math.round(data.speed_kmh || 0);
+    const speed = Math.round(data.speed_kmh || 0);
     speedData.shift();
     speedData.push(speed);
 
-    var rpm = Math.round(data.rpm || 0);
+    const rpm = Math.round(data.rpm || 0);
     rpmData.shift();
     rpmData.push(rpm);
 
-    var throttle = Math.round(data.throttle_pct || 0);
-    var brake = Math.round(data.brake_pct || 0);
+    const throttle = Math.round(data.throttle_pct || 0);
+    const brake = Math.round(data.brake_pct || 0);
     throttleData.shift();
     throttleData.push(throttle);
     brakeData.shift();
@@ -404,59 +563,220 @@ function updateChartState(data) {
     if (brakeChart) brakeChart.setData([timeData, brakeData]);
 }
 
-function handleTelemetryMessage(data) {
-    packetCount++;
-    updateLapState(data);
-    updateVehicleState(data);
-    updateFuelState(data);
-    updateTyreState(data);
-    updatePositionState(data);
-    updateChartState(data);
+/* ================================================================
+ *  テレメトリメッセージ処理
+ * ================================================================ */
+
+/**
+ * テレメトリメッセージを処理
+ * @param {Object} data - パース済みテレメトリデータ
+ * @param {number} nowTs - 現在のタイムスタンプ
+ */
+function handleTelemetryMessage(data, nowTs) {
+    const now = nowTs || performance.now();
+
+    const doUi = (now - wsState.lastUiTs) >= UPDATE_INTERVALS.UI;
+    const doCharts = (now - wsState.lastChartsTs) >= UPDATE_INTERVALS.CHART;
+    const doMap = (now - wsState.lastMapTs) >= UPDATE_INTERVALS.MAP;
+    const doRotation = (now - wsState.lastRotationTs) >= UPDATE_INTERVALS.ROTATION;
+
+    if (doUi) {
+        updateLapState(data, timeCounter);
+        updateVehicleState(data);
+        updateFuelState(data);
+        updateTyreState(data);
+        updatePositionText(data);
+        updateSectors(data);
+        wsState.lastUiTs = now;
+    }
+
+    // 距離基準ラップ解析(距離積分の精度確保のため非スロットルで毎処理フレーム呼ぶ。
+    // チャート再描画は analysisOnFrame 内部で 100ms スロットル)
+    if (typeof analysisOnFrame === 'function') {
+        analysisOnFrame(data);
+    }
+
+    // DRIVE ビュー(有効時のみ内部で更新。analysisOnFrame の後 = 最新デルタを反映)
+    if (doUi && typeof driveViewOnFrame === 'function') {
+        driveViewOnFrame(data);
+    }
+
+    // 3Dモデル更新
+    updateCar3D(
+        data.rotation_pitch || 0,
+        data.rotation_yaw || 0,
+        data.rotation_roll || 0,
+        data.rpm || 0,
+        data.wheel_rotation || 0
+    );
+
+    if (doRotation) {
+        updateRotationArrows(
+            data.rotation_pitch || 0,
+            data.rotation_yaw || 0,
+            data.rotation_roll || 0
+        );
+        updateSteeringGauge(data.wheel_rotation || 0);
+        wsState.lastRotationTs = now;
+    }
+
+    if (doMap && data.position_x !== undefined && data.position_z !== undefined) {
+        updateCourseMap(
+            data.position_x,
+            data.position_y || 0,
+            data.position_z,
+            data.speed_kmh || 0,
+            data.rotation_yaw || 0,  // 車両の向き
+            data.throttle_pct || 0,  // レースライン着色用
+            data.brake_pct || 0
+        );
+        wsState.lastMapTs = now;
+    }
+
+    if (doCharts) {
+        updateChartState(data);
+        wsState.lastChartsTs = now;
+    }
 }
 
+/* ================================================================
+ *  WebSocket接続管理
+ * ================================================================ */
+
+/**
+ * WebSocket接続を確立
+ */
 function connectWebSocket() {
-    var wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var wsUrl = wsProtocol + '//' + window.location.host + '/ws';
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = wsProtocol + '//' + window.location.host + '/ws';
 
-    ws = new WebSocket(wsUrl);
+    wsState.ws = new WebSocket(wsUrl);
 
-    ws.onopen = function() {
+    wsState.ws.onopen = function() {
         console.log('Connected to GT7 Bridge');
         elements.connectionStatus.textContent = 'Connected';
         elements.connectionStatus.className = 'connected';
-        reconnectDelay = 2000;
+        wsState.reconnectDelay = WEBSOCKET_CONFIG.reconnectDelayInitial;
         initCharts();
         initCourseMap();
         initCar3D();
     };
 
-    ws.onerror = function(error) {
+    wsState.ws.onerror = function(error) {
         console.error('WebSocket Error:', error);
     };
 
-    ws.onclose = function() {
+    wsState.ws.onclose = function() {
         console.log('Disconnected');
         elements.connectionStatus.textContent = 'Reconnecting...';
         elements.connectionStatus.className = 'disconnected';
         scheduleReconnect();
     };
 
-    ws.onmessage = function(event) {
-        try {
-            var data = JSON.parse(event.data);
-            handleTelemetryMessage(data);
-        } catch (e) {
-            console.error('WebSocket message error:', e);
-        }
+    wsState.ws.onmessage = function(event) {
+        wsState.packetCount++;
+        wsState.latestMessage = event.data;
+        scheduleTelemetryProcessing();
     };
 }
 
-function scheduleReconnect() {
-    if (reconnectTimer) return;
-    console.log('Reconnecting in ' + (reconnectDelay / 1000) + 's...');
-    reconnectTimer = setTimeout(function() {
-        reconnectTimer = null;
-        connectWebSocket();
-    }, reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 1.5, maxReconnectDelay);
+/**
+ * テレメトリ処理をスケジュール
+ */
+function scheduleTelemetryProcessing() {
+    if (wsState.processingScheduled) {
+        return;
+    }
+    wsState.processingScheduled = true;
+    requestAnimationFrame(processTelemetryFrame);
 }
+
+/**
+ * テレメトリフレームを処理
+ * @param {number} now - 現在のタイムスタンプ
+ */
+function processTelemetryFrame(now) {
+    wsState.processingScheduled = false;
+
+    if (!wsState.latestMessage) {
+        return;
+    }
+
+    const raw = wsState.latestMessage;
+    wsState.latestMessage = null;
+
+    try {
+        const data = JSON.parse(raw);
+        wsState.parseErrorCount = 0;  // 成功時はリセット
+        handleTelemetryMessage(data, now);
+    } catch (e) {
+        wsState.parseErrorCount++;
+        console.error('WebSocket message error:', e);
+        
+        // 連続エラー時にユーザー通知
+        if (wsState.parseErrorCount === 5) {
+            showConnectionError('データ受信エラーが続いています。PS5との接続を確認してください。');
+        } else if (wsState.parseErrorCount >= 20) {
+            showConnectionError('深刻な通信エラー。再接続を試みます...');
+            wsState.parseErrorCount = 0;
+            disconnectWebSocket();
+            scheduleReconnect();
+        }
+    }
+}
+
+/**
+ * 再接続をスケジュール
+ */
+function scheduleReconnect() {
+    if (wsState.reconnectTimer) {
+        return;
+    }
+
+    console.log('Reconnecting in ' + (wsState.reconnectDelay / 1000) + 's...');
+
+    wsState.reconnectTimer = setTimeout(function() {
+        wsState.reconnectTimer = null;
+        connectWebSocket();
+    }, wsState.reconnectDelay);
+
+    wsState.reconnectDelay = Math.min(
+        wsState.reconnectDelay * WEBSOCKET_CONFIG.reconnectDelayMultiplier,
+        WEBSOCKET_CONFIG.reconnectDelayMax
+    );
+}
+
+/* ================================================================
+ *  切断処理
+ * ================================================================ */
+
+function disconnectWebSocket() {
+    if (wsState.reconnectTimer) {
+        clearTimeout(wsState.reconnectTimer);
+        wsState.reconnectTimer = null;
+    }
+    if (wsState.ws) {
+        wsState.ws.close();
+        wsState.ws = null;
+    }
+}
+
+/**
+ * 接続エラー表示
+ */
+function showConnectionError(message) {
+    console.error('[WS] ' + message);
+    if (elements.connectionStatus) {
+        elements.connectionStatus.textContent = message;
+        elements.connectionStatus.className = 'error';
+    }
+}
+
+/* ================================================================
+ *  初期化
+ * ================================================================ */
+
+document.addEventListener('DOMContentLoaded', function() {
+    cacheElements();
+    connectWebSocket();
+});

@@ -25,10 +25,8 @@ ws_*.html
 simple.html
 uplot-test.html
 
-# Node
+# Node - exclude node_modules but keep package files for npm install
 node_modules/
-package.json
-package-lock.json
 
 # Docs
 docs/

@@ -10,11 +10,26 @@
  *
  * Usage: node test-glass.js [http://host:port]
  */
-const puppeteer = require('puppeteer-core');
+const fs = require('fs');
 const path = require('path');
+const puppeteer = require('puppeteer-core');
 
 const TARGET_URL = process.argv[2] || 'http://localhost:18080';
 const SCREENSHOT_PATH = path.join(__dirname, 'test-glass-result.png');
+const CHROMIUM_ENV_VARS = ['CHROMIUM_PATH', 'PUPPETEER_EXECUTABLE_PATH'];
+const DEFAULT_CHROMIUM_PATHS = [
+    '/snap/bin/chromium',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable'
+];
+const THRESHOLDS = {
+    blueVisibilityRatio: 0.03,
+    blueLeakRatio: 0.05,
+    blueLeakPixelFallback: 50,
+    darkRatioMax: 30
+};
 
 // 色判定ヘルパー
 function isBlueGlass(r, g, b) {
@@ -31,12 +46,40 @@ function isBackground(r, g, b) {
     return r < 35 && g < 35 && b < 55 && b > g;
 }
 
+function resolveChromiumPath() {
+    for (const envVar of CHROMIUM_ENV_VARS) {
+        const candidate = process.env[envVar];
+        if (candidate && fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+
+    for (const candidate of DEFAULT_CHROMIUM_PATHS) {
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+
+    return null;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function main() {
     console.log('=== ガラス描画 自動検査 ===');
     console.log('URL:', TARGET_URL);
 
+    const executablePath = resolveChromiumPath();
+    if (!executablePath) {
+        console.error('FAIL: Chromium executable not found.');
+        console.error('Set CHROMIUM_PATH or PUPPETEER_EXECUTABLE_PATH, or install chromium.');
+        process.exit(1);
+    }
+
     const browser = await puppeteer.launch({
-        executablePath: '/snap/bin/chromium',
+        executablePath,
         headless: 'new',
         args: [
             '--no-sandbox',
@@ -76,7 +119,7 @@ async function main() {
     });
 
     // レンダリング完了待ち
-    await new Promise(r => setTimeout(r, 1500));
+    await sleep(1500);
 
     // canvas存在確認
     const canvasInfo = await page.evaluate(() => {
@@ -300,8 +343,12 @@ async function analyzeAndReport(pixelData, page, browser) {
     const results = [];
 
     // 検査1: ガラスが見えているか（青ピクセルが車体の3%以上）
-    const test1 = blueCount > carPixels * 0.03;
-    results.push({ name: 'ガラス視認性（青>3%）', pass: test1, detail: `${bluePct}%` });
+    const test1 = blueCount > carPixels * THRESHOLDS.blueVisibilityRatio;
+    results.push({
+        name: `ガラス視認性（青>${THRESHOLDS.blueVisibilityRatio * 100}%）`,
+        pass: test1,
+        detail: `${bluePct}%`
+    });
 
     // 検査2: ルーフが赤のままか (topCenterで赤>青*2)
     const tc = regions.topCenter;
@@ -311,17 +358,24 @@ async function analyzeAndReport(pixelData, page, browser) {
 
     // 検査3: サイドウインドウがボディシルエットからはみ出していないか
     // はみ出し青が青全体の5%未満
-    const test3 = blueOutsideSilhouette < blueCount * 0.05 || blueOutsideSilhouette < 50;
-    results.push({ name: 'サイド浮き無し（はみ出し<5%）', pass: test3,
-        detail: `${outsidePct}% (${blueOutsideSilhouette}px)` });
+    const test3 = blueOutsideSilhouette < blueCount * THRESHOLDS.blueLeakRatio ||
+        blueOutsideSilhouette < THRESHOLDS.blueLeakPixelFallback;
+    results.push({
+        name: `サイド浮き無し（はみ出し<${THRESHOLDS.blueLeakRatio * 100}%）`,
+        pass: test3,
+        detail: `${outsidePct}% (${blueOutsideSilhouette}px)`
+    });
 
     // 検査4: 暗い下地が大きく目立っていないか
     // タイヤ・インテーク・スプリッター等の暗い部品で約19%は正常
     // 異常な暗い下地はみ出しは30%超で検出
     const darkPct = carPixels > 0 ? (darkCount / carPixels * 100) : 0;
-    const test4 = darkPct < 30;
-    results.push({ name: '暗い面が目立たない（<30%）', pass: test4,
-        detail: `${darkPct.toFixed(1)}%` });
+    const test4 = darkPct < THRESHOLDS.darkRatioMax;
+    results.push({
+        name: `暗い面が目立たない（<${THRESHOLDS.darkRatioMax}%）`,
+        pass: test4,
+        detail: `${darkPct.toFixed(1)}%`
+    });
 
     // 結果表示
     console.log('\n=== 検査結果 ===');

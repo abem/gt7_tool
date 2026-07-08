@@ -1,12 +1,13 @@
 import asyncio
 import json
 import os
+import ssl
 import logging
 import aiohttp
 from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
-from decoder import GT7Decoder
+from decoder import GT7Decoder, CourseEstimator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,13 +17,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _int_env(name, default):
+    """環境変数を整数で取得。未設定・空・非整数なら default を返す(後方互換)。"""
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(f"Invalid integer for {name}={value!r}; using default {default}")
+        return default
+
+
 def load_config():
+    """config.json を読み、環境変数があれば上書きする(env 優先・config.json フォールバック)。
+
+    .env / docker-compose の環境変数で PS5_IP と各ポートを一元管理できる。
+    env 未設定の項目は config.json(無ければ defaults)の値を使う。
+    """
     defaults = {
         "ps5_ip": "192.168.1.100",
         "send_port": 33739,
         "receive_port": 33740,
-        "http_port": 18080,
-        "heartbeat_interval": 10
+        "http_port": 8080,
+        "heartbeat_interval": 10,
+        "ssl_cert": "ssl/server-cert.pem",
+        "ssl_key": "ssl/server-key.pem"
     }
     try:
         with open('config.json', 'r') as f:
@@ -33,8 +53,13 @@ def load_config():
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in config.json: {e}, using defaults")
         cfg = defaults
+
     if os.getenv("PS5_IP"):
         cfg["ps5_ip"] = os.getenv("PS5_IP")
+    cfg["send_port"] = _int_env("SEND_PORT", cfg.get("send_port", 33739))
+    cfg["receive_port"] = _int_env("RECEIVE_PORT", cfg.get("receive_port", 33740))
+    cfg["http_port"] = _int_env("HTTP_PORT", cfg.get("http_port", 8080))
+    cfg["heartbeat_interval"] = _int_env("HEARTBEAT_INTERVAL", cfg.get("heartbeat_interval", 10))
     return cfg
 
 
@@ -42,6 +67,9 @@ CONFIG = load_config()
 
 # アプリケーション状態: 接続中のWebSocketクライアント一覧
 websocket_clients = set()
+
+# アプリケーション状態: テレメトリ監視タスク（on_cleanup でキャンセルするため保持）
+_telemetry_supervisor_task = None
 
 LOG_DIR = "gt7data"
 
@@ -133,8 +161,30 @@ async def broadcast_to_clients(message):
         logger.info(f"Removed {len(disconnected)} disconnected client(s). Active: {len(websocket_clients)}")
 
 
+async def _heartbeat_loop(client):
+    """ハートビート送信を独立周期で回すタスク。
+
+    受信ループから分離することで、パケット未着時でも定期送信を維持し、
+    かつ受信処理がハートビート間隔に引きずられないようにする。
+    """
+    interval = client.heartbeat_interval
+    try:
+        while True:
+            await client.send_heartbeat()
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Heartbeat loop error: {e}", exc_info=True)
+
+
 async def telemetry_background_task():
-    """バックグラウンドでGT7からのテレメトリデータを受信し続けるタスク"""
+    """バックグラウンドでGT7からのテレメトリデータを受信し続けるタスク。
+
+    受信は asyncio.DatagramProtocol ベースの await client.receive() で待機する。
+    旧実装の asyncio.sleep(0.01) ポーリングは廃止し、パケット到着時のみ処理する。
+    ハートビートは _heartbeat_loop に独立タスク化して受信ループから分離。
+    """
     client = GT7TelemetryClient(
         CONFIG["ps5_ip"],
         CONFIG.get("send_port", 33739),
@@ -142,6 +192,7 @@ async def telemetry_background_task():
         CONFIG["heartbeat_interval"]
     )
     decoder = GT7Decoder()
+    course_estimator = CourseEstimator()
     fuel_tracker = FuelTracker()
 
     ensure_log_dir()
@@ -153,10 +204,16 @@ async def telemetry_background_task():
     current_lap_data = []
     current_lap_number = 0
 
+    await client.connect()  # UDP エンドポイント作成（イベントループ上で必要）
+
+    # ハートビート送信を独立タスクで駆動
+    heartbeat_task = asyncio.create_task(_heartbeat_loop(client))
+
     try:
         while True:
-            client.send_heartbeat()
-            raw_data = client.receive()
+            # パケット到着までイベントループを阻塞せずに待機。
+            # 旧 settimeout(1.0) 相当の生存確認は heartbeat_task が担うため不要。
+            raw_data = await client.receive()
 
             if raw_data:
                 decrypted = decoder.decrypt(raw_data)
@@ -178,6 +235,13 @@ async def telemetry_background_task():
                         last_speed_kmh = parsed["speed_kmh"]
                         last_time = current_time
 
+                        # コース推定
+                        course_info = course_estimator.estimate_course(
+                            parsed.get("position_x", 0),
+                            parsed.get("position_z", 0)
+                        )
+                        parsed["course"] = course_info
+
                         # 燃料計算
                         fuel_data = fuel_tracker.update(
                             parsed.get("current_fuel"),
@@ -186,22 +250,27 @@ async def telemetry_background_task():
                         )
                         parsed.update(fuel_data)
 
-                        # ラップデータ蓄積・保存
+                        # ラップデータ蓄積・保存（lap_count変化検知）
+                        lap_count = parsed.get("lap_count", 1)
                         current_lap_data.append(parsed)
-                        # 固定サンプル数トリガー（lap_count変化検知ではない）
-                        if len(current_lap_data) >= 1800:
+
+                        # ラップ境界検出：lap_countが変化したら保存
+                        if lap_count > current_lap_number and current_lap_number > 0:
                             save_lap_to_file(current_lap_data, current_lap_number)
                             current_lap_data = []
-                            current_lap_number += 1
+                        current_lap_number = lap_count
 
                         # WebSocket配信
                         await broadcast_to_clients(json.dumps(parsed))
 
-            await asyncio.sleep(0.01)
-
     except Exception as e:
         logger.error(f"Telemetry task error: {e}", exc_info=True)
     finally:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
         if current_lap_data:
             save_lap_to_file(current_lap_data, current_lap_number)
         client.close()
@@ -238,14 +307,20 @@ async def static_handler(request):
     """静的ファイル（CSS, JS等）を配信"""
     filename = request.match_info['filename']
 
+    if filename == 'favicon.ico':
+        return web.Response(status=204)
+
     # パストラバーサル防止
     if '..' in filename or filename.startswith('/'):
         return web.Response(status=403, text="Forbidden")
 
-    if not os.path.isfile(filename):
+    # node_modules配下のファイルも許可
+    filepath = filename
+    
+    if not os.path.isfile(filepath):
         return web.Response(status=404, text="File not found")
 
-    return web.FileResponse(filename)
+    return web.FileResponse(filepath)
 
 
 @web.middleware
@@ -266,26 +341,105 @@ async def logging_middleware(request, handler):
         raise
 
 
+async def telemetry_supervisor():
+    """telemetry_background_task を監視し、異常終了時に再起動する安全網。
+
+    従来構造では telemetry_background_task が例外で終了するとテレメトリ受信が
+    完全に停止し、かつそれに気づく手段がなかった（asyncio.create_task は一度きり）。
+    本関数はタスク終了を検知し、バックオフ付きで再起動する。
+
+    再起動ポリシー:
+      - 連続失敗が続く場合は指数バックオフ（最大60秒）で再試行
+      - CancelledError は再起動せずそのまま終了（シャットダウン時）
+    """
+    backoff = 1.0
+    max_backoff = 60.0
+    while True:
+        task = asyncio.create_task(telemetry_background_task())
+        try:
+            await task
+        except asyncio.CancelledError:
+            # サーバーシャットダウン等の正常キャンセル → 再起動しない
+            logger.info("Telemetry task cancelled, supervisor exiting.")
+            raise
+        except Exception:
+            # telemetry_background_task 内で catch されなかった例外（通常は catch 済みで
+            # タスクは正常終了するが、念のためここでも捕捉）
+            logger.exception(
+                f"Telemetry task crashed, restarting in {backoff:.0f}s..."
+            )
+        else:
+            # 正常終了（finally まで到達）した場合も再起動
+            logger.warning(
+                f"Telemetry task ended unexpectedly, restarting in {backoff:.0f}s..."
+            )
+
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, max_backoff)
+
+
 async def on_startup(app):
-    logger.info("Starting telemetry background task...")
-    asyncio.create_task(telemetry_background_task())
+    """アプリ起動時にテレメトリ監視タスクを開始する。
+
+    生成した supervisor タスクは _telemetry_supervisor_task に保持し、
+    on_cleanup で明示的にキャンセル・待機してクリーンに終了させる。
+    """
+    global _telemetry_supervisor_task
+    logger.info("Starting telemetry background task (supervised)...")
+    _telemetry_supervisor_task = asyncio.create_task(telemetry_supervisor())
+
+
+async def on_cleanup(app):
+    """アプリ終了時にテレメトリ監視タスクをキャンセルしてクリーンアップする。
+
+    telemetry_supervisor は CancelledError を「正常なシャットダウン」として扱い、
+    そのまま終了する設計。本フックがそのキャンセルを発火する唯一の経路。
+    プロセス終了時の asyncio の暗黙タスク破棄に頼らない明示的な終了処理。
+    """
+    global _telemetry_supervisor_task
+    if _telemetry_supervisor_task is not None and not _telemetry_supervisor_task.done():
+        _telemetry_supervisor_task.cancel()
+        try:
+            await _telemetry_supervisor_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Telemetry supervisor shut down.")
+    _telemetry_supervisor_task = None
+
+
+def build_ssl_context():
+    """設定された証明書/鍵が存在すればSSLコンテキストを構築する。無ければNone（平文HTTP）。"""
+    cert = CONFIG.get("ssl_cert")
+    key = CONFIG.get("ssl_key")
+    if not cert or not key:
+        return None
+    if not (os.path.isfile(cert) and os.path.isfile(key)):
+        logger.warning(f"SSL cert/key not found (cert={cert}, key={key}); falling back to HTTP")
+        return None
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(cert, key)
+    return ctx
 
 
 def main():
     port = CONFIG.get("http_port", 8080)
+    ssl_context = build_ssl_context()
+    scheme = "https" if ssl_context else "http"
+    ws_scheme = "wss" if ssl_context else "ws"
 
     app = web.Application(middlewares=[logging_middleware])
     app.router.add_get('/', index_handler)
     app.router.add_get('/ws', websocket_handler)
-    app.router.add_get('/{filename}', static_handler)
+    app.router.add_get('/{filename:.*}', static_handler)
 
     app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
 
     logger.info(f"Starting GT7 Dashboard Server on port {port}...")
-    logger.info(f"HTTP: http://0.0.0.0:{port}")
-    logger.info(f"WebSocket: ws://0.0.0.0:{port}/ws")
+    logger.info(f"{scheme.upper()}: {scheme}://0.0.0.0:{port}")
+    logger.info(f"WebSocket: {ws_scheme}://0.0.0.0:{port}/ws")
 
-    web.run_app(app, host='0.0.0.0', port=port)
+    web.run_app(app, host='0.0.0.0', port=port, ssl_context=ssl_context)
 
 
 if __name__ == "__main__":

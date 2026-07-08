@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.venv/
 *.py[cod]
 *$py.class
 *.so
@@ -33,7 +34,7 @@ course_database.json
 node_modules/
 package-lock.json
 
-# Debug/test files
+# Debug/test files (ルート直下の散乱スクリプトを除外)
 debug*.html
 debug*.py
 test*.html
@@ -47,6 +48,13 @@ visual_regression_test.py
 ws_*.html
 simple.html
 uplot-test.html
+
+# 正規の単体テストは tests/ 配下をトラックする（上記 test_*.py 等の例外）
+!tests/
+!tests/**
+# ただし Python/pytest のキャッシュは除外し直す
+tests/__pycache__/
+tests/.pytest_cache/
 
 # Test output
 test-glass-result.png
@@ -72,3 +80,6 @@ FINAL_REPORT.md
 TEST_MODE_VERIFICATION_REPORT.md
 DOCS_PLAN.md
 investigation_summary.md
+
+# SSL certificates (self-signed, generated locally - never commit private keys)
+ssl/

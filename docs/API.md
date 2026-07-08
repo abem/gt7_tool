@@ -43,7 +43,7 @@ PS5 (GT7) --[UDP]--> Python Backend --[WebSocket]--> Web Dashboard
 
 **接続例:**
 ```javascript
-const ws = new WebSocket('ws://localhost:8080/ws');
+const ws = new WebSocket('wss://localhost:8080/ws');
 
 ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
@@ -391,4 +391,4 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
 
 ---
 
-**最終更新**: 2026-02-13
+**最終更新**: 2026-07-02
