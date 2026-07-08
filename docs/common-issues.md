@@ -229,10 +229,14 @@
 **解決方法:**
 
 1. **新しいコースを学習させる**
+
+   > ※ **ホスト側のリポジトリルートで実行**してください。コンテナ内には `tests/` がコピーされていないため `docker compose exec` では実行できません。`pycryptodome` が必要で、`decoder` モジュールを見つけるためリポジトリルートを `PYTHONPATH` に含める必要があります。
+
    ```bash
-   docker compose exec app python tests/test_course_detection.py --regenerate
+   # ホスト側で実行（リポジトリルート）
+   PYTHONPATH=. python3 tests/test_course_detection.py --regenerate
    ```
-   - ※ `test_course_detection.py` は `tests/` 配下に移動済み（2026-07-08 整理）
+   - `test_course_detection.py` は `tests/` 配下に移動済み（2026-07-08 整理）
 
 2. **手動でコースを追加**
    - `course_database.json` を編集
