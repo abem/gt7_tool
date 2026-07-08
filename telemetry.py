@@ -109,17 +109,18 @@ class GT7TelemetryClient:
         )
 
     async def send_heartbeat(self):
-        """PS5 にウェイクアップパケットを送信（間隔制御付き）"""
-        now = time.monotonic()
-        if now - self.last_heartbeat < self.heartbeat_interval:
-            return
+        """PS5 にウェイクアップパケットを1つ送信する。
 
+        間隔制御は呼び出し側（main.py の _heartbeat_loop が asyncio.sleep で制御）に
+        一元化しており、本メソッドは呼ばれるたびに無条件で1パケット送信する。
+        二重の間隔チェックによる送信漏れを避けるため、ここでは時間判定しない。
+        """
         if not self._connected or self._transport is None:
             return
 
         try:
             self._transport.sendto(self.heartbeat_type, (self.ip, self.send_port))
-            self.last_heartbeat = now
+            self.last_heartbeat = time.monotonic()
             if self.packets_received == 0:
                 logger.info(f"Heartbeat sent to {self.ip}:{self.send_port} - waiting for data...")
             else:

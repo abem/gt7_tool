@@ -10,10 +10,10 @@
 ## 2026-07-08 — バックエンド安定化・構成整理
 
 ### fix: Salsa20 復号の致命的バグ修正（5日間の機能不全解消）
-- **現象**: コンテナ稼働中に `Decryption failed: name 'Salsa20' is not defined` が **152万3669件** 記録され、PS5 からの全テレメトリパケットが捨てられてダッシュボードが機能しなかった（TEST MODE のみ動作）。
+- **現象**: コンテナ稼働中に `Decryption failed: name 'Salsa20' is not defined` が **152万3669件**（`docker logs ... | grep -c` で実測）記録され、PS5 からの全テレメトリパケットが捨てられてダッシュボードが機能しなかった（TEST MODE のみ動作）。
 - **原因**: `decoder.py` のコメント（L13-16）で「`_try_decrypt` 内で遅延 import する」と宣言されていた `from Crypto.Cipher import Salsa20` が**実装漏れ**で存在しなかった。
 - **修正**: `_try_decrypt` メソッド冒頭に遅延 import を追加（コメント通りの動作にする）。
-- **効果**: 復号成功で PS5 実機テレメトリが復活。
+- **効果**: 復号成功で PS5 実機テレメトリが復活（⚠️ 実機での復号成功確認は未実施・コンテナ再ビルド後に要確認）。
 
 ### refactor: UDP 受信ループの非同期化
 - **背景**: 従来 `telemetry.py` は同期ソケット + `settimeout(1.0)` のブロッキング `receive()` を `while True:` 内で呼び、`asyncio.sleep(0.01)` の空ポーリングで回していた（CPU 無駄・イベントループ阻塞）。
@@ -21,16 +21,20 @@
   - `telemetry.py` を `asyncio.DatagramProtocol` ベースに全面書き換え。受信キュー（`asyncio.Queue`）経由で `await receive()` によりパケット到着時のみ処理。
   - `main.py` の受信ループから `asyncio.sleep(0.01)` を廃止。ハートビート送信は `_heartbeat_loop` に独立タスク化し受信ループから分離。
   - API 変更: `receive()` / `send_heartbeat()` が `async def` 化、`await connect()` 追加。
-- **効果**: イベントループの阻塞解消、CPU 使用率改善。
+  - **レビュー後修正**: `send_heartbeat()` 内の間隔チェックを削除し、間隔制御を `_heartbeat_loop` 側（`asyncio.sleep`）に一元化。二重制御を解消。
+- **効果**: イベントループの阻塞解消、CPU 使用率改善（⚠️ 実機での受信レート・遅延確認は未実施）。
 
 ### refactor: 旧亜種ディレクトリの `archive/` 退避
 - `gt7_tool_dev` / `gt7_tool_car_attitude2` / `gt7dashboard` を `Projects/gt7/archive/` へ移動。
-- **`gt7_tool` を唯一の正実装として明確化**。2 亜種の `.git` は既に孤立した worktree ポインタのみ（親消失済み）で `gt7_tool/.git` への影響なし。
+- **`gt7_tool` を唯一の正実装として明確化**。
+- ⚠️ **訂正（レビューで発覚）**: 初版は「2亜種の `.git` は親消失済みの孤立ポインタ」と記載したが**誤り**。実際は親リポジトリ `/home/abem/docker/gt7_tool`（branch `feature/dev2026-06-14`）が現存し、**9ファイル約1300行の未コミット変更**（APEX Broadcast UI中間状態）が残っていた。
+- `gt7_tool`（正実装）に同等作業がコミット済みであることを確認した上で破棄。ただし事前に差分を `archive/_snapshots/` にスナップショット保存（patch + 未追跡ファイル）。復元手順は `archive/_snapshots/README.md` 参照。
 
 ### refactor: デバッグ/検証スクリプトの `scripts/` 集約
-- ルート直下に散乱していた `debug_*.py` / `verify_*.py` / `capture_*.py` / `check_*.py` 等 **26 ファイル**を `scripts/` へ整理。
+- ルート直下に散乱していた `debug_*.py` / `verify_*.py` / `capture_*.py` / `check_*.py` 等 **26 ファイル**を `scripts/` へ整理（ワーキングツリー上の移動）。
 - `test_course_detection.py` は正規単体テストとして `tests/` へ移動。
 - `scripts/README.md` に分類と実行方法を明記。
+- ⚠️ **重要**: 26ファイルは `.gitignore` パターンに一致するため **git非追跡**。コミットに含まれるのは `scripts/README.md` のみ。ワーキングツリー上にのみ存在し、別環境へクローンしても復元されない。
 
 ### test: Salsa20 復号の回帰テスト新設
 - `tests/test_decoder.py` を追加（11 テスト）:
@@ -41,7 +45,7 @@
 - `requirements.txt` に `pytest` を追加。
 - `.gitignore` の `test_*.py` 除外ルールに対し `!tests/` 例外を追加（正規テストをトラック）。
 
-検証: `pytest tests/ -v` → **12 passed**（`test_course_detection.py` 含む全件 PASS・コンソールエラー 0）。
+検証: `pytest tests/ -v` → **12 passed**（`test_course_detection.py` 含む全件 PASS・コンソールエラー 0）。⚠️ 実機（PS5）での復号成功・受信レート・ハートビート周期は**未確認**。コンテナ再ビルド後の実機動作確認が必須。
 
 ---
 
