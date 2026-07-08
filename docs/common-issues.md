@@ -12,23 +12,25 @@
 
 ## 接続関連の問題
 
-### 問題: "Client connected" が表示されない
+### 問題: PS5からのテレメトリが受信できない
 
 **症状:**
 - Dockerコンテナは起動しているが、PS5との接続が確立されない
-- ログに "Client connected" が表示されない
+- ログに `Heartbeat sent to ...` は出るが `Started receiving data:` が出ない
+- または `Decryption failed` が大量に出続ける
 
 **原因:**
 - PS5のIPアドレスが間違っている
 - PS5とPCが同じネットワークに接続されていない
 - PS5のテレメトリ送信がOFFになっている
 - ファイアウォールでUDPポートがブロックされている
+- 復号の失敗（`Decryption failed`）が続く場合、`decoder.py` の Salsa20 import 状態を疑う
 
 **解決方法:**
 
 1. **PS5のIPアドレスを確認**
-   - PS5で「設定」→「ネットワーク」→「接続状態」を確認
-   - メモしたIPアドレスと `config.json` の `ps5_ip` が一致しているか確認
+   - PS5で「設定」→「ネットワーク」→「接続状態」→「接続状態の詳細」→「IP アドレス」
+   - メモしたIPアドレスと `config.json`（または環境変数 `PS5_IP`）の `ps5_ip` が一致しているか確認
 
 2. **ネットワーク接続を確認**
    ```bash
@@ -42,10 +44,36 @@
    - 「テレメトリデータ送信」がONになっているか確認
 
 4. **ファイアウォール設定を確認**
-   - UDPポート 33740 がブロックされていないか確認
+   - UDPポート 33740（受信）がブロックされていないか確認
    - Windows: ファイアウォールの受信の規則を追加
    - Linux: `sudo ufw allow 33740/udp`
    - macOS: システム環境設定→セキュリティとプライバシー→ファイアウォール
+
+5. **サーバーログで受信状況を確認**
+   ```bash
+   docker compose logs -f
+   ```
+   - 正常時は `Heartbeat sent to ...` → `Started receiving data: 344 bytes from (...)` → `Parsed: XX.X km/h, RPM: XXXX, Gear: X` → `Telemetry stream active` の順に流れる
+   - `Decryption failed` が継続する場合は、`decoder.py` の `_try_decrypt` 内で `from Crypto.Cipher import Salsa20` が遅延 import されているか確認（過去に import 漏れで5日間機能不全になった実績あり）
+
+### 問題: ブラウザでダッシュボードが開けない（HTTPS警告）
+
+**症状:**
+- `https://localhost:8080` にアクセスすると「この接続ではプライバシーが保護されません」等の警告が出る
+
+**原因:**
+- 自己署名証明書を使用しているため（本仕様。本番運用でも自己署名）
+
+**解決方法:**
+
+1. **警告を続行**
+   - Chrome: 「詳細設定」→「localhost にアクセスする（安全ではありません）」
+   - Firefox: 「詳細」→「危険性を承知で続行」
+   - Edge: 「詳細」→「localhost に進む（安全ではありません）」
+
+2. **証明書を再生成したい場合**
+   - `ssl/` ディレクトリ内の `server-cert.pem` / `server-key.pem` を削除して再生成
+   - または `config.json` の `ssl_cert` / `ssl_key` を未設定にすると平文 HTTP にフォールバック（`http://localhost:8080`）
 
 ---
 
@@ -70,13 +98,15 @@
 
 2. **WebSocket接続を確認**
    - ブラウザでF12を押して開発者ツールを開く
-   - Consoleタブで `ws connected` と表示されているか確認
+   - Consoleタブで WebSocket 接続成功のログ（`INIT` / `WS` 系）が表示されているか確認
+   - Networkタブで `/ws` 接続がステータス 101（Switching Protocols）になっているか確認
 
 3. **サーバーログを確認**
    ```bash
-   docker compose logs
+   docker compose logs -f
    ```
-   - `[RX] Started receiving` と表示されているか確認
+   - `Started receiving data: ... bytes` と `Parsed: XX.X km/h` が表示されているか確認
+   - 表示されない場合は接続関連の問題を参照
 
 ---
 
@@ -200,8 +230,9 @@
 
 1. **新しいコースを学習させる**
    ```bash
-   docker compose exec app python test_course_detection.py --data-dir gt7data
+   docker compose exec app python tests/test_course_detection.py --regenerate
    ```
+   - ※ `test_course_detection.py` は `tests/` 配下に移動済み（2026-07-08 整理）
 
 2. **手動でコースを追加**
    - `course_database.json` を編集
@@ -229,6 +260,36 @@
 
 ---
 
+## 表示モード関連の問題
+
+### 問題: DRIVE / ANALYSIS ビューの切り替え方が分からない
+
+**症状:**
+- 全パネル表示（ANALYSIS）から、走行用の最小表示（DRIVE）に切り替えたい
+
+**解決方法:**
+
+1. **ヘッダーのトグルボタンを使用**
+   - ダッシュボード右上の `DRIVE` / `ANALYSIS` ボタンをクリック
+   - 選択はブラウザの localStorage に保存され、リロード後も復元される
+
+2. **各ビューの違い**
+   - **DRIVE**: 走行中向け最小表示（ギア特大・シフトライト・ライブデルタ中心）。0.2秒で読める構成
+   - **ANALYSIS**: 全パネル表示（チャート・3D姿勢・タイヤ詳細・距離解析・ラップ履歴等）
+
+### 問題: DRIVE ビューの表示項目が一部見えない
+
+**症状:**
+- DRIVE ビューで一部パネルが表示されない
+
+**原因:**
+- DRIVE ビューは意図的に表示項目を絞っている（F1 ステアリングディスプレイ流の設計）
+
+**解決方法:**
+- 全項目を見たい場合は ANALYSIS ビューに切り替え（DRIVE の絞りは仕様です）
+
+---
+
 ## それでも問題が解決しない場合
 
 以下の情報を収集して、問題報告を作成してください：
@@ -252,4 +313,4 @@
 
 ---
 
-**最終更新**: 2026-02-13
+**最終更新**: 2026-07-08

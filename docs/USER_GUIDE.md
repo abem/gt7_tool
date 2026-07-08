@@ -219,14 +219,16 @@ GT7のテレメトリパケットにはコースIDが含まれていないため
 3. 以下のコマンドを実行してコースデータベースを更新：
 
 ```bash
-docker compose exec app python test_course_detection.py --data-dir gt7data
+docker compose exec app python tests/test_course_detection.py --regenerate
 ```
 
 または、Dockerを使用しない場合：
 
 ```bash
-python3 test_course_detection.py --data-dir gt7data
+python3 tests/test_course_detection.py --regenerate
 ```
+
+> ※ `test_course_detection.py` は `tests/` 配下に移動済み（2026-07-08 整理）。`--regenerate` は `gt7data` を解析して `course_database.json` を上書きする破壊的オプションです。
 
 ### 手動でコースを追加する
 
@@ -410,3 +412,7 @@ A: 実際のテレメトリデータを収集して、`test_course_detection.py`
 ## ライセンス
 
 MIT License
+
+---
+
+**最終更新**: 2026-07-08
