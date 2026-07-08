@@ -1,11 +1,74 @@
-import socket
-import time
+"""
+GT7 テレメトリクライアント（非同期版）
+
+PS5/PS4 からの UDP テレメトリパケットを asyncio ベースで受信する。
+従来の同期ソケット + ブロッキング recvfrom() + asyncio.sleep ポーリング構成を
+asyncio.DatagramProtocol に置き換え、イベントループを阻塞せずに
+パケット到着時のみ処理を起動できるようにした。
+
+API（main.py からの使用順序）:
+    client = GT7TelemetryClient(ip, ...)
+    await client.connect()        # UDP エンドポイント作成
+    await client.send_heartbeat() # ハートビート送信
+    data = await client.receive() # パケット受信（到着まで await）
+    client.close()
+"""
+
+import asyncio
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
 
+class _TelemetryProtocol(asyncio.DatagramProtocol):
+    """UDP パケットを受信してキューに積むプロトコル。
+
+    受信コールバックはイベントループ上で呼ばれるため、ロック不要の
+    asyncio.Queue にパケットを蓄積する。main.py 側は await receive() で取り出す。
+    """
+
+    def __init__(self, queue: asyncio.Queue, on_first_packet):
+        self._queue = queue
+        self._on_first_packet = on_first_packet
+        self.transport = None
+
+    def connection_made(self, transport):  # noqa: D401 - asyncio API 実装
+        self.transport = transport
+        sockname = transport.get_extra_info('sockname')
+        logger.info(f"UDP listener bound to {sockname}")
+
+    def datagram_received(self, data, addr):  # noqa: D401 - asyncio API 実装
+        # キューが溢れる場合は古いパケットから破棄（テレメトリは過去値より最新値優先）
+        if self._queue.full():
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        try:
+            self._queue.put_nowait((data, addr))
+        except asyncio.QueueFull:
+            # 満杯ならこの1パケットを捨てる（受信レート>>消費レート時の安全装置）
+            pass
+        self._on_first_packet(data, addr)
+
+    def error_received(self, exc):  # noqa: D401 - asyncio API 実装
+        logger.error(f"UDP receive error: {exc}")
+
+
 class GT7TelemetryClient:
+    """GT7 テレメトリを非同期受信するクライアント。
+
+    旧 API との差分:
+      - receive() は async def（パケット到着まで await で待機）
+      - send_heartbeat() は async def
+      - 追加: await connect() でエンドポイント作成（旧: __init__ 内で即 bind）
+      - settimeout は廃止（非同期待機で不要）
+    """
+
+    # 受信キュー上限。過剰に溜め込まない安全装置。
+    QUEUE_MAXSIZE = 256
+
     def __init__(self, ip, send_port=33739, receive_port=33740,
                  heartbeat_interval=10, heartbeat_type=b'~'):
         self.ip = ip
@@ -13,21 +76,49 @@ class GT7TelemetryClient:
         self.receive_port = receive_port
         self.heartbeat_interval = heartbeat_interval
         self.heartbeat_type = heartbeat_type
-        self.last_heartbeat = 0
+        self.last_heartbeat = 0.0
         self.packets_received = 0
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(('0.0.0.0', self.receive_port))
-        self.sock.settimeout(1.0)
+        # 非同期受信キュー。connect() 時にイベントループが確定してから生成する。
+        self._queue = None
+        self._transport = None
+        self._connected = False
 
-    def send_heartbeat(self):
-        """PS5にウェイクアップパケットを送信"""
-        now = time.time()
+    async def connect(self):
+        """UDP エンドポイントを作成し、受信を開始する。
+
+        旧実装の __init__ 内 bind に相当。イベントループ上で動作するため、
+        プロトコル/トランスポートの生成は __init__ ではなくここで行う。
+        """
+        loop = asyncio.get_running_loop()
+        self._queue = asyncio.Queue(maxsize=self.QUEUE_MAXSIZE)
+
+        def _on_first_packet(data, addr):
+            if self.packets_received == 0:
+                logger.info(f"Started receiving data: {len(data)} bytes from {addr}")
+
+        transport, protocol = await loop.create_datagram_endpoint(
+            lambda: _TelemetryProtocol(self._queue, _on_first_packet),
+            local_addr=('0.0.0.0', self.receive_port),
+        )
+        self._transport = transport
+        self._connected = True
+        logger.info(
+            f"GT7TelemetryClient ready: listening 0.0.0.0:{self.receive_port}, "
+            f"heartbeat -> {self.ip}:{self.send_port}"
+        )
+
+    async def send_heartbeat(self):
+        """PS5 にウェイクアップパケットを送信（間隔制御付き）"""
+        now = time.monotonic()
         if now - self.last_heartbeat < self.heartbeat_interval:
             return
 
+        if not self._connected or self._transport is None:
+            return
+
         try:
-            self.sock.sendto(self.heartbeat_type, (self.ip, self.send_port))
+            self._transport.sendto(self.heartbeat_type, (self.ip, self.send_port))
             self.last_heartbeat = now
             if self.packets_received == 0:
                 logger.info(f"Heartbeat sent to {self.ip}:{self.send_port} - waiting for data...")
@@ -36,20 +127,28 @@ class GT7TelemetryClient:
         except Exception as e:
             logger.error(f"Heartbeat failed: {e}")
 
-    def receive(self):
-        """テレメトリパケットを受信"""
-        try:
-            data, addr = self.sock.recvfrom(4096)
-            self.packets_received += 1
-            if self.packets_received == 1:
-                logger.info(f"Started receiving data: {len(data)} bytes from {addr}")
-            return data
-        except socket.timeout:
+    async def receive(self):
+        """テレメトリパケットを1つ受信して返す。
+
+        パケットが到着するまでイベントループを阻塞せずに待機する。
+        タイムアウト相当の動作が必要な呼び出し側は asyncio.wait_for で包むこと。
+        戻り値は bytes（旧実装互換）。addr は内部利用のみ。
+        """
+        if not self._connected or self._queue is None:
             return None
-        except Exception as e:
-            logger.error(f"Receive error: {e}")
+        try:
+            data, _addr = await self._queue.get()
+            self.packets_received += 1
+            return data
+        except asyncio.CancelledError:
             return None
 
     def close(self):
-        self.sock.close()
+        """トランスポートを閉じる"""
+        if self._transport is not None:
+            try:
+                self._transport.close()
+            except Exception as e:
+                logger.warning(f"Error closing transport: {e}")
+        self._connected = False
         logger.info("Telemetry client closed")

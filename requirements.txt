@@ -1,2 +1,5 @@
 aiohttp>=3.9.0
 pycryptodome>=3.19.0
+
+# 開発・テスト用（本番コンテナには不要だが requirements.txt で一元管理）
+pytest>=7.0.0

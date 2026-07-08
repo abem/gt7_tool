@@ -195,6 +195,9 @@ class GT7Decoder:
 
     def _try_decrypt(self, data: bytes, xor_value: int) -> bytes:
         """指定のXOR値でSalsa20復号を試行"""
+        # 遅延 import: CourseEstimator は Crypto 非依存のため、復号時のみ読み込む。
+        # これにより Crypto 未導入環境でも `import decoder` が成功する。
+        from Crypto.Cipher import Salsa20
         oiv = data[0x40:0x44]
         iv1 = int.from_bytes(oiv, byteorder='little')
         iv2 = iv1 ^ xor_value

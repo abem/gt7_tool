@@ -158,8 +158,30 @@ async def broadcast_to_clients(message):
         logger.info(f"Removed {len(disconnected)} disconnected client(s). Active: {len(websocket_clients)}")
 
 
+async def _heartbeat_loop(client):
+    """ハートビート送信を独立周期で回すタスク。
+
+    受信ループから分離することで、パケット未着時でも定期送信を維持し、
+    かつ受信処理がハートビート間隔に引きずられないようにする。
+    """
+    interval = client.heartbeat_interval
+    try:
+        while True:
+            await client.send_heartbeat()
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Heartbeat loop error: {e}", exc_info=True)
+
+
 async def telemetry_background_task():
-    """バックグラウンドでGT7からのテレメトリデータを受信し続けるタスク"""
+    """バックグラウンドでGT7からのテレメトリデータを受信し続けるタスク。
+
+    受信は asyncio.DatagramProtocol ベースの await client.receive() で待機する。
+    旧実装の asyncio.sleep(0.01) ポーリングは廃止し、パケット到着時のみ処理する。
+    ハートビートは _heartbeat_loop に独立タスク化して受信ループから分離。
+    """
     client = GT7TelemetryClient(
         CONFIG["ps5_ip"],
         CONFIG.get("send_port", 33739),
@@ -179,10 +201,16 @@ async def telemetry_background_task():
     current_lap_data = []
     current_lap_number = 0
 
+    await client.connect()  # UDP エンドポイント作成（イベントループ上で必要）
+
+    # ハートビート送信を独立タスクで駆動
+    heartbeat_task = asyncio.create_task(_heartbeat_loop(client))
+
     try:
         while True:
-            client.send_heartbeat()
-            raw_data = client.receive()
+            # パケット到着までイベントループを阻塞せずに待機。
+            # 旧 settimeout(1.0) 相当の生存確認は heartbeat_task が担うため不要。
+            raw_data = await client.receive()
 
             if raw_data:
                 decrypted = decoder.decrypt(raw_data)
@@ -232,11 +260,14 @@ async def telemetry_background_task():
                         # WebSocket配信
                         await broadcast_to_clients(json.dumps(parsed))
 
-            await asyncio.sleep(0.01)
-
     except Exception as e:
         logger.error(f"Telemetry task error: {e}", exc_info=True)
     finally:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
         if current_lap_data:
             save_lap_to_file(current_lap_data, current_lap_number)
         client.close()

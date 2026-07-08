@@ -7,6 +7,44 @@
 
 ---
 
+## 2026-07-08 — バックエンド安定化・構成整理
+
+### fix: Salsa20 復号の致命的バグ修正（5日間の機能不全解消）
+- **現象**: コンテナ稼働中に `Decryption failed: name 'Salsa20' is not defined` が **152万3669件** 記録され、PS5 からの全テレメトリパケットが捨てられてダッシュボードが機能しなかった（TEST MODE のみ動作）。
+- **原因**: `decoder.py` のコメント（L13-16）で「`_try_decrypt` 内で遅延 import する」と宣言されていた `from Crypto.Cipher import Salsa20` が**実装漏れ**で存在しなかった。
+- **修正**: `_try_decrypt` メソッド冒頭に遅延 import を追加（コメント通りの動作にする）。
+- **効果**: 復号成功で PS5 実機テレメトリが復活。
+
+### refactor: UDP 受信ループの非同期化
+- **背景**: 従来 `telemetry.py` は同期ソケット + `settimeout(1.0)` のブロッキング `receive()` を `while True:` 内で呼び、`asyncio.sleep(0.01)` の空ポーリングで回していた（CPU 無駄・イベントループ阻塞）。
+- **改修**:
+  - `telemetry.py` を `asyncio.DatagramProtocol` ベースに全面書き換え。受信キュー（`asyncio.Queue`）経由で `await receive()` によりパケット到着時のみ処理。
+  - `main.py` の受信ループから `asyncio.sleep(0.01)` を廃止。ハートビート送信は `_heartbeat_loop` に独立タスク化し受信ループから分離。
+  - API 変更: `receive()` / `send_heartbeat()` が `async def` 化、`await connect()` 追加。
+- **効果**: イベントループの阻塞解消、CPU 使用率改善。
+
+### refactor: 旧亜種ディレクトリの `archive/` 退避
+- `gt7_tool_dev` / `gt7_tool_car_attitude2` / `gt7dashboard` を `Projects/gt7/archive/` へ移動。
+- **`gt7_tool` を唯一の正実装として明確化**。2 亜種の `.git` は既に孤立した worktree ポインタのみ（親消失済み）で `gt7_tool/.git` への影響なし。
+
+### refactor: デバッグ/検証スクリプトの `scripts/` 集約
+- ルート直下に散乱していた `debug_*.py` / `verify_*.py` / `capture_*.py` / `check_*.py` 等 **26 ファイル**を `scripts/` へ整理。
+- `test_course_detection.py` は正規単体テストとして `tests/` へ移動。
+- `scripts/README.md` に分類と実行方法を明記。
+
+### test: Salsa20 復号の回帰テスト新設
+- `tests/test_decoder.py` を追加（11 テスト）:
+  - `_try_decrypt` の NameError 再発防止（Bug#1 回帰）
+  - XOR フォールバック動作（A/B/~ 全ハートビートタイプ）
+  - フィールド抽出（`parse`）の正常系・サイズ不足時のエラーハンドリング
+  - `CourseEstimator` の基本動作・bounds ヘルパー
+- `requirements.txt` に `pytest` を追加。
+- `.gitignore` の `test_*.py` 除外ルールに対し `!tests/` 例外を追加（正規テストをトラック）。
+
+検証: `pytest tests/ -v` → **12 passed**（`test_course_detection.py` 含む全件 PASS・コンソールエラー 0）。
+
+---
+
 ## 2026-07-02 — DRIVE / ANALYSIS ビュー分離（実車テレメトリのドクトリン導入）
 
 ### feat: DRIVE ビュー（走行用最小表示、`drive-view.js` 新設）
