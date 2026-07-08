@@ -226,6 +226,8 @@ PYTHONPATH=. python3 tests/test_course_detection.py --regenerate
 ```
 
 > ※ `test_course_detection.py` は `tests/` 配下に移動済み（2026-07-08 整理）。`--regenerate` は `gt7data` を解析して `course_database.json` を上書きする破壊的オプションです。
+>
+> 💡 試すだけなら `--output` で本番 DB を上書きせずに確認できます: `--regenerate --output /tmp/course_database_test.json`
 
 ### 手動でコースを追加する
 
