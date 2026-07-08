@@ -7,6 +7,84 @@
 
 ---
 
+## 2026-07-08 — バックエンド安定化・構成整理
+
+### fix: Salsa20 復号の致命的バグ修正（5日間の機能不全解消）
+- **現象**: コンテナ稼働中に `Decryption failed: name 'Salsa20' is not defined` が **152万3669件**（`docker logs ... | grep -c` で実測）記録され、PS5 からの全テレメトリパケットが捨てられてダッシュボードが機能しなかった（TEST MODE のみ動作）。
+- **原因**: `decoder.py` のコメント（L13-16）で「`_try_decrypt` 内で遅延 import する」と宣言されていた `from Crypto.Cipher import Salsa20` が**実装漏れ**で存在しなかった。
+- **修正**: `_try_decrypt` メソッド冒頭に遅延 import を追加（コメント通りの動作にする）。
+- **効果**: 復号成功で PS5 実機テレメトリが復活（⚠️ 実機での復号成功確認は未実施・コンテナ再ビルド後に要確認）。
+
+### refactor: UDP 受信ループの非同期化
+- **背景**: 従来 `telemetry.py` は同期ソケット + `settimeout(1.0)` のブロッキング `receive()` を `while True:` 内で呼び、`asyncio.sleep(0.01)` の空ポーリングで回していた（CPU 無駄・イベントループ阻塞）。
+- **改修**:
+  - `telemetry.py` を `asyncio.DatagramProtocol` ベースに全面書き換え。受信キュー（`asyncio.Queue`）経由で `await receive()` によりパケット到着時のみ処理。
+  - `main.py` の受信ループから `asyncio.sleep(0.01)` を廃止。ハートビート送信は `_heartbeat_loop` に独立タスク化し受信ループから分離。
+  - API 変更: `receive()` / `send_heartbeat()` が `async def` 化、`await connect()` 追加。
+  - **レビュー後修正**: `send_heartbeat()` 内の間隔チェックを削除し、間隔制御を `_heartbeat_loop` 側（`asyncio.sleep`）に一元化。二重制御を解消。
+- **効果**: イベントループの阻塞解消、CPU 使用率改善（⚠️ 実機での受信レート・遅延確認は未実施）。
+
+### refactor: 旧亜種ディレクトリの `archive/` 退避
+- `gt7_tool_dev` / `gt7_tool_car_attitude2` / `gt7dashboard` を `Projects/gt7/archive/` へ移動。
+- **`gt7_tool` を唯一の正実装として明確化**。
+- ⚠️ **訂正（レビューで発覚）**: 初版は「2亜種の `.git` は親消失済みの孤立ポインタ」と記載したが**誤り**。実際は親リポジトリ `/home/abem/docker/gt7_tool`（branch `feature/dev2026-06-14`）が現存し、**9ファイル約1300行の未コミット変更**（APEX Broadcast UI中間状態）が残っていた。
+- `gt7_tool`（正実装）に同等作業がコミット済みであることを確認した上で破棄。ただし事前に差分を `archive/_snapshots/` にスナップショット保存（patch + 未追跡ファイル）。復元手順は `archive/_snapshots/README.md` 参照。
+
+### refactor: デバッグ/検証スクリプトの `scripts/` 集約
+- ルート直下に散乱していた `debug_*.py` / `verify_*.py` / `capture_*.py` / `check_*.py` 等 **26 ファイル**を `scripts/` へ整理（ワーキングツリー上の移動）。
+- `test_course_detection.py` は正規単体テストとして `tests/` へ移動。
+- `scripts/README.md` に分類と実行方法を明記。
+- ⚠️ **重要**: 26ファイルは `.gitignore` パターンに一致するため **git非追跡**。コミットに含まれるのは `scripts/README.md` のみ。ワーキングツリー上にのみ存在し、別環境へクローンしても復元されない。
+
+### test: Salsa20 復号の回帰テスト新設
+- `tests/test_decoder.py` を追加（11 テスト）:
+  - `_try_decrypt` の NameError 再発防止（Bug#1 回帰）
+  - XOR フォールバック動作（A/B/~ 全ハートビートタイプ）
+  - フィールド抽出（`parse`）の正常系・サイズ不足時のエラーハンドリング
+  - `CourseEstimator` の基本動作・bounds ヘルパー
+- `requirements.txt` に `pytest` を追加。
+- `.gitignore` の `test_*.py` 除外ルールに対し `!tests/` 例外を追加（正規テストをトラック）。
+
+検証: `pytest tests/ -v` → **12 passed**（`test_course_detection.py` 含む全件 PASS・コンソールエラー 0）。⚠️ 実機（PS5）での復号成功・受信レート・ハートビート周期は**未確認**。コンテナ再ビルド後の実機動作確認が必須。
+
+### fix: 第2回レビュー指摘への対応（非同期受信の堅牢化）
+
+第2回レビューで指摘された非同期受信回りの信頼性問題を修正:
+
+- **キュー溢れ時の警告ログ追加** (`telemetry.py`): 受信キュー（256件）が溢れてパケットを破棄する際、60秒に1回・累積ドロップ数を `logger.warning` で通知。従来は無警告破棄で「テレメトリが遅い/飛ぶ」の原因診断ができなかった。
+- **`receive()` の `CancelledError` を re-raise**: タスクキャンセル時に正しく終了できるよう、握りつぶしを廃止。
+- **`telemetry_background_task` の再起動安全網** (`main.py`): 新設した `telemetry_supervisor` が異常終了を検知し、指数バックオフ（最大60秒）で再起動。従来は例外で終了するとテレメトリ受信が完全停止し、かつ気づく手段がなかった。
+- **`last_heartbeat` を記録専用と明記**: ハートビート間隔制御を `_heartbeat_loop` に一元化した結果デッドコード化していたが、観測用に残しコメントで「未参照・記録専用」と明記。
+
+また、archive/ 破棄前の「gt7_tool 側に同等作業がコミット済み」という主張について、**実際にファイル単位で比較検証**を実施（共通ベースコミット `769b299` を確認の上、patch適用状態と gt7_tool main を9ファイル全件 diff）。gt7_tool 側が docker側の APEX Broadcast 変更を含む上位集合（スーパーセット）であり、復元すべき未反映変更はないことを実証した。
+
+検証: `pytest tests/ -v` → **12 passed**（再確認）。
+
+### fix: 第3回レビュー指摘への対応（説明訂正・シャットダウン経路の明示）
+
+第3回レビューで、archive/比較表の説明不正確と telemetry_supervisor のシャットダウン経路欠如を指摘され対応:
+
+- **比較表の説明を patch 実物ベースで全面訂正** (`docs/refactoring-2026-07-08.md`):
+  - course-map.js を「5引数API残余」としていたのは誤り（test-mode.js と混同）。実態は**グロー効果の配色変更のみ**。
+  - index.html を「LAP HISTORY ラベル」としていたのも誤り。実態は color-scheme meta追加・aria-live属性・inline style→class化。
+  - 初版は diff の `<` 行から推測で記述してしまったことが原因。全9ファイルを patch から抽出して再確認し、事実ベースで書き直した。結論（gt7_tool が上位集合）は不変。
+- **`on_cleanup` フック新設** (`main.py`): telemetry_supervisor を明示的にキャンセル→await でクリーン終了。第2回で CancelledError を re-raise する設計にした一方、それを発火する経路が存在しない不整合を解消。`app.on_cleanup.append(on_cleanup)` で登録し、アプリ終了時に supervisor→background_task→heartbeat_loop が連鎖的にクリーンアップされる構造に。
+
+検証: `pytest tests/ -v` → **12 passed**（再々確認）。
+
+### fix: 第4回レビュー指摘への対応（第3回訂正自体の誤り是正）
+
+第3回の「訂正」自体が別の意味で不正確だったことが発覚し、是正:
+
+- **比較対象の取り違えが根本原因**: 第1回は本来見るべき「最終ファイル間 diff の `<` 行」を見ていたが、第3回は**比較対象を「patch単体」にすり替えてしまった**。両者は別物（patchが触れない行でもgt7_tool側の後続コミットで置換されていれば最終diffでは`<`行として現れる）。
+- **具体例**: `index.html` の `LAP HISTORY` は共通祖先 `769b299` に元々存在し、docker側patchは触れていないためpatch単体には出ないが、gt7_tool側のDRIVE/ANALYSIS機能で別構造に置換されたため最終ファイル間diffではdocker側のみの行として現れる。つまり**第1回の記述は最終ファイル間diffとしては正しく、第3回がこれを誤って「訂正」していた**。
+- **是正** (`docs/refactoring-2026-07-08.md`): 比較対象を冒頭で1行明記（`diff <(docker最終) <(gt7_tool main)` の `<` 行）し、全9ファイルの `<` 行を空行/コメント除外で再抽出して実数と内容を正確に記載。4ファイル（course-map.js・index.html・test-mode.js・websocket.js）に計9行のdocker側のみ行が実在し、いずれもgt7_tool側の後続実装に置換済みであることを確認。結論（復元すべき未反映変更なし）は不变。
+- **再発防止**: 以降の同種検証では「何を比較しているか」を1行明記してから進める運用とする。
+
+検証: `pytest tests/ -v` → **12 passed**（4度目の確認・コード変更なし、ドキュメント訂正のみ）。
+
+---
+
 ## 2026-07-02 — DRIVE / ANALYSIS ビュー分離（実車テレメトリのドクトリン導入）
 
 ### feat: DRIVE ビュー（走行用最小表示、`drive-view.js` 新設）

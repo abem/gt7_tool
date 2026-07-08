@@ -250,7 +250,7 @@ ws.onmessage = (event) => {
 
 **ファイル:** `telemetry.py`
 
-GT7からのUDP通信を管理するクラスです。
+GT7からのUDP通信を非同期で管理するクラスです（`asyncio.DatagramProtocol` ベース）。
 
 **コンストラクタ:**
 ```python
@@ -263,19 +263,22 @@ def __init__(self, ip: str, send_port: int = 33739,
 - `ip`: PS5のIPアドレス
 - `send_port`: 送信ポート (デフォルト: 33739)
 - `receive_port`: 受信ポート (デフォルト: 33740)
-- `heartbeat_interval`: ハートビート間隔 (秒)
+- `heartbeat_interval`: ハートビート間隔 (秒)。間隔制御は呼び出し側（`_heartbeat_loop`）が担う
 - `heartbeat_type`: ハートビートタイプ (`b'A'`, `b'B'`, `b'~'`)
   - `b'A'`: 基本パケット (296 bytes)
   - `b'B'`: 拡張パケット (316 bytes) - ステアリング・車体加速度追加
   - `b'~'`: 全フィールドパケット (344 bytes) - フィルタ入力・トルクベクタリング・回生追加
 
-**メソッド:**
+**メソッド（非同期 API）:**
 
-| メソッド | 説明 |
-|---------|------|
-| `send_heartbeat()` | PS5にハートビートパケットを送信 |
-| `receive()` | テレメトリパケットを受信 (bytes or None) |
-| `close()` | ソケットを閉じる |
+| メソッド | 説明 | 戻り値 |
+|---------|------|--------|
+| `async connect()` | UDP エンドポイントを作成し受信開始（`__init__` ではなくループ上で呼ぶ） | None |
+| `async send_heartbeat()` | PS5にハートビートを1つ送信（間隔制御なし・呼ばれるたびに送信） | None |
+| `async receive()` | パケット到着まで待機し1件受信（`CancelledError` は re-raise） | bytes or None |
+| `close()` | トランスポートを閉じる | None |
+
+> 受信キューは `asyncio.Queue`（上限256件）。溢れ時は古いパケットから破棄し、60秒に1回・累積ドロップ数を警告ログ出力。
 
 ### GT7Decoderクラス
 
@@ -285,13 +288,11 @@ GT7テレメトリパケットの復号と解析を行うクラスです。
 
 **コンストラクタ:**
 ```python
-def __init__(self, course_db: str = 'course_database.json',
-             heartbeat_type: bytes = b'~')
+def __init__(self, heartbeat_type: bytes = b'~')
 ```
 
 **引数:**
-- `course_db`: コースデータベースファイルのパス
-- `heartbeat_type`: ハートビートタイプ（復号用XOR値の決定に使用）
+- `heartbeat_type`: ハートビートタイプ（復号用XOR値の初期値の決定に使用）
 
 **ハートビートタイプとXOR値:**
 
@@ -303,6 +304,8 @@ def __init__(self, course_db: str = 'course_database.json',
 
 復号時にマジックナンバー検証が失敗した場合、他のXOR値へ自動フォールバックする。
 
+> 注: `_try_decrypt` 内で `from Crypto.Cipher import Salsa20` を遅延 import する。これにより Crypto 未導入環境でも `import decoder` が成功し、`CourseEstimator` 単体のテストが可能。
+
 **メソッド:**
 
 | メソッド | 説明 | 戻り値 |
@@ -310,24 +313,28 @@ def __init__(self, course_db: str = 'course_database.json',
 | `decrypt(data: bytes)` | Salsa20でパケットを復号 | bytes (復号失敗時は空) |
 | `parse(decrypted_data: bytes)` | 復号データを解析 | dict or None |
 
-**使用例:**
+**使用例（非同期）:**
 ```python
+import asyncio
 from telemetry import GT7TelemetryClient
 from decoder import GT7Decoder
 
-client = GT7TelemetryClient("192.168.1.10")
-decoder = GT7Decoder()
+async def main():
+    client = GT7TelemetryClient("192.168.1.10")
+    decoder = GT7Decoder()
+    await client.connect()
+    await client.send_heartbeat()
+    raw_data = await client.receive()
+    if raw_data:
+        decrypted = decoder.decrypt(raw_data)
+        if decrypted:
+            parsed = decoder.parse(decrypted)
+            print(f"Speed: {parsed['speed_kmh']:.1f} km/h")
+            print(f"Gear: {parsed['gear']}, Ratios: {parsed['gear_ratios']}")
+            print(f"Course: {parsed['course']['name']}")
+    client.close()
 
-client.send_heartbeat()
-raw_data = client.receive()
-if raw_data:
-    decrypted = decoder.decrypt(raw_data)
-    if decrypted:
-        parsed = decoder.parse(decrypted)
-        print(f"Speed: {parsed['speed_kmh']:.1f} km/h")
-        print(f"Gear: {parsed['gear']}, Ratios: {parsed['gear_ratios']}")
-        print(f"Course: {parsed['course']['name']}")
-client.close()
+asyncio.run(main())
 ```
 
 ### CourseEstimatorクラス
@@ -372,15 +379,23 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
     "send_port": 33739,
     "receive_port": 33740,
     "http_port": 8080,
-    "heartbeat_interval": 10
+    "heartbeat_interval": 10,
+    "ssl_cert": "ssl/server-cert.pem",
+    "ssl_key": "ssl/server-key.pem"
 }
 ```
 
-**環境変数による設定上書き:**
+**環境変数による設定上書き**（環境変数優先・config.jsonフォールバック）:
 
 | 環境変数 | 説明 |
 |---------|------|
 | `PS5_IP` | PS5のIPアドレス |
+| `SEND_PORT` | 送信ポート（デフォルト33739） |
+| `RECEIVE_PORT` | 受信ポート（デフォルト33740） |
+| `HTTP_PORT` | HTTP/WebSocketポート（デフォルト8080） |
+| `HEARTBEAT_INTERVAL` | ハートビート間隔秒（デフォルト10） |
+
+> SSL証明書パス（`ssl_cert` / `ssl_key`）は config.json のみで設定。証明書が未配置の場合は平文 HTTP にフォールバック。
 
 ## 参考資料
 
@@ -391,4 +406,4 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
 
 ---
 
-**最終更新**: 2026-07-02
+**最終更新**: 2026-07-08
