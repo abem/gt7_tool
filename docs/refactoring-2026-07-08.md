@@ -176,34 +176,42 @@ async def telemetry_background_task():
 >
 > `gt7_tool`（正実装）には同等の作業が `feature/ui-redesign-2026-06-14`（コミット `d910766`）としてコミット済みである。破棄にあたり**第2回レビューで「gt7_tool側への未反映変更がないか未検証」と指摘されたため、実際にファイル単位で比較検証を実施**した。
 
-##### 比較検証の方法と結果（第2回レビュー指摘#5への対応）
+##### 比較検証の方法と結果
 
-両リポジトリが共通ベースコミット `769b299`（"feat: HTTPS 対応"、hash完全一致で同一コミット）を持ち、そこから分岐していることを確認。その上で:
+> **比較対象（明記）**: `diff <(docker最終状態) <(gt7_tool main)` の `<` 行 = **docker側にのみ存在する行**。
+> 「docker最終状態」= 共通ベース `769b299` に snapshot の patch を適用した状態（=破棄前の実ファイル）。
+> これは **patch 単体（769b299→docker未コミットの差分）とは別物**である。両者の混同が過去3回の訂正ミスの根本原因だった（後述）。
 
-1. 作業用ディレクトリに `769b299` を checkout し、snapshot の patch を適用（＝docker側の破棄前状態を再現）
-2. 9ファイル全件を gt7_tool の main と `diff` で比較
+両リポジトリが共通ベースコミット `769b299`（"feat: HTTPS 対応"、hash完全一致で同一コミット）を持つことを確認の上、作業用ディレクトリに `769b299` を checkout して patch を適用し、9ファイル全件を gt7_tool の main と `diff` で比較した。
 
-> ⚠️ **第3回レビューでの訂正**: 初版の比較表の「docker側のみの実質コード行」欄は、`diff <(patch適用後) <(gt7_tool main)` の `<` 行（docker側にあってgt7側にない行）から**推測で内容を書いてしまい、course-map.js と index.html で事実と異なる説明になっていた**（course-map.js は「5引数API残余」ではなく配色変更のみ、index.html は「LAP HISTORYラベル」ではなくcolor-scheme meta等の追加が実態）。下記は patch の実物を全9ファイル再確認して作成した訂正版。
+結果（`<` 行 = docker側にのみ存在する実質コード行、空行・コメント除外）:
 
-結果（patch 実物に基づく訂正版）:
+| ファイル | md5一致 | docker側のみ存在する行（実数と内容） |
+|----------|---------|--------------------------------------|
+| `car-3d.js` | ✅ SAME | 0行 |
+| `charts.js` | ❌ DIFF | 0行 |
+| `constants.js` | ✅ SAME | 0行 |
+| `course-map.js` | ❌ DIFF | **5行**: `getSpeedColor(curr.speed)`, `updateCourseMap(positionX, positionY, positionZ, speed, heading)`（5引数版）の定義と currentPosition 設定部 |
+| `index.html` | ❌ DIFF | **1行**: `<div class="card-title">LAP HISTORY</div>` |
+| `styles.css` | ❌ DIFF | 0行 |
+| `test-mode.js` | ❌ DIFF | **2行**: `updateCourseMap(point.x, 0, point.z, point.speed, demoOrientation.yaw)`（5引数呼び出し）とそのコメント |
+| `ui_components.js` | ✅ SAME | 0行 |
+| `websocket.js` | ❌ DIFF | **1行**: `data.rotation_yaw \|\| 0  // 車両の向き` |
 
-| ファイル | md5一致 | patch の実内容（docker側の未コミット変更） |
-|----------|---------|-------------------------------------------|
-| `car-3d.js` | ✅ SAME | 3Dモデルの grid/gridLines 色（`0x1a1a2e`→`0x14171C` 等、配色のみ） |
-| `charts.js` | ❌ DIFF | チャート線色変更（速度=`accentGreen`→`accentBlue`、RPM=`accentYellow`→`rpmLine`、背景=`#1a1a2e`→`#1B1F26` 等、配色のみ） |
-| `constants.js` | ✅ SAME | 配色定義全面書き換え（`#ff4444`→`#D84B4F` 等）＋`STATUS` オブジェクト新設（good/warning/serious/critical） |
-| `course-map.js` | ❌ DIFF | **グロー効果の配色変更のみ**（`rgba(0,255,136,...)`→`rgba(61,155,255,...)`、`#ffffff`→`#3D9BFF`）。API変更なし |
-| `index.html` | ❌ DIFF | `color-scheme` meta追加、`aria-live` 属性追加、`card-title` の inline style→class化（`mini`/`subhead`）、`center-split` ラッパー追加 |
-| `styles.css` | ❌ DIFF | APEX Broadcast デザイントークンへの全面書き換え（`--bg-primary`/`--surface-*`/`--accent-brand` 等のCSS変数再編、約3150行） |
-| `test-mode.js` | ❌ DIFF | デモデータ生成内の `updateCourseMap` 呼び出し（5引数版）1行のみ |
-| `ui_components.js` | ✅ SAME | タイヤ温度/Gフォース/ペダルの配色変更（`#00ff88`→`#1F9E57` 等）＋STATUS色への切替 |
-| `websocket.js` | ❌ DIFF | `data.rotation_yaw || 0` の旧参照（gt7_tool側では別実装に置換） |
+**docker側のみ存在する行の由来と、gt7_tool側での置換状況**:
 
-**結論**: docker側の未コミット変更は、**APEX Broadcast リデザイン（配色の抑制・デザイントークン化・アクセシビリティ属性追加）とそれに伴うコード切替**が主内容。機能的には新規API（DRIVE/ANALYSISビュー、距離基準ラップ解析）を持たない **gt7_tool側の一部機能の前段階**に相当する。gt7_tool 側はこれら配色変更を取り込んだ上でさらに新機能を追加した**上位集合（スーパーセット）**であり、復元すべき未反映変更は存在しないと判断した。
+これら4ファイル・計9行は、いずれも**共通祖先 `769b299` に元々存在していたコード**であり、docker側の未コミット patch 自体はこれらに触れていない（だから patch 単体を grep しても出てこない）。gt7_tool 側の**後続コミット**でより新しい実装に置き換えられたため、最終ファイル間 diff では「docker側のみに存在する行」として現れる:
 
-> 補足: gt7_tool 側が DIFF な6ファイルには、docker側に存在しない新機能（距離基準ラップ解析チャート `analysisSpeedChart`/`timeDeltaChart`、DRIVE/ANALYSISビュー関連コード等）が追加されている。変更の方向は一方向（gt7_tool が新しい）のみで、docker側に独自の機能追加やバグ修正は見られなかった。
+- `course-map.js` の `updateCourseMap` 5引数版 → gt7_tool 側で**7引数版**（heading に加え追加パラメータ）に拡張。`getSpeedColor` も別実装に置換。
+- `index.html` の `LAP HISTORY` → gt7_tool 側の**DRIVE/ANALYSISビュー機能**（2026-07-02コミット）で `<span>LAP HISTORY</span>` を含む複数行構造に再構成。
+- `test-mode.js` の 5引数呼び出し → course-map.js の 7引数化に追従して gt7_tool 側で更新済み。
+- `websocket.js` の `data.rotation_yaw` → gt7_tool 側で別の参照形態に置換。
+
+**結論**: docker側のみに存在する9行は**すべて gt7_tool 側の後続機能（DRIVE/ANALYSISビュー、API拡張）によって置換された旧実装**であり、docker側独自の新規機能追加やバグ修正は見られなかった。gt7_tool 側は docker側の APEX Broadcast 配色変更を取り込んだ上でさらに新機能を追加した**上位集合（スーパーセット）**であり、**復元すべき未反映変更は存在しない**と判断した。この結論は第4回検証でも支持されている。
+
+> 補足: gt7_tool 側が DIFF な6ファイルには、docker側に存在しない新機能（距離基準ラップ解析チャート `analysisSpeedChart`/`timeDeltaChart`、DRIVE/ANALYSISビュー関連コード等）が追加されている。変更の方向は一方向（gt7_tool が新しい）のみ。
 >
-> ただし「完全に同一のコードが含まれる」という意味ではなく、「docker側の配色変更はgt7_tool側で別表現（CSS変数経由等）で実装されている」ため、行レベルでの完全包含ではない点に留意。
+> なお「docker側の配色変更が gt7_tool 側に行レベルで完全包含されている」わけではない（CSS変数経由等の別表現で実装されている）。本検証の対象はあくまで「復元すべき未反映コードの有無」である。
 
 ##### 未コミット変更の保護措置
 
@@ -383,6 +391,24 @@ docker logs -f gt7_tool-gt7_tool-1
 特筆:
 - **#1〜#3（説明の不正確さ）**: 初版の比較表の「docker側のみの実質コード行」欄は、`diff` の `<` 行出力から内容を**推測で記述してしまった**ことが原因。本訂正では patch の実物を `sed -n '開始,終了p'` で直接抽出・確認し、事実ベースで書き直した。「実証」という言葉を使いながら推測を混入させたことは重大な失敗で、大方向（gt7_tool が上位集合）の結論は変わらないものの、証拠としての信頼性を著しく損なうものだった。
 - **#4（シャットダウン経路）**: 第2回で `CancelledError` を re-raise する設計にした一方、それを発火する経路が存在しない不整合があった。`on_cleanup` の追加により、アプリ終了時に supervisor が明示的にキャンセルされ、`telemetry_background_task` → `_heartbeat_loop` も連鎖的にクリーンアップされる構造が完成した。
+
+### 第4回レビューへの対応（第3回訂正自体が誤りだったことへの是正）
+
+第3回対応後の検証で、**第3回の「訂正」自体が別の意味で不正確だった**ことが発覚した:
+
+**根本原因**: 第1回は「最終ファイル間 diff の `<` 行」を見ていた（本来見るべき対象）が、第3回は**比較対象を「patch 単体（769b299→docker未コミットの差分）」に取り違えてしまった**。両者は別物で、patch が触れていない行でも、gt7_tool 側の後続コミットで置換されていれば最終ファイル間 diff では `<` 行として現れる。
+
+具体例（`index.html` の `LAP HISTORY`）:
+- この行は**共通祖先 `769b299` に元々存在**
+- docker側 patch はこの行に触れていない → **patch 単体を grep しても出ない**（第3回の主張はこの意味では正しい）
+- しかし gt7_tool 側の DRIVE/ANALYSISビュー機能（2026-07-02）で別構造に置換されたため、**最終ファイル間 diff では docker側のみに存在する行**として現れる
+- つまり**第1回の「LAP HISTORY ラベル」という記述は最終ファイル間 diff としては正しかった**
+
+第3回は patch 単体を根拠に「patch に存在しない」と結論づけたが、それは**本来見るべき対象（最終ファイル間 diff）からのすり替え**だった。結果として第1回の正しい記述を誤って「訂正」してしまった。
+
+**是正**: 比較対象を冒頭で1行明記（`diff <(docker最終) <(gt7_tool main)` の `<` 行）した上で、全9ファイルの `<` 行を空行/コメント除外で再抽出し、その実数と内容を正確に記載した（上記「比較検証の方法と結果」を参照）。4ファイル（course-map.js・index.html・test-mode.js・websocket.js）に計9行の「docker側のみ存在する行」が実在すること、それらがすべて gt7_tool 側の後続実装に置換済みであることを確認した。結論（復元すべき未反映変更なし）は第4回検証でも支持されている。
+
+**再発防止**: 以降、同種の検証を行う際は**「何を比較しているか」を1行で明記してから**進める。本ドキュメントの「比較検証の方法と結果」節の冒頭に比較対象を明示したのはこのため。
 
 ---
 
