@@ -183,23 +183,27 @@ async def telemetry_background_task():
 1. 作業用ディレクトリに `769b299` を checkout し、snapshot の patch を適用（＝docker側の破棄前状態を再現）
 2. 9ファイル全件を gt7_tool の main と `diff` で比較
 
-結果:
+> ⚠️ **第3回レビューでの訂正**: 初版の比較表の「docker側のみの実質コード行」欄は、`diff <(patch適用後) <(gt7_tool main)` の `<` 行（docker側にあってgt7側にない行）から**推測で内容を書いてしまい、course-map.js と index.html で事実と異なる説明になっていた**（course-map.js は「5引数API残余」ではなく配色変更のみ、index.html は「LAP HISTORYラベル」ではなくcolor-scheme meta等の追加が実態）。下記は patch の実物を全9ファイル再確認して作成した訂正版。
 
-| ファイル | md5一致 | docker側のみの実質コード行 |
-|----------|---------|---------------------------|
-| `car-3d.js` | ✅ SAME | 0 |
-| `charts.js` | ❌ DIFF | 0 |
-| `constants.js` | ✅ SAME | 0 |
-| `course-map.js` | ❌ DIFF | 5（旧API `updateCourseMap(x,y,z,speed,heading)` 5引数版の残余） |
-| `index.html` | ❌ DIFF | 1（`LAP HISTORY` ラベル等、リデザイン前の構造） |
-| `styles.css` | ❌ DIFF | 0 |
-| `test-mode.js` | ❌ DIFF | 1（旧シグネチャの `updateCourseMap` 呼び出し） |
-| `ui_components.js` | ✅ SAME | 0 |
-| `websocket.js` | ❌ DIFF | 1（旧 `data.rotation_yaw` 参照） |
+結果（patch 実物に基づく訂正版）:
 
-**結論**: docker側のみに存在する実質コード行は**計8行**で、いずれも **gt7_tool 側の APIリファクタリング（DRIVE/ANALYSISビュー化・新シグネチャ化）によって置き換えられた旧実装の残余**だった。gt7_tool 側は docker側の APEX Broadcast 変更を含む**上位集合（スーパーセット）**であり、**復元すべき未反映変更は存在しないことを実証**した。
+| ファイル | md5一致 | patch の実内容（docker側の未コミット変更） |
+|----------|---------|-------------------------------------------|
+| `car-3d.js` | ✅ SAME | 3Dモデルの grid/gridLines 色（`0x1a1a2e`→`0x14171C` 等、配色のみ） |
+| `charts.js` | ❌ DIFF | チャート線色変更（速度=`accentGreen`→`accentBlue`、RPM=`accentYellow`→`rpmLine`、背景=`#1a1a2e`→`#1B1F26` 等、配色のみ） |
+| `constants.js` | ✅ SAME | 配色定義全面書き換え（`#ff4444`→`#D84B4F` 等）＋`STATUS` オブジェクト新設（good/warning/serious/critical） |
+| `course-map.js` | ❌ DIFF | **グロー効果の配色変更のみ**（`rgba(0,255,136,...)`→`rgba(61,155,255,...)`、`#ffffff`→`#3D9BFF`）。API変更なし |
+| `index.html` | ❌ DIFF | `color-scheme` meta追加、`aria-live` 属性追加、`card-title` の inline style→class化（`mini`/`subhead`）、`center-split` ラッパー追加 |
+| `styles.css` | ❌ DIFF | APEX Broadcast デザイントークンへの全面書き換え（`--bg-primary`/`--surface-*`/`--accent-brand` 等のCSS変数再編、約3150行） |
+| `test-mode.js` | ❌ DIFF | デモデータ生成内の `updateCourseMap` 呼び出し（5引数版）1行のみ |
+| `ui_components.js` | ✅ SAME | タイヤ温度/Gフォース/ペダルの配色変更（`#00ff88`→`#1F9E57` 等）＋STATUS色への切替 |
+| `websocket.js` | ❌ DIFF | `data.rotation_yaw || 0` の旧参照（gt7_tool側では別実装に置換） |
 
-> 補足: gt7_tool 側が DIFF な6ファイルには、docker側に存在しない新機能（距離基準ラップ解析チャート `analysisSpeedChart`/`timeDeltaChart`、DRIVE/ANALYSISビュー関連コード等）が大量に追加されている。方向は一方向（gt7_tool が新しい）のみ。
+**結論**: docker側の未コミット変更は、**APEX Broadcast リデザイン（配色の抑制・デザイントークン化・アクセシビリティ属性追加）とそれに伴うコード切替**が主内容。機能的には新規API（DRIVE/ANALYSISビュー、距離基準ラップ解析）を持たない **gt7_tool側の一部機能の前段階**に相当する。gt7_tool 側はこれら配色変更を取り込んだ上でさらに新機能を追加した**上位集合（スーパーセット）**であり、復元すべき未反映変更は存在しないと判断した。
+
+> 補足: gt7_tool 側が DIFF な6ファイルには、docker側に存在しない新機能（距離基準ラップ解析チャート `analysisSpeedChart`/`timeDeltaChart`、DRIVE/ANALYSISビュー関連コード等）が追加されている。変更の方向は一方向（gt7_tool が新しい）のみで、docker側に独自の機能追加やバグ修正は見られなかった。
+>
+> ただし「完全に同一のコードが含まれる」という意味ではなく、「docker側の配色変更はgt7_tool側で別表現（CSS変数経由等）で実装されている」ため、行レベルでの完全包含ではない点に留意。
 
 ##### 未コミット変更の保護措置
 
@@ -364,6 +368,21 @@ docker logs -f gt7_tool-gt7_tool-1
 | #5 archive/吸収済みの主張が未検証 | 🔵 ドキュメント | 共通ベース `769b299` を確認し、9ファイル全件 diff で実証（上位集合であることを確認） |
 
 特筆: #2/#3 は「実機で受信が止まったまま気づかない」リスクに直結する重要指摘だった。再起動安全網と CancelledError の正しい伝播により、サイレント停止を防止できる構造になった。
+
+### 第3回レビューへの対応（説明の正確性向上・シャットダウン経路の明示）
+
+第2回対応後のレビューで、比較表の説明不正確（#1・#2）と telemetry_supervisor のシャットダウン経路欠如（#4）を指摘された:
+
+| 指摘 | 内容 | 対応 |
+|------|------|------|
+| #1 course-map.js の説明誤り | 「5引数API残余」と書いたが実態は**グロー効果の配色変更のみ**。test-mode.js と混同していた | 比較表を patch 実物ベースで全面書き換え（上記「比較検証の方法と結果」を参照） |
+| #2 index.html の説明誤り | 「LAP HISTORY ラベル」と書いたが patch にその文字列は存在しない。実態は color-scheme meta追加・aria-live属性追加・inline style→class化 | 同上 |
+| #3 残り5ファイルの再検証 | car-3d/charts/constants/styles/ui_components の再照合を要求 | 全9ファイルを patch から抽出して再確認。比較表に実内容を正確に記載 |
+| #4 telemetry_supervisor のシャットダウン経路 | `on_cleanup` フックが未登録で、CancelledError を正常終端として扱う設計なのに**誰もキャンセルを発火しない**状態だった | `on_cleanup(app)` を新設し、supervisor タスクをキャンセル→await でクリーン終了。`app.on_cleanup.append(on_cleanup)` で登録 |
+
+特筆:
+- **#1〜#3（説明の不正確さ）**: 初版の比較表の「docker側のみの実質コード行」欄は、`diff` の `<` 行出力から内容を**推測で記述してしまった**ことが原因。本訂正では patch の実物を `sed -n '開始,終了p'` で直接抽出・確認し、事実ベースで書き直した。「実証」という言葉を使いながら推測を混入させたことは重大な失敗で、大方向（gt7_tool が上位集合）の結論は変わらないものの、証拠としての信頼性を著しく損なうものだった。
+- **#4（シャットダウン経路）**: 第2回で `CancelledError` を re-raise する設計にした一方、それを発火する経路が存在しない不整合があった。`on_cleanup` の追加により、アプリ終了時に supervisor が明示的にキャンセルされ、`telemetry_background_task` → `_heartbeat_loop` も連鎖的にクリーンアップされる構造が完成した。
 
 ---
 

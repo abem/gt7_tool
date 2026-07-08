@@ -68,6 +68,9 @@ CONFIG = load_config()
 # アプリケーション状態: 接続中のWebSocketクライアント一覧
 websocket_clients = set()
 
+# アプリケーション状態: テレメトリ監視タスク（on_cleanup でキャンセルするため保持）
+_telemetry_supervisor_task = None
+
 LOG_DIR = "gt7data"
 
 
@@ -376,8 +379,32 @@ async def telemetry_supervisor():
 
 
 async def on_startup(app):
+    """アプリ起動時にテレメトリ監視タスクを開始する。
+
+    生成した supervisor タスクは _telemetry_supervisor_task に保持し、
+    on_cleanup で明示的にキャンセル・待機してクリーンに終了させる。
+    """
+    global _telemetry_supervisor_task
     logger.info("Starting telemetry background task (supervised)...")
-    asyncio.create_task(telemetry_supervisor())
+    _telemetry_supervisor_task = asyncio.create_task(telemetry_supervisor())
+
+
+async def on_cleanup(app):
+    """アプリ終了時にテレメトリ監視タスクをキャンセルしてクリーンアップする。
+
+    telemetry_supervisor は CancelledError を「正常なシャットダウン」として扱い、
+    そのまま終了する設計。本フックがそのキャンセルを発火する唯一の経路。
+    プロセス終了時の asyncio の暗黙タスク破棄に頼らない明示的な終了処理。
+    """
+    global _telemetry_supervisor_task
+    if _telemetry_supervisor_task is not None and not _telemetry_supervisor_task.done():
+        _telemetry_supervisor_task.cancel()
+        try:
+            await _telemetry_supervisor_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Telemetry supervisor shut down.")
+    _telemetry_supervisor_task = None
 
 
 def build_ssl_context():
@@ -406,6 +433,7 @@ def main():
     app.router.add_get('/{filename:.*}', static_handler)
 
     app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
 
     logger.info(f"Starting GT7 Dashboard Server on port {port}...")
     logger.info(f"{scheme.upper()}: {scheme}://0.0.0.0:{port}")

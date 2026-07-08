@@ -60,6 +60,18 @@
 
 検証: `pytest tests/ -v` → **12 passed**（再確認）。
 
+### fix: 第3回レビュー指摘への対応（説明訂正・シャットダウン経路の明示）
+
+第3回レビューで、archive/比較表の説明不正確と telemetry_supervisor のシャットダウン経路欠如を指摘され対応:
+
+- **比較表の説明を patch 実物ベースで全面訂正** (`docs/refactoring-2026-07-08.md`):
+  - course-map.js を「5引数API残余」としていたのは誤り（test-mode.js と混同）。実態は**グロー効果の配色変更のみ**。
+  - index.html を「LAP HISTORY ラベル」としていたのも誤り。実態は color-scheme meta追加・aria-live属性・inline style→class化。
+  - 初版は diff の `<` 行から推測で記述してしまったことが原因。全9ファイルを patch から抽出して再確認し、事実ベースで書き直した。結論（gt7_tool が上位集合）は不変。
+- **`on_cleanup` フック新設** (`main.py`): telemetry_supervisor を明示的にキャンセル→await でクリーン終了。第2回で CancelledError を re-raise する設計にした一方、それを発火する経路が存在しない不整合を解消。`app.on_cleanup.append(on_cleanup)` で登録し、アプリ終了時に supervisor→background_task→heartbeat_loop が連鎖的にクリーンアップされる構造に。
+
+検証: `pytest tests/ -v` → **12 passed**（再々確認）。
+
 ---
 
 ## 2026-07-02 — DRIVE / ANALYSIS ビュー分離（実車テレメトリのドクトリン導入）
