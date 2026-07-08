@@ -338,9 +338,46 @@ async def logging_middleware(request, handler):
         raise
 
 
+async def telemetry_supervisor():
+    """telemetry_background_task を監視し、異常終了時に再起動する安全網。
+
+    従来構造では telemetry_background_task が例外で終了するとテレメトリ受信が
+    完全に停止し、かつそれに気づく手段がなかった（asyncio.create_task は一度きり）。
+    本関数はタスク終了を検知し、バックオフ付きで再起動する。
+
+    再起動ポリシー:
+      - 連続失敗が続く場合は指数バックオフ（最大60秒）で再試行
+      - CancelledError は再起動せずそのまま終了（シャットダウン時）
+    """
+    backoff = 1.0
+    max_backoff = 60.0
+    while True:
+        task = asyncio.create_task(telemetry_background_task())
+        try:
+            await task
+        except asyncio.CancelledError:
+            # サーバーシャットダウン等の正常キャンセル → 再起動しない
+            logger.info("Telemetry task cancelled, supervisor exiting.")
+            raise
+        except Exception:
+            # telemetry_background_task 内で catch されなかった例外（通常は catch 済みで
+            # タスクは正常終了するが、念のためここでも捕捉）
+            logger.exception(
+                f"Telemetry task crashed, restarting in {backoff:.0f}s..."
+            )
+        else:
+            # 正常終了（finally まで到達）した場合も再起動
+            logger.warning(
+                f"Telemetry task ended unexpectedly, restarting in {backoff:.0f}s..."
+            )
+
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, max_backoff)
+
+
 async def on_startup(app):
-    logger.info("Starting telemetry background task...")
-    asyncio.create_task(telemetry_background_task())
+    logger.info("Starting telemetry background task (supervised)...")
+    asyncio.create_task(telemetry_supervisor())
 
 
 def build_ssl_context():

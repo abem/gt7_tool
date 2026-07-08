@@ -174,7 +174,32 @@ async def telemetry_background_task():
 > - `styles.css`（2572行差分）、`car-3d.js`、`charts.js`、`constants.js`、`course-map.js`、`index.html`、`test-mode.js`、`ui_components.js`、`websocket.js`
 > - 内容は **APEX Broadcast UI リデザインの中間状態**（`#ff4444` → `#D84B4F` 等の色調変更）
 >
-> `gt7_tool`（正実装）には同等の作業が `feature/ui-redesign-2026-06-14`（コミット `d910766`）として**より成熟した形（DRIVE/ANALYSISビュー含む）でコミット済み**であることを確認した上で、破棄した。ただし md5 は一致しないため「完全に同一」とは断言できない。
+> `gt7_tool`（正実装）には同等の作業が `feature/ui-redesign-2026-06-14`（コミット `d910766`）としてコミット済みである。破棄にあたり**第2回レビューで「gt7_tool側への未反映変更がないか未検証」と指摘されたため、実際にファイル単位で比較検証を実施**した。
+
+##### 比較検証の方法と結果（第2回レビュー指摘#5への対応）
+
+両リポジトリが共通ベースコミット `769b299`（"feat: HTTPS 対応"、hash完全一致で同一コミット）を持ち、そこから分岐していることを確認。その上で:
+
+1. 作業用ディレクトリに `769b299` を checkout し、snapshot の patch を適用（＝docker側の破棄前状態を再現）
+2. 9ファイル全件を gt7_tool の main と `diff` で比較
+
+結果:
+
+| ファイル | md5一致 | docker側のみの実質コード行 |
+|----------|---------|---------------------------|
+| `car-3d.js` | ✅ SAME | 0 |
+| `charts.js` | ❌ DIFF | 0 |
+| `constants.js` | ✅ SAME | 0 |
+| `course-map.js` | ❌ DIFF | 5（旧API `updateCourseMap(x,y,z,speed,heading)` 5引数版の残余） |
+| `index.html` | ❌ DIFF | 1（`LAP HISTORY` ラベル等、リデザイン前の構造） |
+| `styles.css` | ❌ DIFF | 0 |
+| `test-mode.js` | ❌ DIFF | 1（旧シグネチャの `updateCourseMap` 呼び出し） |
+| `ui_components.js` | ✅ SAME | 0 |
+| `websocket.js` | ❌ DIFF | 1（旧 `data.rotation_yaw` 参照） |
+
+**結論**: docker側のみに存在する実質コード行は**計8行**で、いずれも **gt7_tool 側の APIリファクタリング（DRIVE/ANALYSISビュー化・新シグネチャ化）によって置き換えられた旧実装の残余**だった。gt7_tool 側は docker側の APEX Broadcast 変更を含む**上位集合（スーパーセット）**であり、**復元すべき未反映変更は存在しないことを実証**した。
+
+> 補足: gt7_tool 側が DIFF な6ファイルには、docker側に存在しない新機能（距離基準ラップ解析チャート `analysisSpeedChart`/`timeDeltaChart`、DRIVE/ANALYSISビュー関連コード等）が大量に追加されている。方向は一方向（gt7_tool が新しい）のみ。
 
 ##### 未コミット変更の保護措置
 
@@ -325,6 +350,20 @@ docker logs -f gt7_tool-gt7_tool-1
 | scripts/ のgit追跡 | 「集約」とだけ記載 | 26ファイルは `.gitignore` 対応で非追跡 | ドキュメントに明記 |
 | 152万件の根拠 | 数字のみ記載 | `grep -c` で実測 | 根拠コマンドを記載 |
 | 実機確認 | 残作業として軽く記載 | 未確認の重大項目 | 冒頭と残作業で強調 |
+
+### 第2回レビューへの対応（非同期受信の堅牢化）
+
+第1回レビュー対応後、再度レビューを受け、非同期受信回りの信頼性問題5件を指摘された。うち実害のある3件と軽微1件をコード修正で対応し、残り1件（archive/吸収の未検証）は実証検証で対応した:
+
+| 指摘 | 重大度 | 対応 |
+|------|--------|------|
+| #1 キュー溢れ時の無警告破棄 | 🟡 実害あり | `datagram_received` で60秒に1回・累積ドロップ数を `logger.warning` 通知 |
+| #2 例外時の再起動機構なし | 🟡 実害あり | `telemetry_supervisor` 新設。指数バックオフ（最大60秒）で再起動 |
+| #3 `receive()` の CancelledError 握りつぶし | 🟡 実害あり | `re-raise` するよう修正。タスクキャンセル時の正常終了を実現 |
+| #4 `last_heartbeat` のデッドコード化 | 🟢 軽微 | 観測用に残しつつ「記録専用・未参照」とコメント明記 |
+| #5 archive/吸収済みの主張が未検証 | 🔵 ドキュメント | 共通ベース `769b299` を確認し、9ファイル全件 diff で実証（上位集合であることを確認） |
+
+特筆: #2/#3 は「実機で受信が止まったまま気づかない」リスクに直結する重要指摘だった。再起動安全網と CancelledError の正しい伝播により、サイレント停止を防止できる構造になった。
 
 ---
 

@@ -32,6 +32,9 @@ class _TelemetryProtocol(asyncio.DatagramProtocol):
         self._queue = queue
         self._on_first_packet = on_first_packet
         self.transport = None
+        # キュー溢れの監視用カウンタ（ログ洪水を防ぐため間引いて出力）
+        self._dropped_since_log = 0
+        self._last_drop_log = 0.0
 
     def connection_made(self, transport):  # noqa: D401 - asyncio API 実装
         self.transport = transport
@@ -40,16 +43,33 @@ class _TelemetryProtocol(asyncio.DatagramProtocol):
 
     def datagram_received(self, data, addr):  # noqa: D401 - asyncio API 実装
         # キューが溢れる場合は古いパケットから破棄（テレメトリは過去値より最新値優先）
+        dropped = False
         if self._queue.full():
             try:
                 self._queue.get_nowait()
+                dropped = True
             except asyncio.QueueEmpty:
                 pass
         try:
             self._queue.put_nowait((data, addr))
         except asyncio.QueueFull:
             # 満杯ならこの1パケットを捨てる（受信レート>>消費レート時の安全装置）
-            pass
+            dropped = True
+
+        # 溢れが起きている場合は間引いて警告（1分に1回・累積ドロップ数を通知）
+        # → 「テレメトリが遅い/飛ぶ」不具合の原因診断を可能にする
+        if dropped:
+            self._dropped_since_log += 1
+            now = time.monotonic()
+            if now - self._last_drop_log >= 60.0:
+                logger.warning(
+                    f"Telemetry queue overflow: dropped {self._dropped_since_log} packet(s) "
+                    f"in the last interval (queue max={self._queue.maxsize}). "
+                    f"Consumer is slower than producer."
+                )
+                self._dropped_since_log = 0
+                self._last_drop_log = now
+
         self._on_first_packet(data, addr)
 
     def error_received(self, exc):  # noqa: D401 - asyncio API 実装
@@ -76,6 +96,8 @@ class GT7TelemetryClient:
         self.receive_port = receive_port
         self.heartbeat_interval = heartbeat_interval
         self.heartbeat_type = heartbeat_type
+        # 最終ハートビート送信時刻（記録専用・間隔制御は _heartbeat_loop 側が担う）。
+        # デバッグ/観測用に残しており、送信経路の健全性確認等で参照する用途。
         self.last_heartbeat = 0.0
         self.packets_received = 0
 
@@ -134,15 +156,15 @@ class GT7TelemetryClient:
         パケットが到着するまでイベントループを阻塞せずに待機する。
         タイムアウト相当の動作が必要な呼び出し側は asyncio.wait_for で包むこと。
         戻り値は bytes（旧実装互換）。addr は内部利用のみ。
+
+        注意: asyncio.CancelledError は握りつぶさず re-raise する。
+        呼び出し元のタスクがキャンセルされた場合は正しく終了できるようにするため。
         """
         if not self._connected or self._queue is None:
             return None
-        try:
-            data, _addr = await self._queue.get()
-            self.packets_received += 1
-            return data
-        except asyncio.CancelledError:
-            return None
+        data, _addr = await self._queue.get()
+        self.packets_received += 1
+        return data
 
     def close(self):
         """トランスポートを閉じる"""
