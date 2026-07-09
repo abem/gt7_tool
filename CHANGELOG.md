@@ -31,6 +31,12 @@
 - **検証**: 全対象 `node --check` 通過、`getSectorClass` 純関数ユニットテスト8/8（閾値+ガード）、Playwright TEST MODE E2E でセクター着色を確認・未捕捉例外0、敵対的レビュー3体が全て refuted=false。**網羅探索でトップレベル関数108個・var/let/const 57個すべて名前一意＝他の同種衝突なし**を確認。
 - 詳細: `docs/bugfix-duplicate-definitions-2026-07-09.md`。⚠️ 実機PS5では未確認（実データ経路のロジックは未変更、閾値/ガードの是正のみ）。
 
+### fix: WebGL 非対応環境で TEST MODE が起動しない不具合を修正
+- **症状**: WebGL が使えないブラウザ/環境（GPU無効・リモートデスクトップ・ハードウェアアクセラレーションOFF 等）で TEST MODE ボタンを押しても数値が動かない（`THREE.WebGLRenderer: Error creating WebGL context`）。
+- **原因**: `initCar3D()`（car-3d.js:142）のレンダラー生成が WebGL 失敗時に**例外を投げ**、TEST MODE クリックハンドラ（test-mode.js:67 の `ensureCar3DInitialized`）を中断 → 後続の `startTestMode()` に到達せずテストモードが起動しなかった。
+- **修正**: レンダラー生成を try/catch で保護し、失敗時は `car3DState.webglFailed` を立てて 3D 表示のみ無効化・代替メッセージ表示で継続（例外を投げない）。関数冒頭ガードに `webglFailed` を追加し再試行を抑止。WebGL 有効時の挙動は不変。
+- **検証**: Playwright で `getContext('webgl*')` を null 化し WebGL 非対応を強制再現 → 修正前は起動せず、修正後は起動（speed 更新・未捕捉例外0・3Dに代替表示）。WebGL 有効時も回帰なし。詳細: `docs/bugfix-webgl-graceful-degradation-2026-07-09.md`。
+
 ---
 
 ## 2026-07-08 — バックエンド安定化・構成整理

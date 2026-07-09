@@ -119,7 +119,7 @@ var EXAGGERATION_CONFIG = {
 };
 
 function initCar3D() {
-    if (car3DState.initialized) return;
+    if (car3DState.initialized || car3DState.webglFailed) return;
 
     const container = document.getElementById('car-3d-view');
     if (!container) {
@@ -138,11 +138,20 @@ function initCar3D() {
     car3DState.scene = new THREE.Scene();
     car3DState.scene.background = new THREE.Color(CAR_3D_CONFIG.colors.grid);
 
-    // レンダラー
-    car3DState.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    car3DState.renderer.setSize(width, height);
-    car3DState.renderer.setPixelRatio(window.devicePixelRatio);
-    container.appendChild(car3DState.renderer.domElement);
+    // レンダラー（WebGL 非対応/無効環境では初期化失敗を致命的にせず、3D表示のみ無効化して継続する。
+    // ここで throw すると呼び出し元（ws.onopen / TEST MODE クリック）が中断し、テストモード全体が動かなくなるため）
+    try {
+        car3DState.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        car3DState.renderer.setSize(width, height);
+        car3DState.renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(car3DState.renderer.domElement);
+    } catch (e) {
+        console.warn('[CAR_3D] WebGL 利用不可のため3D表示を無効化して継続します:', e);
+        car3DState.webglFailed = true;
+        car3DState.scene = null;
+        container.textContent = '3D表示は利用できません (WebGL 非対応)';
+        return;
+    }
 
     // カメラ - フロント3/4ビュー（姿勢変化が見やすい角度）
     car3DState.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
