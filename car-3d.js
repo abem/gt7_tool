@@ -1,1110 +1,403 @@
 /**
- * GT7 Telemetry Dashboard
- * 3D車両モデル・姿勢ビジュアライゼーション
- * ミッドシップスポーツカー風デザイン
+ * CAR ATTITUDE — 2D (Canvas2D) 姿勢 + サスペンション可視化
  *
- * 依存: Three.js (CDN r128)
- *       ui_components.js (debugLog)
+ * WebGL/Three.js を使わず Canvas2D だけで、ロール/ピッチ/ヨーの姿勢と 4輪サスペンションの
+ * 伸縮をアイソメトリック（クォータービュー）で図示する。GPU 無し・リモートデスクトップ・
+ * どのブラウザでも必ず描画される。
+ *
+ * 旧 WebGL 版と互換の口を提供:
+ *   - initCar3D()                              : 初期化（例外を投げない）
+ *   - updateCar3D(pitch, yaw, roll, rpm, steering, susp) : 毎フレーム更新
+ *   - car3DState.initialized                   : 初期化フラグ（test-mode.js が参照）
+ *
+ * 座標系（車体ローカル, 無次元）: x=右, y=上, z=前
+ * @depends ui_components.js (debugLog)
  */
 
 var car3DState = {
-    scene: null,
-    camera: null,
-    renderer: null,
-    carGroup: null,
-    carBody: null,
-    windows: [],
-    wheels: [],
     initialized: false,
+    canvas: null,
+    ctx: null,
+    W: 0, H: 0, dpr: 1,
+    // 最新姿勢（ラジアン）
+    pitch: 0, yaw: 0, roll: 0, steering: 0,
+    susp: [0, 0, 0, 0],           // FL, FR, RL, RR（生値。単位は問わない=相対表示）
     animationId: null,
-    pitch: 0,
-    yaw: 0,
-    roll: 0,
-    controls: null,
-    pitchEl: null,
-    rollEl: null,
-    yawEl: null,
-    lastRenderTs: 0,
-    renderInterval: 1000 / 30,
     needsRender: true,
-
-    // 演出効果用状態
-    targetPitch: 0,        // 増幅後の目標ピッチ
-    targetRoll: 0,         // 増幅後の目標ロール
-    displayPitch: 0,       // 現在の表示ピッチ
-    displayRoll: 0,        // 現在の表示ロール
-    pitchVelocity: 0,      // バウンス用ピッチ速度
-    rollVelocity: 0,       // バウンス用ロール速度
-    currentRpm: 0,         // 微振動用RPM
-    lastUpdateTime: 0,     // Δt計算用
-
-    // ステアリング用状態
-    steeringAngle: 0,      // 現在のステアリング角（ラジアン）
-    displaySteering: 0     // 表示用ステアリング角（補間済み）
+    resizeObserver: null,
+    pitchEl: null, rollEl: null, yawEl: null,
+    webglFailed: false            // 互換のため保持（未使用）
 };
 
-var CAR_3D_CONFIG = {
-    bodyWidth: 1.9,
-    bodyLength: 4.3,
-    bodyHeight: 1.12,
-    wheelRadius: 0.42,
-    wheelWidth: 0.28,
-    frontAxle: 1.15,
-    rearAxle: -1.35,
-    groundClearance: 0.12,
-    colors: {
-        body: 0xcc0000,
-        windows: 0x88ccff,
-        tire: 0x1a1a1a,
-        rim: 0xcccccc,
-        hubCap: 0xddaa00,
-        headlight: 0xffffee,
-        taillight: 0xcc0000,
-        intake: 0x080808,
-        exhaust: 0x999999,
-        grid: 0x14171C,
-        gridLines: 0x242932,
-        // 追加カラー
-        carbon: 0x1a1a1a,
-        chrome: 0xffffff,
-        caliper: 0xffcc00,
-        mirror: 0x111111,
-        pillar: 0x0a0a0a,
-        lens: 0x88ccff
-    }
+// 車体・カメラ寸法（無次元）
+var ATTITUDE_2D = {
+    halfLen: 1.55,     // z 半分（前後）
+    halfWid: 0.82,     // x 半分（左右）
+    bodyBottom: 0.42,  // 車体下面の高さ
+    bodyTop: 1.02,     // 車体上面の高さ
+    cabinTop: 1.30,    // ルーフ高さ
+    wheelR: 0.36,      // タイヤ半径
+    strutBase: 0.30,   // サスペンション基準長（車体下面→ホイール中心）
+    strutTravel: 0.42, // サス偏差の最大振れ幅（描画）
+    camPitch: 0.50,    // カメラ見下ろし角（rad, ~29°）
+    camYaw: -0.66,     // カメラ方位角（rad, ~-38°）
+    scale: 46,         // px/unit（init でフィット調整）
+    horizonY: 0.60     // 地面基準線の縦位置（キャンバス高さ比）
 };
 
-// ボディ幅に対するボディ内寸比率（サイドスカート等のインセット）
-const CAR_BODY_INSET = 0.92;
-
-/* ================================================================
- *  演出効果設定（増幅・慣性のみ）
- * ================================================================ */
-var EXAGGERATION_CONFIG = {
-    // 全体有効/無効
-    enabled: true,
-
-    // 増幅設定（大きく見せる）
-    amplification: {
-        pitch: 3.0,    // ピッチ増幅倍率（ブレーキ/加速を明確に）
-        roll: 2.5      // ロール増幅倍率（コーナリングを明確に）
-    },
-
-    // バウンス（バネ）設定（無効化）
-    bounce: {
-        enabled: false,
-        stiffness: 0,
-        damping: 0
-    },
-
-    // 慣性（遅延）設定（滑らかに追従）
-    inertia: {
-        enabled: true,
-        lerpFactor: 0.3  // 速めに追従
-    },
-
-    // 微振動設定（無効化）
-    vibration: {
-        enabled: false,
-        baseAmplitude: 0,
-        rpmMultiplier: 0,
-        frequency: 0
-    },
-
-    // ステアリング（舵角）設定
-    steering: {
-        amplification: 0.3,      // 実寸
-        lerpFactor: 0.2          // 滑らかに追従
-    }
+var ATTITUDE_COLORS = {
+    grid: 'rgba(120,140,170,0.20)',
+    gridAxis: 'rgba(120,140,170,0.38)',
+    bodyTop: '#2E7DD1',
+    bodySide: '#255FA0',
+    bodyFront: '#5AA0E6',
+    cabin: 'rgba(150,200,255,0.30)',
+    edge: 'rgba(210,230,255,0.85)',
+    wheel: '#12161C',
+    wheelRim: 'rgba(200,215,235,0.85)',
+    strutCompress: '#E8563B', // 縮み（荷重大）
+    strutNeutral: '#4CD07D',
+    strutExtend: '#43A6FF'     // 伸び（荷重小）
 };
 
 function initCar3D() {
-    if (car3DState.initialized || car3DState.webglFailed) return;
+    if (car3DState.initialized) return;
 
-    const container = document.getElementById('car-3d-view');
+    var container = document.getElementById('car-3d-view');
     if (!container) {
-        console.error('[CAR_3D] Container element not found');
+        console.error('[ATTITUDE_2D] Container #car-3d-view not found');
         return;
     }
 
-    let width = container.clientWidth;
-    let height = container.clientHeight;
-    if (width === 0 || height === 0) {
-        width = 400;
-        height = 200;
-    }
+    var canvas = document.createElement('canvas');
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+    container.appendChild(canvas);
 
-    // シーン
-    car3DState.scene = new THREE.Scene();
-    car3DState.scene.background = new THREE.Color(CAR_3D_CONFIG.colors.grid);
-
-    // レンダラー（WebGL 非対応/無効環境では初期化失敗を致命的にせず、3D表示のみ無効化して継続する。
-    // ここで throw すると呼び出し元（ws.onopen / TEST MODE クリック）が中断し、テストモード全体が動かなくなるため）
-    try {
-        car3DState.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-        car3DState.renderer.setSize(width, height);
-        car3DState.renderer.setPixelRatio(window.devicePixelRatio);
-        container.appendChild(car3DState.renderer.domElement);
-    } catch (e) {
-        console.warn('[CAR_3D] WebGL 利用不可のため3D表示を無効化して継続します:', e);
-        car3DState.webglFailed = true;
-        car3DState.scene = null;
-        container.textContent = '3D表示は利用できません (WebGL 非対応)';
-        return;
-    }
-
-    // カメラ - フロント3/4ビュー（姿勢変化が見やすい角度）
-    car3DState.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    car3DState.camera.position.set(5, 2.2, 3);
-    car3DState.camera.lookAt(0, 0.4, 0);
-
-    // OrbitControls初期化（失敗時はカメラ固定で動作継続）
-    try {
-        car3DState.controls = new THREE.OrbitControls(
-            car3DState.camera,
-            car3DState.renderer.domElement
-        );
-        car3DState.controls.enableDamping = true;
-        car3DState.controls.dampingFactor = 0.05;
-        car3DState.controls.target.set(0, 0.4, 0);
-        car3DState.controls.update();
-        car3DState.controls.addEventListener('change', function() {
-            car3DState.needsRender = true;
-        });
-    } catch (e) {
-        console.warn('[CAR_3D] OrbitControls initialization failed:', e);
-        car3DState.controls = null;
-    }
-
-    // 環境光
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    car3DState.scene.add(ambientLight);
-
-    // メイン平行光源
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
-    directionalLight.position.set(5, 8, 4);
-    car3DState.scene.add(directionalLight);
-
-    // フィルライト（反対側から柔らかく）
-    const fillLight = new THREE.DirectionalLight(0x8888ff, 0.25);
-    fillLight.position.set(-3, 1, -2);
-    car3DState.scene.add(fillLight);
-
-    // グリッド
-    const gridHelper = new THREE.GridHelper(20, 20, CAR_3D_CONFIG.colors.gridLines, CAR_3D_CONFIG.colors.grid);
-    car3DState.scene.add(gridHelper);
-
-    // 車両モデル構築
-    car3DState.carGroup = new THREE.Group();
-    buildCarModel(car3DState.carGroup);
-    car3DState.scene.add(car3DState.carGroup);
-
-    // リサイズ監視
-    const resizeObserver = new ResizeObserver(function() {
-        if (container && car3DState.renderer && car3DState.camera) {
-            const w = container.clientWidth;
-            const h = container.clientHeight;
-            if (w > 0 && h > 0) {
-                car3DState.camera.aspect = w / h;
-                car3DState.camera.updateProjectionMatrix();
-                car3DState.renderer.setSize(w, h);
-                car3DState.needsRender = true;
-            }
-        }
-    });
-    resizeObserver.observe(container);
-
-    car3DState.initialized = true;
-    car3DState.lastUpdateTime = performance.now();
-
-    // DOM要素キャッシュ（updateCar3D で毎回 getElementById を呼ばないよう初期化時に保持）
+    car3DState.canvas = canvas;
+    car3DState.ctx = canvas.getContext('2d');
     car3DState.pitchEl = document.getElementById('car-3d-pitch');
     car3DState.rollEl  = document.getElementById('car-3d-roll');
     car3DState.yawEl   = document.getElementById('car-3d-yaw');
 
-    // レンダーループ開始
-    function animate(now) {
-        car3DState.animationId = requestAnimationFrame(animate);
-        if (!car3DState.renderer || !car3DState.scene || !car3DState.camera) {
-            return;
-        }
-        if (now === undefined) {
-            now = performance.now();
-        }
+    resizeAttitude2D();
+    car3DState.resizeObserver = new ResizeObserver(resizeAttitude2D);
+    car3DState.resizeObserver.observe(container);
 
-        // 演出効果の継続更新（バウンス・慣性）
-        updateExaggerationEffects(now);
+    // 旧WebGL版の名残で空だった「TOP VIEW」枠は不要になったので非表示にして詰める
+    var topView = document.querySelector('.car-top-view-container');
+    if (topView) topView.style.display = 'none';
+    // PITCH/ROLL/YAW はキャンバス上に直接描くため、DOM の数値行は非表示（カード高が狭い環境での重なり防止）
+    var info = document.querySelector('.car-3d-info');
+    if (info) info.style.display = 'none';
 
-        const elapsed = now - car3DState.lastRenderTs;
-        if (car3DState.needsRender && elapsed >= car3DState.renderInterval) {
-            car3DState.needsRender = false;
-            if (car3DState.controls) {
-                car3DState.controls.update();
-            }
-            car3DState.renderer.render(car3DState.scene, car3DState.camera);
-            car3DState.lastRenderTs = now;
-        }
-    }
-    animate(performance.now());
-
-    debugLog('CAR_3D', 'Initialized 3D car model');
+    car3DState.initialized = true;
+    if (typeof debugLog === 'function') debugLog('ATTITUDE_2D', 'Initialized 2D attitude view');
+    renderLoop();
 }
 
-/* ================================================================
- *  車両モデル構築（リデザイン版）
- * ================================================================ */
-function buildCarModel(carGroup) {
-    buildCarBody(carGroup);
-    buildHoodAndRoof(carGroup);
-    buildWindows(carGroup);
-    buildSideMirrors(carGroup);
-    buildAeroAndIntakes(carGroup);
-    buildCanards(carGroup);
-    buildWheels(carGroup);
-    buildLights(carGroup);
-    buildRearDetails(carGroup);
+function resizeAttitude2D() {
+    var c = car3DState.canvas;
+    if (!c) return;
+    var rect = c.getBoundingClientRect();
+    var w = Math.max(1, Math.round(rect.width));
+    var h = Math.max(1, Math.round(rect.height));
+    var dpr = window.devicePixelRatio || 1;
+    car3DState.W = w;
+    car3DState.H = h;
+    car3DState.dpr = dpr;
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    car3DState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // 車体（全長約 5 単位）が収まるよう自動スケール
+    ATTITUDE_2D.scale = Math.min(w / 5.4, h / 3.4);
+    car3DState.needsRender = true;
 }
 
-// ─── メインボディ（ロワーボディ）───
-function buildCarBody(carGroup) {
-    const L = CAR_3D_CONFIG.bodyLength;
-    const H = CAR_3D_CONFIG.bodyHeight;
-    const gc = CAR_3D_CONFIG.groundClearance;
-    const HL = L / 2;
-    const bodyW = CAR_3D_CONFIG.bodyWidth * CAR_BODY_INSET;
-
-    // ロワーボディ（サイドスカート領域まで）
-    const bodyShape = new THREE.Shape();
-    bodyShape.moveTo(-HL, gc);
-    bodyShape.lineTo(HL - 0.30, gc);
-    bodyShape.quadraticCurveTo(HL - 0.05, gc, HL, gc + 0.16);
-    bodyShape.lineTo(HL, 0.42);
-    bodyShape.quadraticCurveTo(HL - 0.20, 0.46, 1.50, 0.55);
-    bodyShape.quadraticCurveTo(1.00, 0.63, 0.50, 0.72);
-    bodyShape.lineTo(-0.15, H - 0.04);
-    bodyShape.quadraticCurveTo(-0.35, H, -0.55, H);
-    bodyShape.lineTo(-0.85, H - 0.02);
-    bodyShape.quadraticCurveTo(-1.05, 0.93, -1.25, 0.82);
-    bodyShape.lineTo(-1.80, 0.78);
-    bodyShape.lineTo(-HL + 0.05, 0.76);
-    bodyShape.lineTo(-HL, 0.68);
-    bodyShape.lineTo(-HL, gc);
-
-    const bodyGeo = new THREE.ExtrudeGeometry(bodyShape, {
-        depth: bodyW,
-        bevelEnabled: true,
-        bevelThickness: 0.05,
-        bevelSize: 0.04,
-        bevelSegments: 3
-    });
-    bodyGeo.translate(0, 0, -bodyW / 2);
-
-    const bodyMat = new THREE.MeshPhongMaterial({
-        color: CAR_3D_CONFIG.colors.body,
-        shininess: 140,
-        specular: new THREE.Color(0x666666)
-    });
-
-    car3DState.carBody = new THREE.Mesh(bodyGeo, bodyMat);
-    carGroup.add(car3DState.carBody);
-}
-
-// ─── ボンネット・ルーフ（別パーツ化）───
-function buildHoodAndRoof(carGroup) {
-    const bodyW = CAR_3D_CONFIG.bodyWidth * CAR_BODY_INSET;
-    const H = CAR_3D_CONFIG.bodyHeight;
-
-    const bodyMat = new THREE.MeshPhongMaterial({
-        color: CAR_3D_CONFIG.colors.body,
-        shininess: 140,
-        specular: new THREE.Color(0x666666)
-    });
-
-    // ボンネット（フラットな面）
-    const hoodGeo = new THREE.BoxGeometry(0.8, 0.03, bodyW * 0.85);
-    const hood = new THREE.Mesh(hoodGeo, bodyMat);
-    hood.position.set(1.35, 0.57, 0);
-    hood.rotation.z = -0.08;
-    carGroup.add(hood);
-
-    // NACAダクト（ボンネット上）
-    const nacaMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.carbon });
-    const nacaGeo = new THREE.BoxGeometry(0.25, 0.02, 0.08);
-    [-0.25, 0.25].forEach(function(z) {
-        const naca = new THREE.Mesh(nacaGeo, nacaMat);
-        naca.position.set(1.20, 0.60, z);
-        carGroup.add(naca);
-    });
-
-    // ルーフ（キャビン上部）
-    const roofGeo = new THREE.BoxGeometry(0.6, 0.03, bodyW * 0.7);
-    const roof = new THREE.Mesh(roofGeo, bodyMat);
-    roof.position.set(-0.55, H + 0.02, 0);
-    carGroup.add(roof);
-}
-
-// ─── サイドミラー ───
-function buildSideMirrors(carGroup) {
-    const W = CAR_3D_CONFIG.bodyWidth;
-    const bodyW = W * CAR_BODY_INSET;
-
-    const mirrorMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.body });
-    const glassMat = new THREE.MeshPhongMaterial({
-        color: 0x334455,
-        shininess: 200,
-        specular: new THREE.Color(0x666666)
-    });
-
-    [-1, 1].forEach(function(side) {
-        const mirrorGroup = new THREE.Group();
-
-        // ミラーハウジング
-        const housingGeo = new THREE.BoxGeometry(0.12, 0.06, 0.08);
-        const housing = new THREE.Mesh(housingGeo, mirrorMat);
-        mirrorGroup.add(housing);
-
-        // ミラー面（ガラス）
-        const glassGeo = new THREE.PlaneGeometry(0.10, 0.05);
-        const glass = new THREE.Mesh(glassGeo, glassMat);
-        glass.position.z = side * 0.041;
-        glass.rotation.y = side * -0.2;
-        mirrorGroup.add(glass);
-
-        // ステム（支え）
-        const stemGeo = new THREE.CylinderGeometry(0.015, 0.012, 0.08, 8);
-        const stem = new THREE.Mesh(stemGeo, mirrorMat);
-        stem.position.set(-0.04, -0.06, 0);
-        stem.rotation.z = 0.3;
-        mirrorGroup.add(stem);
-
-        mirrorGroup.position.set(0.70, 0.85, side * (bodyW / 2 + 0.08));
-        carGroup.add(mirrorGroup);
-    });
-}
-
-// ─── カナード（フロントバンパー）───
-function buildCanards(carGroup) {
-    const HL = CAR_3D_CONFIG.bodyLength / 2;
-    const W = CAR_3D_CONFIG.bodyWidth;
-
-    const canardMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.carbon });
-
-    // カナード形状（三角形の翼）
-    const canardShape = new THREE.Shape();
-    canardShape.moveTo(0, 0);
-    canardShape.lineTo(0.15, 0);
-    canardShape.lineTo(0.08, 0.06);
-    canardShape.lineTo(0, 0);
-
-    const canardGeo = new THREE.ExtrudeGeometry(canardShape, {
-        depth: 0.02,
-        bevelEnabled: false
-    });
-
-    [-1, 1].forEach(function(side) {
-        const canard = new THREE.Mesh(canardGeo, canardMat);
-        canard.position.set(HL - 0.05, 0.18, side * (W / 2 - 0.05));
-        canard.rotation.y = side * 0.3;
-        canard.rotation.x = 0.1;
-        carGroup.add(canard);
-    });
-}
-
-// ─── ウインドウ ───
-function buildWindows(carGroup) {
-    const bodyW = CAR_3D_CONFIG.bodyWidth * CAR_BODY_INSET;
-    const bh = bodyW / 2;
-    const bevelT = 0.05;
-    const bevelS = 0.04;
-
-    // フロント/リア用マテリアル（薄板クワッドのため depthTest:false でボディ上に描画）
-    const winBackMat = new THREE.MeshBasicMaterial({
-        color: 0x080810,
-        side: THREE.FrontSide,
-        depthTest: false,
-        depthWrite: false
-    });
-    const winGlassMat = new THREE.MeshPhongMaterial({
-        color: CAR_3D_CONFIG.colors.windows,
-        transparent: false,
-        opacity: 1,
-        shininess: 200,
-        specular: new THREE.Color(0xaaaaaa),
-        emissive: new THREE.Color(0x112838),
-        side: THREE.FrontSide,
-        depthTest: false,
-        depthWrite: false
-    });
-
-    // フロントウインドシールド（薄板クワッド）
-    const gw  = bh * 0.85;
-    const gwT = bh * 0.70;
-    const wsGeo = new THREE.BufferGeometry();
-    wsGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-         0.48, 0.73, -gw,
-         0.48, 0.73,  gw,
-        -0.13, 1.06,  gwT,
-        -0.13, 1.06, -gwT
-    ]), 3));
-    wsGeo.setIndex([0, 2, 1,  0, 3, 2]);
-    wsGeo.computeVertexNormals();
-
-    const wsBack = new THREE.Mesh(wsGeo, winBackMat);
-    wsBack.renderOrder = 1;
-    carGroup.add(wsBack);
-    const wsMesh = new THREE.Mesh(wsGeo, winGlassMat);
-    wsMesh.renderOrder = 2;
-    car3DState.windows.push(wsMesh);
-    carGroup.add(wsMesh);
-
-    // リアウインドウ（薄板クワッド）
-    const rw  = bh * 0.78;
-    const rwB = bh * 0.68;
-    const rwGeo = new THREE.BufferGeometry();
-    rwGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-        -0.87, 1.07, -rw,
-        -0.87, 1.07,  rw,
-        -1.20, 0.85,  rwB,
-        -1.20, 0.85, -rwB
-    ]), 3));
-    rwGeo.setIndex([0, 2, 1,  0, 3, 2]);
-    rwGeo.computeVertexNormals();
-
-    const rwBack = new THREE.Mesh(rwGeo, winBackMat.clone());
-    rwBack.renderOrder = 1;
-    carGroup.add(rwBack);
-    const rwMesh = new THREE.Mesh(rwGeo, winGlassMat.clone());
-    rwMesh.renderOrder = 2;
-    car3DState.windows.push(rwMesh);
-    carGroup.add(rwMesh);
-
-    // サイドウインドウ
-    const swShape = new THREE.Shape();
-    swShape.moveTo(0.47, 0.73);
-    swShape.lineTo(-0.13, 1.05);
-    swShape.quadraticCurveTo(-0.33, 1.08, -0.55, 1.08);
-    swShape.lineTo(-0.85, 1.06);
-    swShape.quadraticCurveTo(-1.03, 0.92, -1.21, 0.82);
-    swShape.lineTo(0.47, 0.73);
-
-    const swGeo = new THREE.ExtrudeGeometry(swShape, {
-        depth: bodyW,
-        bevelEnabled: true,
-        bevelThickness: 0.05,
-        bevelSize: 0.04,
-        bevelSegments: 3
-    });
-    swGeo.translate(0, 0, -bodyW / 2);
-
-    const sideBackMat = new THREE.MeshBasicMaterial({
-        color: 0x081018,
-        depthTest: true,
-        depthWrite: true,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -4
-    });
-    const sideGlassMat = new THREE.MeshPhongMaterial({
-        color: CAR_3D_CONFIG.colors.windows,
-        transparent: false,
-        opacity: 1,
-        shininess: 200,
-        specular: new THREE.Color(0xaaaaaa),
-        emissive: new THREE.Color(0x1a3848),
-        depthTest: true,
-        depthWrite: true,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -8
-    });
-
-    const swBackMesh = new THREE.Mesh(swGeo, sideBackMat);
-    swBackMesh.renderOrder = 3;
-    carGroup.add(swBackMesh);
-    const swGlassMesh = new THREE.Mesh(swGeo, sideGlassMat);
-    swGlassMesh.renderOrder = 4;
-    car3DState.windows.push(swGlassMesh);
-    carGroup.add(swGlassMesh);
-}
-
-// ─── エアロ・インテーク・スカート ───
-function buildAeroAndIntakes(carGroup) {
-    const W = CAR_3D_CONFIG.bodyWidth;
-    const gc = CAR_3D_CONFIG.groundClearance;
-    const HL = CAR_3D_CONFIG.bodyLength / 2;
-    const bodyW = W * CAR_BODY_INSET;
-
-    const intakeMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.intake });
-    const intakeGeo = new THREE.BoxGeometry(0.50, 0.16, 0.03);
-    [-1, 1].forEach(function(side) {
-        const intake = new THREE.Mesh(intakeGeo, intakeMat);
-        intake.position.set(-0.55, 0.48, side * (bodyW / 2 + 0.05));
-        carGroup.add(intake);
-    });
-
-    const darkMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-    const splitterGeo = new THREE.BoxGeometry(0.18, 0.025, W * 1.02);
-    const splitter = new THREE.Mesh(splitterGeo, darkMat);
-    splitter.position.set(HL - 0.05, gc - 0.01, 0);
-    carGroup.add(splitter);
-
-    const skirtGeo = new THREE.BoxGeometry(2.2, 0.035, 0.025);
-    [-1, 1].forEach(function(side) {
-        const skirt = new THREE.Mesh(skirtGeo, darkMat);
-        skirt.position.set(-0.10, gc + 0.02, side * W / 2);
-        carGroup.add(skirt);
-    });
-}
-
-// ─── ヘッドライト・テールライト（LED化）───
-function buildLights(carGroup) {
-    const HL = CAR_3D_CONFIG.bodyLength / 2;
-    const W = CAR_3D_CONFIG.bodyWidth;
-
-    // === ヘッドライト（LEDプロジェクター風）===
-    [-1, 1].forEach(function(side) {
-        const lightGroup = new THREE.Group();
-
-        // ライトハウジング
-        const housingMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-        const housingGeo = new THREE.BoxGeometry(0.08, 0.15, 0.35);
-        const housing = new THREE.Mesh(housingGeo, housingMat);
-        lightGroup.add(housing);
-
-        // レンズカバー（半透明）
-        const lensMat = new THREE.MeshPhongMaterial({
-            color: CAR_3D_CONFIG.colors.lens,
-            transparent: true,
-            opacity: 0.6,
-            shininess: 200
-        });
-        const lensGeo = new THREE.PlaneGeometry(0.32, 0.13);
-        const lens = new THREE.Mesh(lensGeo, lensMat);
-        lens.position.x = 0.041;
-        lens.rotation.y = Math.PI / 2;
-        lightGroup.add(lens);
-
-        // LEDプロジェクター（メイン）
-        const ledMat = new THREE.MeshPhongMaterial({
-            color: 0xffffff,
-            emissive: 0xffffcc,
-            emissiveIntensity: 0.8
-        });
-        const ledGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.02, 16);
-        const ledMain = new THREE.Mesh(ledGeo, ledMat);
-        ledMain.rotation.z = Math.PI / 2;
-        ledMain.position.set(0.03, 0.02, side * 0.08);
-        lightGroup.add(ledMain);
-
-        // デイライト（細長いLEDストリップ）
-        const drlMat = new THREE.MeshPhongMaterial({
-            color: 0xffffff,
-            emissive: 0xaaccff,
-            emissiveIntensity: 0.5
-        });
-        const drlGeo = new THREE.BoxGeometry(0.02, 0.015, 0.25);
-        const drl = new THREE.Mesh(drlGeo, drlMat);
-        drl.position.set(0.035, -0.05, 0);
-        lightGroup.add(drl);
-
-        // ターンシグナル（オレンジ）
-        const signalMat = new THREE.MeshPhongMaterial({
-            color: 0xff8800,
-            emissive: 0x663300
-        });
-        const signalGeo = new THREE.BoxGeometry(0.02, 0.03, 0.06);
-        const signal = new THREE.Mesh(signalGeo, signalMat);
-        signal.position.set(0.035, 0.05, side * 0.14);
-        lightGroup.add(signal);
-
-        lightGroup.position.set(HL + 0.02, 0.42, side * (W / 2 - 0.18));
-        carGroup.add(lightGroup);
-    });
-
-    // === テールライト（LEDストリップ風）===
-    [-1, 1].forEach(function(side) {
-        const tailGroup = new THREE.Group();
-
-        // ライトハウジング
-        const housingMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-        const housingGeo = new THREE.BoxGeometry(0.06, 0.08, 0.35);
-        const housing = new THREE.Mesh(housingGeo, housingMat);
-        tailGroup.add(housing);
-
-        // LEDストリップ（メイン）
-        const ledMat = new THREE.MeshPhongMaterial({
-            color: 0xff0000,
-            emissive: 0xff0000,
-            emissiveIntensity: 0.6
-        });
-        const ledGeo = new THREE.BoxGeometry(0.02, 0.04, 0.30);
-        const led = new THREE.Mesh(ledGeo, ledMat);
-        led.position.x = -0.031;
-        tailGroup.add(led);
-
-        // リフレクター（反射板風）
-        const reflectMat = new THREE.MeshPhongMaterial({
-            color: 0x330000,
-            shininess: 100,
-            specular: new THREE.Color(0x440000)
-        });
-        const reflectGeo = new THREE.PlaneGeometry(0.28, 0.06);
-        const reflect = new THREE.Mesh(reflectGeo, reflectMat);
-        reflect.position.x = -0.032;
-        reflect.rotation.y = Math.PI / 2;
-        tailGroup.add(reflect);
-
-        // バックランプ（白・内側）
-        const backupMat = new THREE.MeshPhongMaterial({
-            color: 0xffffff,
-            emissive: 0xaaaaaa
-        });
-        const backupGeo = new THREE.BoxGeometry(0.02, 0.03, 0.05);
-        const backup = new THREE.Mesh(backupGeo, backupMat);
-        backup.position.set(-0.031, -0.02, -side * 0.12);
-        tailGroup.add(backup);
-
-        tailGroup.position.set(-HL - 0.01, 0.52, side * (W / 2 - 0.18));
-        carGroup.add(tailGroup);
-    });
-}
-
-// ─── グリル・ディフューザー・エキゾースト・ルーバー・ウイング ───
-function buildRearDetails(carGroup) {
-    const HL = CAR_3D_CONFIG.bodyLength / 2;
-    const bodyW = CAR_3D_CONFIG.bodyWidth * CAR_BODY_INSET;
-    const W = CAR_3D_CONFIG.bodyWidth;
-
-    const intakeMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.intake });
-    const carbonMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.carbon });
-
-    // === フロントグリル（メッシュ化）===
-    const grillFrameGeo = new THREE.BoxGeometry(0.02, 0.15, 0.70);
-    const grillFrame = new THREE.Mesh(grillFrameGeo, intakeMat);
-    grillFrame.position.set(HL + 0.01, 0.22, 0);
-    carGroup.add(grillFrame);
-
-    // メッシュ（横棒）
-    const meshMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
-    const meshGeo = new THREE.BoxGeometry(0.015, 0.008, 0.65);
-    for (let i = 0; i < 8; i++) {
-        const meshBar = new THREE.Mesh(meshGeo, meshMat);
-        meshBar.position.set(HL + 0.02, 0.14 + i * 0.015, 0);
-        carGroup.add(meshBar);
-    }
-
-    // === リアディフューザー（カーボン風）===
-    const diffGeo = new THREE.BoxGeometry(0.04, 0.10, 0.80);
-    const diff = new THREE.Mesh(diffGeo, carbonMat);
-    diff.position.set(-HL - 0.02, 0.18, 0);
-    carGroup.add(diff);
-
-    // ディフューザーフィン
-    const finGeo = new THREE.BoxGeometry(0.03, 0.08, 0.008);
-    [-0.30, -0.15, 0, 0.15, 0.30].forEach(function(z) {
-        const fin = new THREE.Mesh(finGeo, carbonMat);
-        fin.position.set(-HL - 0.03, 0.15, z);
-        fin.rotation.x = 0.2;
-        carGroup.add(fin);
-    });
-
-    // === エキゾースト（オーバル型クアッド）===
-    const exhMat = new THREE.MeshPhongMaterial({
-        color: 0x888888,
-        shininess: 150,
-        specular: new THREE.Color(0x444444)
-    });
-    const exhInMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
-
-    [-0.28, -0.15, 0.15, 0.28].forEach(function(z) {
-        const exhGroup = new THREE.Group();
-        // 外側（オーバル）
-        const exhOuterGeo = new THREE.CylinderGeometry(0.035, 0.038, 0.10, 12);
-        const exhOuter = new THREE.Mesh(exhOuterGeo, exhMat);
-        exhOuter.rotation.z = Math.PI / 2;
-        exhGroup.add(exhOuter);
-        // 内側（黒）
-        const exhInnerGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.03, 12);
-        const exhInner = new THREE.Mesh(exhInnerGeo, exhInMat);
-        exhInner.rotation.z = Math.PI / 2;
-        exhInner.position.x = -0.04;
-        exhGroup.add(exhInner);
-
-        exhGroup.position.set(-HL - 0.06, 0.19, z);
-        carGroup.add(exhGroup);
-    });
-
-    // === エンジンカバーのルーバー（ミッドエンジンの吸気口）===
-    const louverMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.carbon });
-    const louverGeo = new THREE.BoxGeometry(0.30, 0.008, bodyW * 0.55);
-    for (let j = 0; j < 4; j++) {
-        const louver = new THREE.Mesh(louverGeo, louverMat);
-        louver.position.set(-1.40 - j * 0.10, 0.79, 0);
-        louver.rotation.z = 0.05;
-        carGroup.add(louver);
-    }
-
-    // === リアウイング支柱 ===
-    const stayGeo = new THREE.BoxGeometry(0.03, 0.22, 0.03);
-    const stayMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.carbon });
-    [-0.55, 0.55].forEach(function(z) {
-        const stay = new THREE.Mesh(stayGeo, stayMat);
-        stay.position.set(-HL + 0.15, 0.88, z);
-        carGroup.add(stay);
-    });
-
-    // === リアウイング翼面 ===
-    const wingShape = new THREE.Shape();
-    wingShape.moveTo(0, 0);
-    wingShape.lineTo(0.22, -0.01);
-    wingShape.lineTo(0.20, 0.03);
-    wingShape.lineTo(0, 0.025);
-    wingShape.lineTo(0, 0);
-
-    const wingGeo = new THREE.ExtrudeGeometry(wingShape, {
-        depth: 1.25,
-        bevelEnabled: true,
-        bevelThickness: 0.005,
-        bevelSize: 0.005,
-        bevelSegments: 1
-    });
-    wingGeo.translate(0, 0, -1.25 / 2);
-
-    const wingMat = new THREE.MeshPhongMaterial({
-        color: CAR_3D_CONFIG.colors.body,
-        shininess: 140,
-        specular: new THREE.Color(0x444444)
-    });
-    const wing = new THREE.Mesh(wingGeo, wingMat);
-    wing.position.set(-HL + 0.08, 0.97, 0);
-    carGroup.add(wing);
-
-    // ウイングエンドプレート
-    const endplateGeo = new THREE.BoxGeometry(0.18, 0.08, 0.01);
-    const endplateMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.carbon });
-    [-0.63, 0.63].forEach(function(z) {
-        const endplate = new THREE.Mesh(endplateGeo, endplateMat);
-        endplate.position.set(-HL + 0.17, 0.98, z);
-        carGroup.add(endplate);
-    });
-}
-
-/* ================================================================
- *  ホイール構築（Y字5スポーク + キャリパー）
- * ================================================================ */
-function buildWheels(carGroup) {
-    const wR = CAR_3D_CONFIG.wheelRadius;
-    const wW = CAR_3D_CONFIG.wheelWidth;
-    const W = CAR_3D_CONFIG.bodyWidth;
-
-    const halfWidth = W / 2 + wW * 0.05;
-
-    const positions = [
-        { x: CAR_3D_CONFIG.frontAxle,  y: wR, z:  halfWidth, s:  1, front: true },
-        { x: CAR_3D_CONFIG.frontAxle,  y: wR, z: -halfWidth, s: -1, front: true },
-        { x: CAR_3D_CONFIG.rearAxle,   y: wR, z:  halfWidth, s:  1, front: false },
-        { x: CAR_3D_CONFIG.rearAxle,   y: wR, z: -halfWidth, s: -1, front: false }
-    ];
-
-    const tireMat = new THREE.MeshPhongMaterial({ color: CAR_3D_CONFIG.colors.tire });
-    const tireGeo = new THREE.CylinderGeometry(wR, wR, wW, 32);
-
-    // タイヤサイドウォール
-    const swTubeR = 0.04;
-    const swTorusR = wR - swTubeR;
-    const sidewallGeo = new THREE.TorusGeometry(swTorusR, swTubeR, 8, 32);
-    const sidewallMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
-
-    // リムマテリアル
-    const rimMat = new THREE.MeshPhongMaterial({
-        color: CAR_3D_CONFIG.colors.rim,
-        shininess: 180,
-        specular: new THREE.Color(0x888888)
-    });
-
-    // リムベース（円盤）
-    const rimR = wR * 0.70;
-    const rimBaseGeo = new THREE.CircleGeometry(rimR, 32);
-
-    // リムバレル（外周リング）
-    const rimBarrelGeo = new THREE.TorusGeometry(rimR, 0.02, 8, 32);
-
-    // Y字スポーク（5本）
-    const spokeMat = new THREE.MeshPhongMaterial({
-        color: 0x444444,
-        shininess: 100
-    });
-
-    // ハブキャップ
-    const hubR = wR * 0.12;
-    const hubGeo = new THREE.CylinderGeometry(hubR, hubR, 0.02, 16);
-    const hubMat = new THREE.MeshPhongMaterial({
-        color: CAR_3D_CONFIG.colors.hubCap,
-        shininess: 150
-    });
-
-    // ブレーキディスク（ドリルドローター風）
-    const brakeR = rimR * 0.85;
-    const brakeGeo = new THREE.RingGeometry(0.08, brakeR, 32);
-    const brakeMat = new THREE.MeshPhongMaterial({
-        color: 0x666666,
-        shininess: 60,
-        side: THREE.DoubleSide
-    });
-
-    // ブレーキキャリパー
-    const caliperGeo = new THREE.BoxGeometry(0.12, 0.08, 0.04);
-    const caliperMat = new THREE.MeshPhongMaterial({
-        color: CAR_3D_CONFIG.colors.caliper,
-        shininess: 120
-    });
-
-    positions.forEach(function(pos) {
-        const wheelGroup = new THREE.Group();
-
-        // タイヤ本体
-        const tire = new THREE.Mesh(tireGeo, tireMat);
-        tire.rotation.x = Math.PI / 2;
-        wheelGroup.add(tire);
-
-        // サイドウォール（外側）
-        const sw = new THREE.Mesh(sidewallGeo, sidewallMat);
-        sw.position.z = (wW / 2 - swTubeR * 0.5) * pos.s;
-        wheelGroup.add(sw);
-
-        // ブレーキディスク
-        const brake = new THREE.Mesh(brakeGeo, brakeMat);
-        brake.position.z = (wW / 2 - 0.03) * pos.s;
-        wheelGroup.add(brake);
-
-        // ブレーキキャリパー（外側上部）
-        const caliper = new THREE.Mesh(caliperGeo, caliperMat);
-        caliper.position.set(0, wR * 0.5, (wW / 2 - 0.015) * pos.s);
-        wheelGroup.add(caliper);
-
-        // リムベース
-        const rimBase = new THREE.Mesh(rimBaseGeo, rimMat);
-        rimBase.position.z = (wW / 2 + 0.005) * pos.s;
-        if (pos.s < 0) rimBase.rotation.y = Math.PI;
-        wheelGroup.add(rimBase);
-
-        // リムバレル
-        const rimBarrel = new THREE.Mesh(rimBarrelGeo, rimMat);
-        rimBarrel.position.z = (wW / 2 + 0.005) * pos.s;
-        wheelGroup.add(rimBarrel);
-
-        // Y字スポーク（5本）
-        for (let i = 0; i < 5; i++) {
-            const angle = (i / 5) * Math.PI * 2;
-            const spokeGroup = new THREE.Group();
-
-            // メインスポーク
-            const mainSpokeGeo = new THREE.BoxGeometry(0.03, rimR - hubR - 0.02, 0.015);
-            const mainSpoke = new THREE.Mesh(mainSpokeGeo, spokeMat);
-            mainSpoke.position.y = (rimR - hubR) / 2 + hubR;
-            spokeGroup.add(mainSpoke);
-
-            // Y字分岐（左右）
-            const branchGeo = new THREE.BoxGeometry(0.02, 0.08, 0.01);
-            [-1, 1].forEach(function(side) {
-                const branch = new THREE.Mesh(branchGeo, spokeMat);
-                branch.position.set(side * 0.04, rimR - 0.12, 0);
-                branch.rotation.z = side * 0.4;
-                spokeGroup.add(branch);
-            });
-
-            spokeGroup.rotation.z = angle;
-            spokeGroup.position.z = (wW / 2 + 0.008) * pos.s;
-            if (pos.s < 0) spokeGroup.rotation.y = Math.PI;
-            wheelGroup.add(spokeGroup);
-        }
-
-        // ハブキャップ
-        const hub = new THREE.Mesh(hubGeo, hubMat);
-        hub.rotation.x = Math.PI / 2;
-        hub.position.z = (wW / 2 + 0.015) * pos.s;
-        wheelGroup.add(hub);
-
-        wheelGroup.position.set(pos.x, pos.y, pos.z);
-        car3DState.wheels.push(wheelGroup);
-        carGroup.add(wheelGroup);
-    });
-}
-
-/* ================================================================
- *  姿勢更新（pitch / yaw / roll / rpm / steering）
- *  演出効果（増幅・バウンス・慣性・微振動）を適用
- * ================================================================ */
 /**
- * 車両の姿勢とステアリングを更新し、演出効果を適用する。
- * @param {number} pitch - ピッチ角（ラジアン）
- * @param {number} yaw - ヨー角（ラジアン）
- * @param {number} roll - ロール角（ラジアン）
- * @param {number} rpm - エンジン回転数（RPM）
- * @param {number} steering - ステアリング舵角（ラジアン）
+ * 姿勢・サスの更新（旧 WebGL 版と互換のシグネチャ + susp 追加）
+ * @param {number} pitch    ピッチ角（rad）
+ * @param {number} yaw      ヨー角（rad）
+ * @param {number} roll     ロール角（rad）
+ * @param {number} rpm      （未使用・互換のため）
+ * @param {number} steering ステア角（rad, 前輪を切る）
+ * @param {number[]} susp   4輪サスペンション値 [FL,FR,RL,RR]（相対表示なので単位不問）
  */
-function updateCar3D(pitch, yaw, roll, rpm, steering) {
-    if (!car3DState.initialized || !car3DState.carGroup) return;
-
-    // 元の値を保持（UI表示用）
+function updateCar3D(pitch, yaw, roll, rpm, steering, susp) {
     car3DState.pitch = pitch || 0;
     car3DState.yaw = yaw || 0;
     car3DState.roll = roll || 0;
-    car3DState.currentRpm = rpm || 0;
-    car3DState.steeringAngle = steering || 0;
-
-    // 演出効果が無効な場合は直接適用
-    if (!EXAGGERATION_CONFIG.enabled) {
-        car3DState.carGroup.rotation.x = car3DState.pitch;
-        car3DState.carGroup.rotation.y = 0;
-        car3DState.carGroup.rotation.z = car3DState.roll;
-        car3DState.needsRender = true;
-    } else {
-        // 増幅を適用して目標値を計算
-        car3DState.targetPitch = applyAmplification(car3DState.pitch, 'pitch');
-        car3DState.targetRoll = applyAmplification(car3DState.roll, 'roll');
-        // 実際の回転は animate ループ内で updateExaggerationEffects() により更新
+    car3DState.steering = steering || 0;
+    if (susp && susp.length >= 4) {
+        car3DState.susp = [susp[0] || 0, susp[1] || 0, susp[2] || 0, susp[3] || 0];
     }
-
-    // CAR ATTITUDEカード内の数値表示を更新（元の値を表示）
-    if (car3DState.pitchEl) car3DState.pitchEl.textContent = (pitch * 180 / Math.PI).toFixed(2) + '\u00B0';
-    if (car3DState.rollEl)  car3DState.rollEl.textContent  = (roll  * 180 / Math.PI).toFixed(2) + '\u00B0';
-    if (car3DState.yawEl)   car3DState.yawEl.textContent   = (yaw   * 180 / Math.PI).toFixed(2) + '\u00B0';
-}
-
-/* ================================================================
- *  演出効果関数
- * ================================================================ */
-
-/** 姿勢値にピッチ/ロールの増幅倍率を掛けて返す。 */
-function applyAmplification(value, type) {
-    let multiplier = 1;
-    if (type === 'pitch') {
-        multiplier = EXAGGERATION_CONFIG.amplification.pitch;
-    } else if (type === 'roll') {
-        multiplier = EXAGGERATION_CONFIG.amplification.roll;
-    }
-    return value * multiplier;
-}
-
-// 線形補間（lerp）
-function lerp(current, target, factor) {
-    return current + (target - current) * factor;
-}
-
-/**
- * バネ・ダンパーモデルでバウンスを1ステップ計算する。
- * @returns {{value: number, velocity: number}} 更新後の位置と速度
- */
-function applySpringDamper(current, target, velocity, dt) {
-    const stiffness = EXAGGERATION_CONFIG.bounce.stiffness;
-    const damping = EXAGGERATION_CONFIG.bounce.damping;
-
-    // バネの力: 目標への復元力
-    const springForce = stiffness * (target - current);
-    // ダンパーの力: 速度に比例する抵抗
-    const dampingForce = damping * velocity;
-
-    // 加速度
-    const acceleration = springForce - dampingForce;
-
-    // 速度更新
-    velocity += acceleration * dt;
-
-    // 位置更新
-    current += velocity * dt;
-
-    return { value: current, velocity: velocity };
-}
-
-/**
- * RPMと時刻から微振動オフセットを生成する。
- * @returns {{x: number, z: number}} 回転軸ごとの振動量
- */
-function generateVibration(rpm, time) {
-    if (!EXAGGERATION_CONFIG.vibration.enabled) {
-        return { x: 0, z: 0 };
-    }
-
-    const cfg = EXAGGERATION_CONFIG.vibration;
-    const amp = cfg.baseAmplitude + rpm * cfg.rpmMultiplier;
-    const freq = cfg.frequency;
-
-    // 複数の周波数を組み合わせて自然な振動に
-    let vibX = Math.sin(time * freq * 0.001 * 2 * Math.PI) * amp;
-    let vibZ = Math.cos(time * freq * 0.001 * 2 * Math.PI * 1.3) * amp * 0.7;
-
-    // 高周波成分追加
-    vibX += Math.sin(time * freq * 0.001 * 5 * Math.PI) * amp * 0.3;
-    vibZ += Math.cos(time * freq * 0.001 * 7 * Math.PI) * amp * 0.2;
-
-    return { x: vibX, z: vibZ };
-}
-
-/** アニメーションループ内で演出効果（慣性・バウンス・微振動・舵角）を更新する。 */
-function updateExaggerationEffects(now) {
-    if (!EXAGGERATION_CONFIG.enabled) return;
-    if (!car3DState.carGroup) return;
-
-    const dt = Math.min((now - car3DState.lastUpdateTime) / 1000, 0.1); // 最大100ms
-    car3DState.lastUpdateTime = now;
-
-    // バウンス効果（バネ・ダンパー）
-    if (EXAGGERATION_CONFIG.bounce.enabled) {
-        const pitchResult = applySpringDamper(
-            car3DState.displayPitch,
-            car3DState.targetPitch,
-            car3DState.pitchVelocity,
-            dt
-        );
-        car3DState.displayPitch = pitchResult.value;
-        car3DState.pitchVelocity = pitchResult.velocity;
-
-        const rollResult = applySpringDamper(
-            car3DState.displayRoll,
-            car3DState.targetRoll,
-            car3DState.rollVelocity,
-            dt
-        );
-        car3DState.displayRoll = rollResult.value;
-        car3DState.rollVelocity = rollResult.velocity;
-    } else {
-        // バウンス無効なら慣性のみ
-        car3DState.displayPitch = lerp(
-            car3DState.displayPitch,
-            car3DState.targetPitch,
-            EXAGGERATION_CONFIG.inertia.enabled ? EXAGGERATION_CONFIG.inertia.lerpFactor : 1
-        );
-        car3DState.displayRoll = lerp(
-            car3DState.displayRoll,
-            car3DState.targetRoll,
-            EXAGGERATION_CONFIG.inertia.enabled ? EXAGGERATION_CONFIG.inertia.lerpFactor : 1
-        );
-    }
-
-    // ステアリング（前輪舵角）更新
-    const targetSteering = car3DState.steeringAngle * EXAGGERATION_CONFIG.steering.amplification;
-    car3DState.displaySteering = lerp(
-        car3DState.displaySteering,
-        targetSteering,
-        EXAGGERATION_CONFIG.steering.lerpFactor
-    );
-
-    // 前輪（インデックス0, 1）に舵角を適用
-    if (car3DState.wheels[0]) {
-        car3DState.wheels[0].rotation.y = car3DState.displaySteering;
-    }
-    if (car3DState.wheels[1]) {
-        car3DState.wheels[1].rotation.y = car3DState.displaySteering;
-    }
-
-    // 微振動
-    const vibration = generateVibration(car3DState.currentRpm, now);
-
-    // 最終的な回転を適用
-    car3DState.carGroup.rotation.x = car3DState.displayPitch + vibration.x;
-    car3DState.carGroup.rotation.y = 0;
-    car3DState.carGroup.rotation.z = car3DState.displayRoll + vibration.z;
-
+    // 数値読み出し（旧版と同じ DOM を更新）
+    if (car3DState.pitchEl) car3DState.pitchEl.textContent = (car3DState.pitch * 180 / Math.PI).toFixed(2) + '°';
+    if (car3DState.rollEl)  car3DState.rollEl.textContent  = (car3DState.roll  * 180 / Math.PI).toFixed(2) + '°';
+    if (car3DState.yawEl)   car3DState.yawEl.textContent   = (car3DState.yaw   * 180 / Math.PI).toFixed(2) + '°';
     car3DState.needsRender = true;
+}
+
+// ── 3D → 2D 投影 ─────────────────────────────────────────────
+
+// 車体姿勢による回転（ヨー→ピッチ→ロールの順）
+function rotateAttitude(x, y, z) {
+    var p = car3DState.pitch, r = car3DState.roll, yw = car3DState.yaw;
+    // yaw（y軸まわり）
+    var cy = Math.cos(yw), sy = Math.sin(yw);
+    var x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = y;
+    // pitch（x軸まわり）: 機首上げ/下げ
+    var cp = Math.cos(p), sp = Math.sin(p);
+    var y2 = y1 * cp - z1 * sp, z2 = y1 * sp + z1 * cp, x2 = x1;
+    // roll（z軸まわり）: 左右傾き
+    var cr = Math.cos(r), sr = Math.sin(r);
+    var x3 = x2 * cr - y2 * sr, y3 = x2 * sr + y2 * cr, z3 = z2;
+    return [x3, y3, z3];
+}
+
+// 固定アイソメトリックカメラ → スクリーン座標（+ 奥行き）
+function project(x, y, z) {
+    var cyw = Math.cos(ATTITUDE_2D.camYaw), syw = Math.sin(ATTITUDE_2D.camYaw);
+    var x1 = x * cyw + z * syw, z1 = -x * syw + z * cyw, y1 = y;
+    var cpt = Math.cos(ATTITUDE_2D.camPitch), spt = Math.sin(ATTITUDE_2D.camPitch);
+    var y2 = y1 * cpt - z1 * spt, z2 = y1 * spt + z1 * cpt;
+    var s = ATTITUDE_2D.scale;
+    return {
+        x: car3DState.W / 2 + x1 * s,
+        y: car3DState.H * ATTITUDE_2D.horizonY - y2 * s,
+        depth: z2
+    };
+}
+
+// 車体ローカル点（姿勢回転あり）を投影
+function projLocal(x, y, z) {
+    var w = rotateAttitude(x, y, z);
+    return project(w[0], w[1], w[2]);
+}
+
+// 地面（水平・姿勢に依存しない基準）を投影
+function projGround(x, y, z) {
+    return project(x, y, z);
+}
+
+// ── 描画 ─────────────────────────────────────────────────────
+
+function drawGround() {
+    var ctx = car3DState.ctx;
+    var n = 4, step = 0.9;
+    ctx.lineWidth = 1;
+    for (var i = -n; i <= n; i++) {
+        var t = i * step;
+        // z 方向の線
+        var a = projGround(t, 0, -n * step), b = projGround(t, 0, n * step);
+        ctx.strokeStyle = (i === 0) ? ATTITUDE_COLORS.gridAxis : ATTITUDE_COLORS.grid;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        // x 方向の線
+        var c = projGround(-n * step, 0, t), d = projGround(n * step, 0, t);
+        ctx.strokeStyle = (i === 0) ? ATTITUDE_COLORS.gridAxis : ATTITUDE_COLORS.grid;
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
+    }
+}
+
+// サス偏差を -1..1 に正規化（相対表示: 単位に依存しない）
+function suspNorm() {
+    var s = car3DState.susp;
+    var avg = (s[0] + s[1] + s[2] + s[3]) / 4;
+    var dev = [s[0] - avg, s[1] - avg, s[2] - avg, s[3] - avg];
+    var maxAbs = Math.max(Math.abs(dev[0]), Math.abs(dev[1]), Math.abs(dev[2]), Math.abs(dev[3]));
+    if (maxAbs < 1e-6) return [0, 0, 0, 0];
+    return [dev[0] / maxAbs, dev[1] / maxAbs, dev[2] / maxAbs, dev[3] / maxAbs];
+}
+
+function strutColor(norm) {
+    // norm>0 = 伸び（荷重小, 青） / norm<0 = 縮み（荷重大, 赤）
+    if (norm > 0.15) return ATTITUDE_COLORS.strutExtend;
+    if (norm < -0.15) return ATTITUDE_COLORS.strutCompress;
+    return ATTITUDE_COLORS.strutNeutral;
+}
+
+// 車体ボックス面（painter's algorithm で奥から）
+function drawBody() {
+    var ctx = car3DState.ctx;
+    var W = ATTITUDE_2D.halfWid, L = ATTITUDE_2D.halfLen;
+    var B = ATTITUDE_2D.bodyBottom, T = ATTITUDE_2D.bodyTop, C = ATTITUDE_2D.cabinTop;
+
+    // 8 頂点（下面 0-3, 上面 4-7） + キャビン頂点
+    var v = [
+        [-W, B, -L], [W, B, -L], [W, B, L], [-W, B, L],     // 下面
+        [-W, T, -L], [W, T, -L], [W, T, L], [-W, T, L]      // 上面
+    ];
+    // キャビン（中央やや後方の低い箱で「屋根」を表現）
+    var cab = [
+        [-W * 0.72, T, -L * 0.55], [W * 0.72, T, -L * 0.55], [W * 0.72, T, L * 0.35], [-W * 0.72, T, L * 0.35],
+        [-W * 0.6, C, -L * 0.4], [W * 0.6, C, -L * 0.4], [W * 0.6, C, L * 0.2], [-W * 0.6, C, L * 0.2]
+    ];
+
+    var P = v.map(function (q) { return projLocal(q[0], q[1], q[2]); });
+    var Pc = cab.map(function (q) { return projLocal(q[0], q[1], q[2]); });
+
+    // 面定義（頂点index, 色）
+    var faces = [
+        { idx: [0, 1, 2, 3], col: ATTITUDE_COLORS.bodySide, src: v, top: false }, // 底
+        { idx: [4, 5, 1, 0], col: ATTITUDE_COLORS.bodySide, src: v },             // 後
+        { idx: [7, 6, 2, 3], col: ATTITUDE_COLORS.bodyFront, src: v },            // 前
+        { idx: [4, 7, 3, 0], col: ATTITUDE_COLORS.bodySide, src: v },             // 左
+        { idx: [5, 6, 2, 1], col: ATTITUDE_COLORS.bodySide, src: v },             // 右
+        { idx: [4, 5, 6, 7], col: ATTITUDE_COLORS.bodyTop, src: v, top: true }    // 上
+    ];
+
+    // 各面の平均奥行きでソート（奥→手前）
+    faces.forEach(function (f) {
+        var d = 0;
+        for (var k = 0; k < f.idx.length; k++) d += P[f.idx[k]].depth;
+        f.d = d / f.idx.length;
+    });
+    faces.sort(function (a, b) { return a.d - b.d; });
+
+    faces.forEach(function (f) {
+        ctx.beginPath();
+        for (var k = 0; k < f.idx.length; k++) {
+            var pt = P[f.idx[k]];
+            if (k === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = f.col;
+        ctx.globalAlpha = 0.96;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = ATTITUDE_COLORS.edge;
+        ctx.stroke();
+    });
+
+    // キャビン（半透明の屋根）
+    ctx.beginPath();
+    [4, 5, 6, 7].forEach(function (i, k) {
+        var pt = Pc[i];
+        if (k === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = ATTITUDE_COLORS.cabin;
+    ctx.fill();
+    ctx.strokeStyle = ATTITUDE_COLORS.edge;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+// 4輪 + サスペンションストラット + 接地影
+function drawWheels() {
+    var ctx = car3DState.ctx;
+    var W = ATTITUDE_2D.halfWid, L = ATTITUDE_2D.halfLen, B = ATTITUDE_2D.bodyBottom;
+    var norm = suspNorm();
+    var r = ATTITUDE_2D.wheelR * ATTITUDE_2D.scale;
+
+    // 車体コーナー（下面）: 並びは susp 配列順 FL, FR, RL, RR
+    var corners = [
+        [-W, B,  L], [W, B,  L],   // FL, FR
+        [-W, B, -L], [W, B, -L]    // RL, RR
+    ];
+
+    var wheels = corners.map(function (c, i) {
+        // サス偏差: 伸び(norm>0)ほどストラットが長い＝ホイールが車体から離れる
+        var strut = ATTITUDE_2D.strutBase + norm[i] * ATTITUDE_2D.strutTravel;
+        var wx = c[0], wy = c[1] - strut, wz = c[2];
+        var wr = rotateAttitude(wx, wy, wz);           // ワールド座標
+        return {
+            i: i, norm: norm[i], col: strutColor(norm[i]),
+            top: projLocal(c[0], c[1], c[2]),          // 取付点（車体コーナー）
+            hub: projLocal(wx, wy, wz),                // ホイール中心
+            ground: project(wr[0], 0, wr[2])           // 真下の接地点（水平面）
+        };
+    });
+    wheels.sort(function (a, b) { return a.hub.depth - b.hub.depth; });
+
+    // 接地影（先に全部）
+    wheels.forEach(function (w) {
+        ctx.beginPath();
+        ctx.ellipse(w.ground.x, w.ground.y, r * 0.72, r * 0.30, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.30)';
+        ctx.fill();
+    });
+
+    ctx.lineCap = 'round';
+    wheels.forEach(function (w) {
+        // ストラット（サス）: 太いバー＋白ハイライトで伸縮を色表現
+        ctx.beginPath(); ctx.moveTo(w.top.x, w.top.y); ctx.lineTo(w.hub.x, w.hub.y);
+        ctx.lineWidth = 7; ctx.strokeStyle = w.col; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(w.top.x, w.top.y); ctx.lineTo(w.hub.x, w.hub.y);
+        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
+        // 取付点マーカー
+        ctx.beginPath(); ctx.arc(w.top.x, w.top.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = w.col; ctx.fill();
+
+        // ホイール（投影円 ≒ 楕円） + サス色のリム
+        ctx.beginPath();
+        ctx.ellipse(w.hub.x, w.hub.y, r * 0.6, r, 0, 0, Math.PI * 2);
+        ctx.fillStyle = ATTITUDE_COLORS.wheel; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = w.col; ctx.stroke();
+    });
+    ctx.lineCap = 'butt';
+}
+
+// サス凡例（縮み=赤 / 伸び=青）
+function drawLegend() {
+    var ctx = car3DState.ctx;
+    var y = car3DState.H - 12;
+    ctx.font = '9px "Segoe UI", system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    var items = [
+        [ATTITUDE_COLORS.strutCompress, '縮み'],
+        [ATTITUDE_COLORS.strutExtend, '伸び']
+    ];
+    var x = 8;
+    items.forEach(function (it) {
+        ctx.fillStyle = it[0];
+        ctx.fillRect(x, y - 4, 14, 4);
+        ctx.fillStyle = 'rgba(190,205,225,0.75)';
+        ctx.fillText(it[1], x + 18, y - 1);
+        x += 62;
+    });
+}
+
+// PITCH / ROLL / YAW をキャンバス右上に描画
+function drawReadout() {
+    var ctx = car3DState.ctx;
+    var deg = 180 / Math.PI;
+    var rows = [
+        ['PITCH', car3DState.pitch * deg],
+        ['ROLL', car3DState.roll * deg],
+        ['YAW', car3DState.yaw * deg]
+    ];
+    var x = car3DState.W - 10, y0 = 14;
+    ctx.textBaseline = 'middle';
+    rows.forEach(function (r, i) {
+        var y = y0 + i * 17;
+        ctx.textAlign = 'right';
+        ctx.font = '700 13px "Segoe UI", system-ui, sans-serif';
+        ctx.fillStyle = '#EAF1FA';
+        ctx.fillText((r[1] >= 0 ? '+' : '') + r[1].toFixed(1) + '°', x, y);
+        ctx.font = '700 9px "Segoe UI", system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(150,172,200,0.85)';
+        ctx.fillText(r[0], x - 52, y);
+    });
+    ctx.textAlign = 'left';
+}
+
+function render() {
+    var ctx = car3DState.ctx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, car3DState.W, car3DState.H);
+    drawGround();
+    drawBody();
+    drawWheels();   // 車体の後に描き、4輪すべて見えるようにする
+    drawLegend();
+    drawReadout();
+}
+
+function renderLoop() {
+    car3DState.animationId = requestAnimationFrame(renderLoop);
+    if (!car3DState.needsRender) return;
+    car3DState.needsRender = false;
+    render();
 }

@@ -415,7 +415,8 @@ function renderDemoFrame(point, demoInputs) {
         demoOrientation.yaw,
         demoOrientation.roll,
         demoInputs.rpm,
-        demoSteering
+        demoSteering,
+        tyreData.susp
     );
 
     // 舵角メーター更新

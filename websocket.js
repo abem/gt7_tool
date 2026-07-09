@@ -610,7 +610,8 @@ function handleTelemetryMessage(data, nowTs) {
         data.rotation_yaw || 0,
         data.rotation_roll || 0,
         data.rpm || 0,
-        data.wheel_rotation || 0
+        data.wheel_rotation || 0,
+        data.susp_height
     );
 
     if (doRotation) {
