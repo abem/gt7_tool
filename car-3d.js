@@ -1,10 +1,10 @@
 /**
  * CAR ATTITUDE — 2D (Canvas2D) 姿勢 + サスペンション可視化
  *
- * WebGL/Three.js を使わず Canvas2D だけで、ロール/ピッチ/ヨーの姿勢と 4輪サスペンションを
- * 「針金（ワイヤーフレーム）」でアイソメトリック（クォータービュー）に図示する。各輪はダブル
- * ウィッシュボーン（上下Aアーム＋アップライト＋コイルオーバー）を線で表現し、サス伸縮を色で示す。
- * GPU 無し・リモートデスクトップ・どのブラウザでも必ず描画される。
+ * WebGL/Three.js を使わず Canvas2D だけで、4輪のサスペンションとタイヤを「針金（ワイヤーフレーム）」
+ * で固定クォータービューに図示する。各輪はダブルウィッシュボーン（上下Aアーム＋アップライト＋
+ * コイルオーバー）を線で表現し、サス伸縮をばね長と色で示す。車体は描かず姿勢回転もかけない
+ * （ピッチ/ロール/ヨーは数値表示、荷重移動は各輪のサス伸縮で表現）。GPU 無し・どのブラウザでも必ず描画。
  *
  * 旧 WebGL 版と互換の口を提供:
  *   - initCar3D()                              : 初期化（例外を投げない）
@@ -32,10 +32,8 @@ var car3DState = {
 
 // シャシー/サス寸法・カメラ（無次元, 車体ローカル: x=右, y=上, z=前）
 var ATTITUDE_2D = {
-    halfLen: 1.55,      // z 半分（前後・シャシー全長）
-    halfWid: 0.62,      // x 半分（左右レール間）
-    railY: 0.64,        // メインレール高さ
-    hoopTop: 1.20,      // ロールフープ頂点高さ
+    halfLen: 1.55,      // z 半分（前後トレッド間隔）
+    halfWid: 0.62,      // x 半分（左右・内側マウント間）
     wheelR: 0.34,       // タイヤ半径
     // ダブルウィッシュボーン諸元
     cornerZ: 0.80,      // 車輪の z 位置（halfLen 比）
@@ -54,8 +52,6 @@ var ATTITUDE_2D = {
 var ATTITUDE_COLORS = {
     grid: 'rgba(120,140,170,0.18)',
     gridAxis: 'rgba(120,140,170,0.36)',
-    frame: 'rgba(140,160,190,0.55)',      // シャシー細線
-    frameHoop: 'rgba(175,200,235,0.80)',  // ロールフープ/コックピット枠
     arm: 'rgba(180,196,220,0.92)',        // ウィッシュボーン（アーム）
     upright: 'rgba(212,226,248,0.96)',    // アップライト/ハブキャリア
     pivot: 'rgba(150,170,200,0.90)',      // ピボット節点
@@ -124,8 +120,8 @@ function resizeAttitude2D() {
     c.width = Math.round(w * dpr);
     c.height = Math.round(h * dpr);
     car3DState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // 車体（トラック幅＋前後長）が収まるよう自動スケール
-    ATTITUDE_2D.scale = Math.min(w / 5.2, h / 3.6);
+    // サス＋タイヤ全体が収まるよう自動スケール
+    ATTITUDE_2D.scale = Math.min(w / 4.8, h / 3.0);
     car3DState.needsRender = true;
 }
 
@@ -162,22 +158,9 @@ function updateCar3D(pitch, yaw, roll, rpm, steering, susp) {
 
 // ── 3D → 2D 投影 ─────────────────────────────────────────────
 
-// 車体姿勢による回転（ヨー→ピッチ→ロールの順）
-function rotateAttitude(x, y, z) {
-    var p = car3DState.pitch, r = car3DState.roll, yw = car3DState.yaw;
-    // yaw（y軸まわり）
-    var cy = Math.cos(yw), sy = Math.sin(yw);
-    var x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = y;
-    // pitch（x軸まわり）: 機首上げ/下げ
-    var cp = Math.cos(p), sp = Math.sin(p);
-    var y2 = y1 * cp - z1 * sp, z2 = y1 * sp + z1 * cp, x2 = x1;
-    // roll（z軸まわり）: 左右傾き
-    var cr = Math.cos(r), sr = Math.sin(r);
-    var x3 = x2 * cr - y2 * sr, y3 = x2 * sr + y2 * cr, z3 = z2;
-    return [x3, y3, z3];
-}
-
 // 固定アイソメトリックカメラ → スクリーン座標（+ 奥行き）
+// 車体姿勢による回転はかけない（サス＋タイヤのみを固定クォータービューで表示）。
+// ピッチ/ロール/ヨーは数値表示、荷重移動は各輪のサス伸縮で表現する。
 function project(x, y, z) {
     var cyw = Math.cos(ATTITUDE_2D.camYaw), syw = Math.sin(ATTITUDE_2D.camYaw);
     var x1 = x * cyw + z * syw, z1 = -x * syw + z * cyw, y1 = y;
@@ -191,13 +174,7 @@ function project(x, y, z) {
     };
 }
 
-// 車体ローカル点（姿勢回転あり）を投影
-function projLocal(x, y, z) {
-    var w = rotateAttitude(x, y, z);
-    return project(w[0], w[1], w[2]);
-}
-
-// 地面（水平・姿勢に依存しない基準）を投影
+// 地面（水平基準）を投影
 function projGround(x, y, z) {
     return project(x, y, z);
 }
@@ -253,37 +230,7 @@ function node(p, r, col) {
     ctx.fillStyle = col; ctx.fill();
 }
 
-// スペースフレーム風シャシー（針金）。車体姿勢で回転する。
-function drawChassis() {
-    var ctx = car3DState.ctx;
-    var W = ATTITUDE_2D.halfWid, L = ATTITUDE_2D.halfLen, RY = ATTITUDE_2D.railY, HT = ATTITUDE_2D.hoopTop;
-    ctx.lineCap = 'round';
-
-    // メイン2本レール（左右）
-    wire(projLocal(-W, RY, -L), projLocal(-W, RY, L), 2, ATTITUDE_COLORS.frame);
-    wire(projLocal( W, RY, -L), projLocal( W, RY, L), 2, ATTITUDE_COLORS.frame);
-    // クロスメンバー（前後バルクヘッド＋中間2本）
-    [-L, -L * 0.35, L * 0.35, L].forEach(function (z) {
-        wire(projLocal(-W, RY, z), projLocal(W, RY, z), 1.5, ATTITUDE_COLORS.frame);
-    });
-    // ノーズ（前方に収束）→ 前後の向きが分かる
-    var nose = projLocal(0, RY, L * 1.28);
-    wire(projLocal(-W, RY, L), nose, 1.5, ATTITUDE_COLORS.frame);
-    wire(projLocal( W, RY, L), nose, 1.5, ATTITUDE_COLORS.frame);
-
-    // ロールフープ（コックピット枠）: 主フープ + 前方ステー
-    var zc = -L * 0.12;
-    var hL = projLocal(-W, RY, zc), hR = projLocal(W, RY, zc);
-    var tL = projLocal(-W * 0.72, HT, zc), tR = projLocal(W * 0.72, HT, zc);
-    wire(hL, tL, 2, ATTITUDE_COLORS.frameHoop);
-    wire(hR, tR, 2, ATTITUDE_COLORS.frameHoop);
-    wire(tL, tR, 2, ATTITUDE_COLORS.frameHoop);
-    wire(tL, projLocal(-W * 0.8, RY + 0.05, L * 0.5), 1.5, ATTITUDE_COLORS.frameHoop);
-    wire(tR, projLocal( W * 0.8, RY + 0.05, L * 0.5), 1.5, ATTITUDE_COLORS.frameHoop);
-    ctx.lineCap = 'butt';
-}
-
-// 1コーナー分のダブルウィッシュボーン幾何（車体ローカル→投影）
+// 1コーナー分のダブルウィッシュボーン幾何（固定クォータービュー = 姿勢回転なし）
 // susp 並びは FL, FR, RL, RR
 function computeCorner(i) {
     var A = ATTITUDE_2D, W = A.halfWid, L = A.halfLen;
@@ -301,24 +248,23 @@ function computeCorner(i) {
     var ubj = [bjX, hubY + A.ubjRise, cz];
     var lbj = [bjX, hubY - A.lbjDrop, cz];
     var hub = [wheelX, hubY, cz];
-    // ばね上（内側ピボット）: 車体固定（中立ハブ高さ基準で水平アーム）
+    // ばね上（内側ピボット）: 固定（中立ハブ高さ基準で水平アーム）
     var uF = [railX, A.hubY + A.ubjRise, cz + A.pivotSpread];
     var uR = [railX, A.hubY + A.ubjRise, cz - A.pivotSpread];
     var lF = [railX, A.hubY - A.lbjDrop, cz + A.pivotSpread];
     var lR = [railX, A.hubY - A.lbjDrop, cz - A.pivotSpread];
-    // コイルオーバー: 下アーム(ばね下)→シャシー上部(ばね上)。長さが伸縮の指標。
+    // コイルオーバー: 下アーム(ばね下)→上側マウント(ばね上)。長さが伸縮の指標。
     var sprTop = [sx * W * 0.55, A.hubY + A.ubjRise + 0.50, cz];
     var sprBot = [sx * (W + A.armSpan * 0.45), hubY - A.lbjDrop * 0.35, cz];
 
-    var wr = rotateAttitude(hub[0], hub[1], hub[2]); // 接地点（水平面）
-    var P = function (q) { return projLocal(q[0], q[1], q[2]); };
+    var P = function (q) { return project(q[0], q[1], q[2]); };
     var pHub = P(hub);
     return {
         i: i, norm: norm, col: strutColor(norm), depth: pHub.depth,
         ubj: P(ubj), lbj: P(lbj), hub: pHub,
         uF: P(uF), uR: P(uR), lF: P(lF), lR: P(lR),
         sprTop: P(sprTop), sprBot: P(sprBot),
-        ground: project(wr[0], 0, wr[2])
+        ground: project(hub[0], 0, hub[2])       // ハブ真下の接地点（水平面）
     };
 }
 
@@ -444,7 +390,6 @@ function render() {
         ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fill();
     });
 
-    drawChassis();
     // 奥→手前でコーナーを描く（針金なので厳密でなくてよいが自然な重なりに）
     corners.slice().sort(function (a, b) { return a.depth - b.depth; }).forEach(drawCorner);
 
