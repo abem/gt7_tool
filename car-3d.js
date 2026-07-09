@@ -1,9 +1,10 @@
 /**
  * CAR ATTITUDE — 2D (Canvas2D) 姿勢 + サスペンション可視化
  *
- * WebGL/Three.js を使わず Canvas2D だけで、ロール/ピッチ/ヨーの姿勢と 4輪サスペンションの
- * 伸縮をアイソメトリック（クォータービュー）で図示する。GPU 無し・リモートデスクトップ・
- * どのブラウザでも必ず描画される。
+ * WebGL/Three.js を使わず Canvas2D だけで、ロール/ピッチ/ヨーの姿勢と 4輪サスペンションを
+ * 「針金（ワイヤーフレーム）」でアイソメトリック（クォータービュー）に図示する。各輪はダブル
+ * ウィッシュボーン（上下Aアーム＋アップライト＋コイルオーバー）を線で表現し、サス伸縮を色で示す。
+ * GPU 無し・リモートデスクトップ・どのブラウザでも必ず描画される。
  *
  * 旧 WebGL 版と互換の口を提供:
  *   - initCar3D()                              : 初期化（例外を投げない）
@@ -29,35 +30,41 @@ var car3DState = {
     webglFailed: false            // 互換のため保持（未使用）
 };
 
-// 車体・カメラ寸法（無次元）
+// シャシー/サス寸法・カメラ（無次元, 車体ローカル: x=右, y=上, z=前）
 var ATTITUDE_2D = {
-    halfLen: 1.55,     // z 半分（前後）
-    halfWid: 0.82,     // x 半分（左右）
-    bodyBottom: 0.42,  // 車体下面の高さ
-    bodyTop: 1.02,     // 車体上面の高さ
-    cabinTop: 1.30,    // ルーフ高さ
-    wheelR: 0.36,      // タイヤ半径
-    strutBase: 0.30,   // サスペンション基準長（車体下面→ホイール中心）
-    strutTravel: 0.42, // サス偏差の最大振れ幅（描画）
-    camPitch: 0.50,    // カメラ見下ろし角（rad, ~29°）
-    camYaw: -0.66,     // カメラ方位角（rad, ~-38°）
-    scale: 46,         // px/unit（init でフィット調整）
-    horizonY: 0.60     // 地面基準線の縦位置（キャンバス高さ比）
+    halfLen: 1.55,      // z 半分（前後・シャシー全長）
+    halfWid: 0.62,      // x 半分（左右レール間）
+    railY: 0.64,        // メインレール高さ
+    hoopTop: 1.20,      // ロールフープ頂点高さ
+    wheelR: 0.34,       // タイヤ半径
+    // ダブルウィッシュボーン諸元
+    cornerZ: 0.80,      // 車輪の z 位置（halfLen 比）
+    armSpan: 0.60,      // レール→ホイールの横スパン（アーム張り出し）
+    pivotSpread: 0.30,  // 内側ピボットの前後スパン（Aアーム）
+    hubY: 0.42,         // 中立時ハブ高さ
+    ubjRise: 0.24,      // アップライト上端（ハブより上）
+    lbjDrop: 0.22,      // アップライト下端（ハブより下）
+    strutTravel: 0.34,  // サス偏差でハブが上下する最大量
+    camPitch: 0.52,     // カメラ見下ろし角（rad）
+    camYaw: -0.66,      // カメラ方位角（rad）
+    scale: 46,          // px/unit（init でフィット調整）
+    horizonY: 0.58      // 基準線の縦位置（キャンバス高さ比）
 };
 
 var ATTITUDE_COLORS = {
-    grid: 'rgba(120,140,170,0.20)',
-    gridAxis: 'rgba(120,140,170,0.38)',
-    bodyTop: '#2E7DD1',
-    bodySide: '#255FA0',
-    bodyFront: '#5AA0E6',
-    cabin: 'rgba(150,200,255,0.30)',
-    edge: 'rgba(210,230,255,0.85)',
-    wheel: '#12161C',
-    wheelRim: 'rgba(200,215,235,0.85)',
-    strutCompress: '#E8563B', // 縮み（荷重大）
-    strutNeutral: '#4CD07D',
-    strutExtend: '#43A6FF'     // 伸び（荷重小）
+    grid: 'rgba(120,140,170,0.18)',
+    gridAxis: 'rgba(120,140,170,0.36)',
+    frame: 'rgba(140,160,190,0.55)',      // シャシー細線
+    frameHoop: 'rgba(175,200,235,0.80)',  // ロールフープ/コックピット枠
+    arm: 'rgba(180,196,220,0.92)',        // ウィッシュボーン（アーム）
+    upright: 'rgba(212,226,248,0.96)',    // アップライト/ハブキャリア
+    pivot: 'rgba(150,170,200,0.90)',      // ピボット節点
+    hub: '#0E1319',
+    tyre: 'rgba(155,172,196,0.60)',       // タイヤ輪郭（細線）
+    tyreFill: 'rgba(10,14,20,0.28)',
+    strutCompress: '#E8563B',             // 縮み（荷重大, 赤）
+    strutNeutral: '#5AD08A',
+    strutExtend: '#43A6FF'                // 伸び（荷重小, 青）
 };
 
 function initCar3D() {
@@ -117,8 +124,8 @@ function resizeAttitude2D() {
     c.width = Math.round(w * dpr);
     c.height = Math.round(h * dpr);
     car3DState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // 車体（全長約 5 単位）が収まるよう自動スケール
-    ATTITUDE_2D.scale = Math.min(w / 5.4, h / 3.4);
+    // 車体（トラック幅＋前後長）が収まるよう自動スケール
+    ATTITUDE_2D.scale = Math.min(w / 5.2, h / 3.6);
     car3DState.needsRender = true;
 }
 
@@ -231,136 +238,150 @@ function strutColor(norm) {
     return ATTITUDE_COLORS.strutNeutral;
 }
 
-// 車体ボックス面（painter's algorithm で奥から）
-function drawBody() {
+// ── 針金（ワイヤーフレーム）描画ヘルパー ──────────────────────
+
+// 投影済み2点間に線
+function wire(a, b, width, col) {
     var ctx = car3DState.ctx;
-    var W = ATTITUDE_2D.halfWid, L = ATTITUDE_2D.halfLen;
-    var B = ATTITUDE_2D.bodyBottom, T = ATTITUDE_2D.bodyTop, C = ATTITUDE_2D.cabinTop;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.lineWidth = width; ctx.strokeStyle = col; ctx.stroke();
+}
+// 節点（ピボット/ボールジョイント）
+function node(p, r, col) {
+    var ctx = car3DState.ctx;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = col; ctx.fill();
+}
 
-    // 8 頂点（下面 0-3, 上面 4-7） + キャビン頂点
-    var v = [
-        [-W, B, -L], [W, B, -L], [W, B, L], [-W, B, L],     // 下面
-        [-W, T, -L], [W, T, -L], [W, T, L], [-W, T, L]      // 上面
-    ];
-    // キャビン（中央やや後方の低い箱で「屋根」を表現）
-    var cab = [
-        [-W * 0.72, T, -L * 0.55], [W * 0.72, T, -L * 0.55], [W * 0.72, T, L * 0.35], [-W * 0.72, T, L * 0.35],
-        [-W * 0.6, C, -L * 0.4], [W * 0.6, C, -L * 0.4], [W * 0.6, C, L * 0.2], [-W * 0.6, C, L * 0.2]
-    ];
+// スペースフレーム風シャシー（針金）。車体姿勢で回転する。
+function drawChassis() {
+    var ctx = car3DState.ctx;
+    var W = ATTITUDE_2D.halfWid, L = ATTITUDE_2D.halfLen, RY = ATTITUDE_2D.railY, HT = ATTITUDE_2D.hoopTop;
+    ctx.lineCap = 'round';
 
-    var P = v.map(function (q) { return projLocal(q[0], q[1], q[2]); });
-    var Pc = cab.map(function (q) { return projLocal(q[0], q[1], q[2]); });
-
-    // 面定義（頂点index, 色）
-    var faces = [
-        { idx: [0, 1, 2, 3], col: ATTITUDE_COLORS.bodySide, src: v, top: false }, // 底
-        { idx: [4, 5, 1, 0], col: ATTITUDE_COLORS.bodySide, src: v },             // 後
-        { idx: [7, 6, 2, 3], col: ATTITUDE_COLORS.bodyFront, src: v },            // 前
-        { idx: [4, 7, 3, 0], col: ATTITUDE_COLORS.bodySide, src: v },             // 左
-        { idx: [5, 6, 2, 1], col: ATTITUDE_COLORS.bodySide, src: v },             // 右
-        { idx: [4, 5, 6, 7], col: ATTITUDE_COLORS.bodyTop, src: v, top: true }    // 上
-    ];
-
-    // 各面の平均奥行きでソート（奥→手前）
-    faces.forEach(function (f) {
-        var d = 0;
-        for (var k = 0; k < f.idx.length; k++) d += P[f.idx[k]].depth;
-        f.d = d / f.idx.length;
+    // メイン2本レール（左右）
+    wire(projLocal(-W, RY, -L), projLocal(-W, RY, L), 2, ATTITUDE_COLORS.frame);
+    wire(projLocal( W, RY, -L), projLocal( W, RY, L), 2, ATTITUDE_COLORS.frame);
+    // クロスメンバー（前後バルクヘッド＋中間2本）
+    [-L, -L * 0.35, L * 0.35, L].forEach(function (z) {
+        wire(projLocal(-W, RY, z), projLocal(W, RY, z), 1.5, ATTITUDE_COLORS.frame);
     });
-    faces.sort(function (a, b) { return a.d - b.d; });
+    // ノーズ（前方に収束）→ 前後の向きが分かる
+    var nose = projLocal(0, RY, L * 1.28);
+    wire(projLocal(-W, RY, L), nose, 1.5, ATTITUDE_COLORS.frame);
+    wire(projLocal( W, RY, L), nose, 1.5, ATTITUDE_COLORS.frame);
 
-    faces.forEach(function (f) {
-        ctx.beginPath();
-        for (var k = 0; k < f.idx.length; k++) {
-            var pt = P[f.idx[k]];
-            if (k === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.closePath();
-        ctx.fillStyle = f.col;
-        ctx.globalAlpha = 0.96;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.lineWidth = 1.2;
-        ctx.strokeStyle = ATTITUDE_COLORS.edge;
-        ctx.stroke();
-    });
+    // ロールフープ（コックピット枠）: 主フープ + 前方ステー
+    var zc = -L * 0.12;
+    var hL = projLocal(-W, RY, zc), hR = projLocal(W, RY, zc);
+    var tL = projLocal(-W * 0.72, HT, zc), tR = projLocal(W * 0.72, HT, zc);
+    wire(hL, tL, 2, ATTITUDE_COLORS.frameHoop);
+    wire(hR, tR, 2, ATTITUDE_COLORS.frameHoop);
+    wire(tL, tR, 2, ATTITUDE_COLORS.frameHoop);
+    wire(tL, projLocal(-W * 0.8, RY + 0.05, L * 0.5), 1.5, ATTITUDE_COLORS.frameHoop);
+    wire(tR, projLocal( W * 0.8, RY + 0.05, L * 0.5), 1.5, ATTITUDE_COLORS.frameHoop);
+    ctx.lineCap = 'butt';
+}
 
-    // キャビン（半透明の屋根）
+// 1コーナー分のダブルウィッシュボーン幾何（車体ローカル→投影）
+// susp 並びは FL, FR, RL, RR
+function computeCorner(i) {
+    var A = ATTITUDE_2D, W = A.halfWid, L = A.halfLen;
+    var sx = (i % 2 === 0) ? -1 : 1;             // FL,RL=左(-1) / FR,RR=右(+1)
+    var cz = (i < 2 ? 1 : -1) * L * A.cornerZ;   // FL,FR=前(+) / RL,RR=後(-)
+    var norm = suspNorm()[i];
+    var travel = norm * A.strutTravel;           // 伸び(norm>0)→ハブ下降（車体から離れる）
+    var hubY = A.hubY - travel;
+
+    var wheelX = sx * (W + A.armSpan);
+    var bjX = sx * (W + A.armSpan * 0.80);       // ボールジョイントはハブより僅か内側
+    var railX = sx * W;
+
+    // ばね下（アップライト/ハブ/ボールジョイント）: travel で上下
+    var ubj = [bjX, hubY + A.ubjRise, cz];
+    var lbj = [bjX, hubY - A.lbjDrop, cz];
+    var hub = [wheelX, hubY, cz];
+    // ばね上（内側ピボット）: 車体固定（中立ハブ高さ基準で水平アーム）
+    var uF = [railX, A.hubY + A.ubjRise, cz + A.pivotSpread];
+    var uR = [railX, A.hubY + A.ubjRise, cz - A.pivotSpread];
+    var lF = [railX, A.hubY - A.lbjDrop, cz + A.pivotSpread];
+    var lR = [railX, A.hubY - A.lbjDrop, cz - A.pivotSpread];
+    // コイルオーバー: 下アーム(ばね下)→シャシー上部(ばね上)。長さが伸縮の指標。
+    var sprTop = [sx * W * 0.55, A.hubY + A.ubjRise + 0.50, cz];
+    var sprBot = [sx * (W + A.armSpan * 0.45), hubY - A.lbjDrop * 0.35, cz];
+
+    var wr = rotateAttitude(hub[0], hub[1], hub[2]); // 接地点（水平面）
+    var P = function (q) { return projLocal(q[0], q[1], q[2]); };
+    var pHub = P(hub);
+    return {
+        i: i, norm: norm, col: strutColor(norm), depth: pHub.depth,
+        ubj: P(ubj), lbj: P(lbj), hub: pHub,
+        uF: P(uF), uR: P(uR), lF: P(lF), lR: P(lR),
+        sprTop: P(sprTop), sprBot: P(sprBot),
+        ground: project(wr[0], 0, wr[2])
+    };
+}
+
+// コイルばね（スクリーン空間のジグザグ; 端で振幅0）
+function drawSpring(a, b, col) {
+    var ctx = car3DState.ctx;
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var len = Math.hypot(dx, dy) || 1;
+    var nx = -dy / len, ny = dx / len;           // 単位法線
+    var coils = 6, seg = 48, amp = Math.min(7, len * 0.16);
     ctx.beginPath();
-    [4, 5, 6, 7].forEach(function (i, k) {
-        var pt = Pc[i];
-        if (k === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
-    });
-    ctx.closePath();
-    ctx.fillStyle = ATTITUDE_COLORS.cabin;
-    ctx.fill();
-    ctx.strokeStyle = ATTITUDE_COLORS.edge;
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    for (var k = 0; k <= seg; k++) {
+        var t = k / seg;
+        var off = Math.sin(t * coils * Math.PI * 2) * amp * Math.sin(Math.PI * t);
+        var px = a.x + dx * t + nx * off;
+        var py = a.y + dy * t + ny * off;
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.lineWidth = 2.4; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.stroke(); ctx.lineCap = 'butt';
 }
 
-// 車体中心の投影奥行き（車輪を車体の前/後どちらに描くかの基準）
-function bodyMeanDepth() {
-    var midY = (ATTITUDE_2D.bodyBottom + ATTITUDE_2D.bodyTop) / 2;
-    return projLocal(0, midY, 0).depth;
-}
-
-// 4輪ジオメトリ（取付点・ハブ・接地点・色）を計算
-function computeWheels() {
-    var W = ATTITUDE_2D.halfWid, L = ATTITUDE_2D.halfLen, B = ATTITUDE_2D.bodyBottom;
-    var norm = suspNorm();
-    // 車体コーナー（下面）: 並びは susp 配列順 FL, FR, RL, RR
-    var corners = [
-        [-W, B,  L], [W, B,  L],   // FL, FR
-        [-W, B, -L], [W, B, -L]    // RL, RR
-    ];
-    return corners.map(function (c, i) {
-        // サス偏差: 伸び(norm>0)ほどストラットが長い＝ホイールが車体から離れる
-        var strut = ATTITUDE_2D.strutBase + norm[i] * ATTITUDE_2D.strutTravel;
-        var wx = c[0], wy = c[1] - strut, wz = c[2];
-        var wr = rotateAttitude(wx, wy, wz);           // ワールド座標（接地点用）
-        return {
-            i: i, norm: norm[i], col: strutColor(norm[i]),
-            top: projLocal(c[0], c[1], c[2]),          // 取付点（車体コーナー）
-            hub: projLocal(wx, wy, wz),                // ホイール中心
-            ground: project(wr[0], 0, wr[2])           // 真下の接地点（水平面）
-        };
-    });
-}
-
-// 接地影（常に最下層）
-function drawWheelShadows(wheels) {
+// ホイール（針金: タイヤ輪郭＋サス色リム＋スポーク）
+function drawWheelWire(c) {
     var ctx = car3DState.ctx;
     var r = ATTITUDE_2D.wheelR * ATTITUDE_2D.scale;
-    wheels.forEach(function (w) {
-        ctx.beginPath();
-        ctx.ellipse(w.ground.x, w.ground.y, r * 0.72, r * 0.30, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.30)';
-        ctx.fill();
-    });
+    var cx = c.hub.x, cy = c.hub.y, rx = r * 0.60, ry = r;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = ATTITUDE_COLORS.tyreFill; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = ATTITUDE_COLORS.tyre; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.55, ry * 0.55, 0, 0, Math.PI * 2);
+    ctx.lineWidth = 2.2; ctx.strokeStyle = c.col; ctx.stroke();
+    ctx.lineWidth = 1; ctx.strokeStyle = ATTITUDE_COLORS.tyre;
+    for (var s = 0; s < 4; s++) {
+        var ang = s * Math.PI / 4;
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(ang) * rx * 0.55, cy + Math.sin(ang) * ry * 0.55); ctx.stroke();
+    }
+    node(c.hub, 2.5, ATTITUDE_COLORS.hub);
 }
 
-// 指定した車輪群（ストラット＋ホイール）を奥→手前に描く
-function drawWheelSet(wheels) {
+// 1コーナー（上下ウィッシュボーン＋アップライト＋コイルオーバー＋ホイール）
+function drawCorner(c) {
     var ctx = car3DState.ctx;
-    var r = ATTITUDE_2D.wheelR * ATTITUDE_2D.scale;
-    wheels.slice().sort(function (a, b) { return a.hub.depth - b.hub.depth; }).forEach(function (w) {
-        // ストラット（サス）: 太いバー＋白ハイライトで伸縮を色表現
-        ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(w.top.x, w.top.y); ctx.lineTo(w.hub.x, w.hub.y);
-        ctx.lineWidth = 7; ctx.strokeStyle = w.col; ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(w.top.x, w.top.y); ctx.lineTo(w.hub.x, w.hub.y);
-        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
-        ctx.lineCap = 'butt';
-        // 取付点マーカー
-        ctx.beginPath(); ctx.arc(w.top.x, w.top.y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = w.col; ctx.fill();
-        // ホイール（投影円 ≒ 楕円） + サス色のリム
-        ctx.beginPath();
-        ctx.ellipse(w.hub.x, w.hub.y, r * 0.6, r, 0, 0, Math.PI * 2);
-        ctx.fillStyle = ATTITUDE_COLORS.wheel; ctx.fill();
-        ctx.lineWidth = 3; ctx.strokeStyle = w.col; ctx.stroke();
-    });
+    ctx.lineCap = 'round';
+    // 下ウィッシュボーン（Aアーム）
+    wire(c.lF, c.lbj, 2.6, ATTITUDE_COLORS.arm);
+    wire(c.lR, c.lbj, 2.6, ATTITUDE_COLORS.arm);
+    // 上ウィッシュボーン
+    wire(c.uF, c.ubj, 2.2, ATTITUDE_COLORS.arm);
+    wire(c.uR, c.ubj, 2.2, ATTITUDE_COLORS.arm);
+    // アップライト（ナックル）＋ハブキャリア
+    wire(c.ubj, c.lbj, 3, ATTITUDE_COLORS.upright);
+    wire({ x: (c.ubj.x + c.lbj.x) / 2, y: (c.ubj.y + c.lbj.y) / 2 }, c.hub, 2.4, ATTITUDE_COLORS.upright);
+    // コイルオーバー（サス色）
+    drawSpring(c.sprBot, c.sprTop, c.col);
+    ctx.lineCap = 'butt';
+    // 節点
+    node(c.uF, 2, ATTITUDE_COLORS.pivot); node(c.uR, 2, ATTITUDE_COLORS.pivot);
+    node(c.lF, 2, ATTITUDE_COLORS.pivot); node(c.lR, 2, ATTITUDE_COLORS.pivot);
+    node(c.sprTop, 2.4, ATTITUDE_COLORS.pivot);
+    node(c.ubj, 2.4, c.col); node(c.lbj, 2.4, c.col);
+    // ホイール
+    drawWheelWire(c);
 }
 
 // サス凡例（縮み=赤 / 伸び=青）
@@ -413,17 +434,19 @@ function render() {
     ctx.clearRect(0, 0, car3DState.W, car3DState.H);
     drawGround();
 
-    var wheels = computeWheels();
-    drawWheelShadows(wheels);                 // 影は常に最下層
+    var corners = [0, 1, 2, 3].map(computeCorner);
 
-    // 車体中心より奥の車輪は車体の前に、手前の車輪は車体の後に描く（正しい前後関係で、
-    // 奥の車輪がルーフの上に浮いて見える不具合を解消）
-    var bd = bodyMeanDepth();
-    var back = [], front = [];
-    wheels.forEach(function (w) { (w.hub.depth <= bd ? back : front).push(w); });
-    drawWheelSet(back);
-    drawBody();
-    drawWheelSet(front);
+    // 接地影（最下層）
+    var r = ATTITUDE_2D.wheelR * ATTITUDE_2D.scale;
+    corners.forEach(function (c) {
+        ctx.beginPath();
+        ctx.ellipse(c.ground.x, c.ground.y, r * 0.66, r * 0.26, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fill();
+    });
+
+    drawChassis();
+    // 奥→手前でコーナーを描く（針金なので厳密でなくてよいが自然な重なりに）
+    corners.slice().sort(function (a, b) { return a.depth - b.depth; }).forEach(drawCorner);
 
     drawLegend();
     drawReadout();
