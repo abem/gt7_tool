@@ -476,13 +476,6 @@ function renderDemoFrame(point, demoInputs) {
     }
 }
 
-/**
- * セクタータイムの色を決定（テストモード用）
- */
-function getSectorClass(current, best) {
-    const diff = current - best;
-    if (diff < 0) return 'purple';
-    if (diff < 0.3) return 'green';
-    if (diff < 0.6) return 'yellow';
-    return 'red';
-}
+// getSectorClass は websocket.js のガード付き正準版（best<=0→''、閾値0.1/0.3）を
+// 共有利用する。旧・テストモード専用の重複定義（閾値0.3/0.6・ガード無し）は
+// 読み込み順で実テレメトリ側の呼び出しを上書きシャドウしていたため削除した。

@@ -22,7 +22,14 @@
 
 ### docs: リファクタリング報告書を新設
 - `docs/refactoring-2026-07-09.md` を追加。実施内容・4層の検証結果・**意図的に見送った項目**を記録。
-- ⚠️ 見送り項目に**潜在バグ2件**を明記: `showConnectionError`（`ui_components.js` 定義が `websocket.js` で上書きシャドウ）と `getSectorClass`（`websocket.js`/`test-mode.js` で閾値の異なる同名関数の二重定義）。いずれも今後の専用修正で一本化が必要。
+- ⚠️ 見送り項目に**潜在バグ2件**を明記: `showConnectionError`（`ui_components.js` 定義が `websocket.js` で上書きシャドウ）と `getSectorClass`（`websocket.js`/`test-mode.js` で閾値の異なる同名関数の二重定義）。→ 同日 `fix/duplicate-definitions-2026-07-09` で修正（下記）。
+
+### fix: グローバル関数の二重定義2件を解消（読み込み順シャドウ）
+- **背景**: 全JSがプレーン `<script>` で単一グローバルスコープを共有するため、同名トップレベル関数は後読み込みの宣言が先を上書きする。
+- **`getSectorClass`（実害あり）**: `test-mode.js`（ガード無し・閾値0.3/0.6）が後読み込みで `websocket.js` の正準版（`best<=0→''` ガード付き・閾値0.1/0.3）を**実テレメトリ経路まで上書きシャドウ**していた。結果、実データのセクター色分けがデモ用の緩い閾値で判定され、かつベストセクター未設定時に `''` でなく `'red'` を返していた。→ `test-mode.js` の重複を削除し両経路を正準版に一本化。
+- **`showConnectionError`（死コード）**: `ui_components.js` のトースト版が `websocket.js` のステータスピル版に上書きされ死んでいた。→ 死んでいた `ui_components.js` 版を削除（実行挙動は不変）。
+- **検証**: 全対象 `node --check` 通過、`getSectorClass` 純関数ユニットテスト8/8（閾値+ガード）、Playwright TEST MODE E2E でセクター着色を確認・未捕捉例外0、敵対的レビュー3体が全て refuted=false。**網羅探索でトップレベル関数108個・var/let/const 57個すべて名前一意＝他の同種衝突なし**を確認。
+- 詳細: `docs/bugfix-duplicate-definitions-2026-07-09.md`。⚠️ 実機PS5では未確認（実データ経路のロジックは未変更、閾値/ガードの是正のみ）。
 
 ---
 

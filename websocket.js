@@ -444,10 +444,10 @@ function updateTyreState(data) {
 }
 
 /**
- * セクタータイムの色を決定
+ * セクタータイムの色を決定（実テレメトリ／テストモード共通の正準版）
  * @param {number} current - 現在のセクタータイム
- * @param {number} best - ベストセクタータイム
- * @returns {string} CSSクラス名
+ * @param {number} best - ベストセクタータイム（<=0/未設定なら '' を返す）
+ * @returns {string} CSSクラス名（'purple'|'green'|'yellow'|'red'|''）
  */
 function getSectorClass(current, best) {
     if (!best || best <= 0) return '';
