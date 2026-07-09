@@ -28,6 +28,9 @@ class _TelemetryProtocol(asyncio.DatagramProtocol):
     asyncio.Queue にパケットを蓄積する。main.py 側は await receive() で取り出す。
     """
 
+    # キュー溢れ警告のログ間引き間隔（秒）。この間隔に1回だけ累積ドロップ数を出す。
+    _DROP_LOG_INTERVAL_SEC = 60.0
+
     def __init__(self, queue: asyncio.Queue, on_first_packet):
         self._queue = queue
         self._on_first_packet = on_first_packet
@@ -61,7 +64,7 @@ class _TelemetryProtocol(asyncio.DatagramProtocol):
         if dropped:
             self._dropped_since_log += 1
             now = time.monotonic()
-            if now - self._last_drop_log >= 60.0:
+            if now - self._last_drop_log >= self._DROP_LOG_INTERVAL_SEC:
                 logger.warning(
                     f"Telemetry queue overflow: dropped {self._dropped_since_log} packet(s) "
                     f"in the last interval (queue max={self._queue.maxsize}). "
@@ -88,6 +91,9 @@ class GT7TelemetryClient:
 
     # 受信キュー上限。過剰に溜め込まない安全装置。
     QUEUE_MAXSIZE = 256
+
+    # UDP 受信ソケットのバインド先ホスト（全インターフェースで待ち受け）。
+    BIND_HOST = '0.0.0.0'
 
     def __init__(self, ip, send_port=33739, receive_port=33740,
                  heartbeat_interval=10, heartbeat_type=b'~'):
@@ -121,12 +127,12 @@ class GT7TelemetryClient:
 
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: _TelemetryProtocol(self._queue, _on_first_packet),
-            local_addr=('0.0.0.0', self.receive_port),
+            local_addr=(self.BIND_HOST, self.receive_port),
         )
         self._transport = transport
         self._connected = True
         logger.info(
-            f"GT7TelemetryClient ready: listening 0.0.0.0:{self.receive_port}, "
+            f"GT7TelemetryClient ready: listening {self.BIND_HOST}:{self.receive_port}, "
             f"heartbeat -> {self.ip}:{self.send_port}"
         )
 

@@ -155,10 +155,12 @@ function updateVehicleState(data) {
         gearEl.classList.add('low');
     }
     
-    if (elements.suggestedGear) if (data.suggested_gear != null && data.suggested_gear !== gear) {
-        elements.suggestedGear.textContent = '\u2192' + data.suggested_gear;
-    } else {
-        elements.suggestedGear.textContent = '';
+    if (elements.suggestedGear) {
+        if (data.suggested_gear != null && data.suggested_gear !== gear) {
+            elements.suggestedGear.textContent = '\u2192' + data.suggested_gear;
+        } else {
+            elements.suggestedGear.textContent = '';
+        }
     }
 
     // ステアリング回転
@@ -287,6 +289,7 @@ function renderFlags(flags) {
  * @param {Object} data - テレメトリデータ
  */
 function updateFuelState(data) {
+    const FUEL_PCT_LOW = 15, FUEL_PCT_WARN = 30, FUEL_LAPS_CRITICAL = 3, FUEL_LAPS_WARN = 5;
     const currentFuel = data.current_fuel || 0;
     const capacity = data.fuel_capacity || 100;
     
@@ -301,9 +304,9 @@ function updateFuelState(data) {
         
         // 残量に応じた色変更
         fuelBar.classList.remove('low', 'warning');
-        if (pct < 15) {
+        if (pct < FUEL_PCT_LOW) {
             fuelBar.classList.add('low');
-        } else if (pct < 30) {
+        } else if (pct < FUEL_PCT_WARN) {
             fuelBar.classList.add('warning');
         }
     }
@@ -317,9 +320,9 @@ function updateFuelState(data) {
         
         // 残り周回数に応じた色変更
         if (elements.fuelLapsRemaining.style) {
-            if (lapsRemaining < 3) {
+            if (lapsRemaining < FUEL_LAPS_CRITICAL) {
                 elements.fuelLapsRemaining.style.color = COLORS.accentRed;
-            } else if (lapsRemaining < 5) {
+            } else if (lapsRemaining < FUEL_LAPS_WARN) {
                 elements.fuelLapsRemaining.style.color = COLORS.accentYellow;
             } else {
                 elements.fuelLapsRemaining.style.color = COLORS.accentCyan;
@@ -696,6 +699,8 @@ function scheduleTelemetryProcessing() {
  * @param {number} now - 現在のタイムスタンプ
  */
 function processTelemetryFrame(now) {
+    const PARSE_ERROR_WARN = 5;
+    const PARSE_ERROR_RECONNECT = 20;
     wsState.processingScheduled = false;
 
     if (!wsState.latestMessage) {
@@ -714,9 +719,9 @@ function processTelemetryFrame(now) {
         console.error('WebSocket message error:', e);
         
         // 連続エラー時にユーザー通知
-        if (wsState.parseErrorCount === 5) {
+        if (wsState.parseErrorCount === PARSE_ERROR_WARN) {
             showConnectionError('データ受信エラーが続いています。PS5との接続を確認してください。');
-        } else if (wsState.parseErrorCount >= 20) {
+        } else if (wsState.parseErrorCount >= PARSE_ERROR_RECONNECT) {
             showConnectionError('深刻な通信エラー。再接続を試みます...');
             wsState.parseErrorCount = 0;
             disconnectWebSocket();
@@ -750,6 +755,9 @@ function scheduleReconnect() {
  *  切断処理
  * ================================================================ */
 
+/**
+ * アクティブなWebSocket接続を閉じる
+ */
 function disconnectWebSocket() {
     if (wsState.reconnectTimer) {
         clearTimeout(wsState.reconnectTimer);

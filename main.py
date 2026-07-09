@@ -16,6 +16,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 物理計算・燃料計算で使う定数
+KMH_TO_MS = 3.6
+GRAVITY_MS2 = 9.81
+MAX_ACCEL_G = 5.0
+MIN_TIME_DELTA = 0.001
+REFUEL_JUMP_FRACTION = 0.5
+
+# ネットワーク/設定のデフォルト値
+DEFAULT_SEND_PORT = 33739
+DEFAULT_RECEIVE_PORT = 33740
+DEFAULT_HTTP_PORT = 8080
+DEFAULT_HEARTBEAT_INTERVAL = 10
+
 
 def _int_env(name, default):
     """環境変数を整数で取得。未設定・空・非整数なら default を返す(後方互換)。"""
@@ -37,10 +50,10 @@ def load_config():
     """
     defaults = {
         "ps5_ip": "192.168.1.100",
-        "send_port": 33739,
-        "receive_port": 33740,
-        "http_port": 8080,
-        "heartbeat_interval": 10,
+        "send_port": DEFAULT_SEND_PORT,
+        "receive_port": DEFAULT_RECEIVE_PORT,
+        "http_port": DEFAULT_HTTP_PORT,
+        "heartbeat_interval": DEFAULT_HEARTBEAT_INTERVAL,
         "ssl_cert": "ssl/server-cert.pem",
         "ssl_key": "ssl/server-key.pem"
     }
@@ -56,10 +69,10 @@ def load_config():
 
     if os.getenv("PS5_IP"):
         cfg["ps5_ip"] = os.getenv("PS5_IP")
-    cfg["send_port"] = _int_env("SEND_PORT", cfg.get("send_port", 33739))
-    cfg["receive_port"] = _int_env("RECEIVE_PORT", cfg.get("receive_port", 33740))
-    cfg["http_port"] = _int_env("HTTP_PORT", cfg.get("http_port", 8080))
-    cfg["heartbeat_interval"] = _int_env("HEARTBEAT_INTERVAL", cfg.get("heartbeat_interval", 10))
+    cfg["send_port"] = _int_env("SEND_PORT", cfg.get("send_port", DEFAULT_SEND_PORT))
+    cfg["receive_port"] = _int_env("RECEIVE_PORT", cfg.get("receive_port", DEFAULT_RECEIVE_PORT))
+    cfg["http_port"] = _int_env("HTTP_PORT", cfg.get("http_port", DEFAULT_HTTP_PORT))
+    cfg["heartbeat_interval"] = _int_env("HEARTBEAT_INTERVAL", cfg.get("heartbeat_interval", DEFAULT_HEARTBEAT_INTERVAL))
     return cfg
 
 
@@ -94,11 +107,11 @@ def save_lap_to_file(lap_data, lap_num):
 
 def calculate_acceleration(speed_kmh, last_speed_kmh, time_delta):
     """速度差分から加速G/減速Gを計算"""
-    if time_delta <= 0.001:
+    if time_delta <= MIN_TIME_DELTA:
         return 0.0, 0.0
 
-    speed_delta_ms = (speed_kmh - last_speed_kmh) / 3.6
-    accel_g = max(-5.0, min(5.0, speed_delta_ms / time_delta / 9.81))
+    speed_delta_ms = (speed_kmh - last_speed_kmh) / KMH_TO_MS
+    accel_g = max(-MAX_ACCEL_G, min(MAX_ACCEL_G, speed_delta_ms / time_delta / GRAVITY_MS2))
 
     if accel_g > 0:
         return accel_g, 0.0
@@ -128,7 +141,7 @@ class FuelTracker:
             if fuel_consumed > 0:
                 self.total_consumed += fuel_consumed
             # 給油検出（燃料が急増した場合）
-            if fuel_consumed < -(fuel_capacity * 0.5):
+            if fuel_consumed < -(fuel_capacity * REFUEL_JUMP_FRACTION):
                 self.total_consumed = 0.0
                 self.laps_at_refuel = current_lap
 
@@ -187,8 +200,8 @@ async def telemetry_background_task():
     """
     client = GT7TelemetryClient(
         CONFIG["ps5_ip"],
-        CONFIG.get("send_port", 33739),
-        CONFIG.get("receive_port", 33740),
+        CONFIG.get("send_port", DEFAULT_SEND_PORT),
+        CONFIG.get("receive_port", DEFAULT_RECEIVE_PORT),
         CONFIG["heartbeat_interval"]
     )
     decoder = GT7Decoder()

@@ -792,7 +792,8 @@ body {
     text-align: center;
 }
 
-.fuel-boost-value {
+.fuel-boost-value,
+.stat-value {
     font-size: clamp(20px, 2.4vw, 30px);
     font-weight: 600;
     color: var(--text-primary);
@@ -807,13 +808,6 @@ body {
     color: var(--text-muted);
     text-transform: uppercase;
     margin-top: var(--sp-2);
-}
-
-.stat-value {
-    font-size: clamp(20px, 2.4vw, 30px);
-    font-weight: 600;
-    color: var(--text-primary);
-    line-height: 1;
 }
 
 /* --- Gear ratios ------------------------------------------------------- */
@@ -1849,8 +1843,8 @@ body {
     white-space: nowrap;
 }
 
-.drive-strip-value.best { color: var(--session-best); }
-.drive-strip-value.pb   { color: var(--session-best); }
+.drive-strip-value.best,
+.drive-strip-value.pb { color: var(--session-best); }
 .drive-strip-value.warn { color: var(--warning); }
 .drive-strip-value.crit { color: var(--critical); }
 

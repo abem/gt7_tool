@@ -7,6 +7,25 @@
 
 ---
 
+## 2026-07-09 — 挙動保存リファクタリング（フロント/バック横断）
+
+### refactor: 全ソースの挙動保存整理（13ファイル +500/-511）
+- **方針**: 観測可能な挙動を一切変えない機械的整理のみ。リスクの高い構造変更（ファイル分割・クロスファイル記号のリネーム・ES Module 化・シグネチャ変更・視覚に影響する CSS 変更）は**意図的に全除外**。
+- **主な内容**:
+  - 死コード削除: `ui_components.js` の `updateRotation3D()`、`lap-manager.js` の未参照「グローバル露出」8記号（いずれも `*.js`/`*.html` の独立 grep で裸参照ゼロを確認）。
+  - マジックナンバーの定数化: `MAX_G`・`CAR_BODY_INSET`・`DEMO_MAX_RPM`・`KMH_TO_MS`/`GRAVITY_MS2`・`PEDAL_PCT_DIVISOR` 等（値は不変、多くは関数局所スコープで共有スコープ衝突を回避）。
+  - 重複統合: `charts.js` の加速Gポリライン描画を `drawSeries()` に、`telemetry-analysis.js` の delta リセット3箇所を `clearDeltaUI()` に、`test-mode.js` の同一式の重複ローカルを集約。
+  - `var`→`const`/`let`（局所のみ。クロスファイル参照されるトップレベル `var` は温存）、主要関数への JSDoc 付与。
+  - `styles.css` は**完全一致する重複ルールのみ**をグルーピング統合。
+- **検証**: 全 JS `node --check` / 全 PY `py_compile` 通過、ファイル毎の敵対的 diff レビューで 13/13 挙動保存（blocker 0）、Playwright headless での **TEST MODE** E2E スモークがリファクタ前後で同一 PASS（未捕捉 JS 例外 0 件、`speed`/`rpm`/`gear` がデモデータで駆動）。
+- ⚠️ 実機（PS5）実テレメトリでは未確認。検証は TEST MODE + headless スモーク + 静的解析 + grep 監査による（実データ経路のロジックは未変更）。
+
+### docs: リファクタリング報告書を新設
+- `docs/refactoring-2026-07-09.md` を追加。実施内容・4層の検証結果・**意図的に見送った項目**を記録。
+- ⚠️ 見送り項目に**潜在バグ2件**を明記: `showConnectionError`（`ui_components.js` 定義が `websocket.js` で上書きシャドウ）と `getSectorClass`（`websocket.js`/`test-mode.js` で閾値の異なる同名関数の二重定義）。いずれも今後の専用修正で一本化が必要。
+
+---
+
 ## 2026-07-08 — バックエンド安定化・構成整理
 
 ### fix: Salsa20 復号の致命的バグ修正（5日間の機能不全解消）

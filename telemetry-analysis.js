@@ -82,6 +82,25 @@ function lerpA(a, b, f) {
  * ================================================================ */
 
 /**
+ * ライブデルタ表示(#lap-delta / #delta-bar-*)を初期状態へ戻す共通処理。
+ */
+function clearDeltaUI() {
+    const els = analysisState.els;
+    if (els.lapDelta) {
+        els.lapDelta.textContent = '--';
+        els.lapDelta.className = 'delta-value';
+    }
+    if (els.barNeg) {
+        els.barNeg.style.width = '0%';
+        els.barNeg.classList.remove('active');
+    }
+    if (els.barPos) {
+        els.barPos.style.width = '0%';
+        els.barPos.classList.remove('active');
+    }
+}
+
+/**
  * 状態を全初期化する。
  * セッション/コース変更・lap_count逆行・TESTストップ時に呼ぶ。
  */
@@ -112,19 +131,8 @@ function resetAnalysis() {
     analysisState.notif.prevBest = Infinity;
 
     // UI 初期化(存在ガード)
-    var els = analysisState.els;
-    if (els.lapDelta) {
-        els.lapDelta.textContent = '--';
-        els.lapDelta.className = 'delta-value';
-    }
-    if (els.barNeg) {
-        els.barNeg.style.width = '0%';
-        els.barNeg.classList.remove('active');
-    }
-    if (els.barPos) {
-        els.barPos.style.width = '0%';
-        els.barPos.classList.remove('active');
-    }
+    const els = analysisState.els;
+    clearDeltaUI();
     if (els.estLap) {
         els.estLap.textContent = '--:--.---';
         els.estLap.classList.remove('tentative', 'pb');
@@ -156,7 +164,7 @@ function ensureAnalysisInit() {
     };
 
     // コースマップ着色モード SPEED↔LINE トグル(1回だけ配線)
-    var btn = document.getElementById('course-line-mode-btn');
+    const btn = document.getElementById('course-line-mode-btn');
     if (btn) {
         btn.addEventListener('click', function() {
             analysisState.lineMode = (analysisState.lineMode === 'speed') ? 'line' : 'speed';
@@ -192,7 +200,7 @@ function analysisOnFrame(data) {
 
     ensureAnalysisInit();
 
-    var lap = data.lap_count || 0;
+    const lap = data.lap_count || 0;
 
     // (b) lap_count 逆行 → セッション/コース変更とみなし自動リセット
     if (lap < analysisState.lastLapNumber) {
@@ -236,7 +244,7 @@ function analysisOnFrame(data) {
     updateGrip(data);
 
     // (j) 解析チャート再描画(100ms スロットル)
-    var now = performance.now();
+    const now = performance.now();
     if (now - analysisState.lastChartTs >= CHART_CADENCE_MS) {
         analysisState.lastChartTs = now;
         if (typeof renderAnalysisCharts === 'function') {
@@ -254,11 +262,11 @@ function analysisOnFrame(data) {
 function updateDistanceIndex(data) {
     if (data.position_x != null && data.position_z != null) {
         if (analysisState.lastX != null) {
-            var seg = Math.hypot(
+            const seg = Math.hypot(
                 data.position_x - analysisState.lastX,
                 data.position_z - analysisState.lastZ
             );
-            var paused = !!(data.flags && data.flags.paused);
+            const paused = !!(data.flags && data.flags.paused);
             if (seg <= DISCONTINUITY_M && !paused) {
                 analysisState.curLap.cumDist += seg;
             }
@@ -267,7 +275,7 @@ function updateDistanceIndex(data) {
         analysisState.lastZ = data.position_z;
     } else {
         // フォールバック速度積分(dt は current_laptime 差分。performance.now は不使用)
-        var dt = ((data.current_laptime || 0) - analysisState.prevLaptime) / 1000;
+        const dt = ((data.current_laptime || 0) - analysisState.prevLaptime) / 1000;
         if (dt > 0 && dt < 2) {
             analysisState.curLap.cumDist += (data.speed_ms || 0) * dt;
         }
@@ -289,11 +297,11 @@ function onLapComplete(lapNumber, lastLaptimeMs) {
         return;
     }
 
-    var isBest = !analysisState.refLap ||
+    const isBest = !analysisState.refLap ||
         (lastLaptimeMs < analysisState.refLap.totalTime * 1000);
 
     if (isBest) {
-        var r = resampleByDist(analysisState.curLap.samples, STEP);
+        const r = resampleByDist(analysisState.curLap.samples, STEP);
         r.totalTime = lastLaptimeMs / 1000;
         r.totalDist = analysisState.curLap.cumDist;
         detectPeaksValleys(r);
@@ -318,25 +326,25 @@ function onLapComplete(lapNumber, lastLaptimeMs) {
  * @returns {Object} {dist[],time[],speed[],throttle[],brake[],x[],z[],N}
  */
 function resampleByDist(samples, step) {
-    var out = { dist: [], time: [], speed: [], throttle: [], brake: [], x: [], z: [], N: 0 };
+    const out = { dist: [], time: [], speed: [], throttle: [], brake: [], x: [], z: [], N: 0 };
     if (!samples || samples.length === 0) {
         return out;
     }
 
-    var lastDist = samples[samples.length - 1].dist || 0;
-    var N = Math.floor(lastDist / step) + 1;
-    var si = 0;
+    const lastDist = samples[samples.length - 1].dist || 0;
+    const N = Math.floor(lastDist / step) + 1;
+    let si = 0;
 
-    for (var k = 0; k < N; k++) {
-        var d = k * step;
+    for (let k = 0; k < N; k++) {
+        const d = k * step;
         // samples[si].dist <= d <= samples[si+1].dist となるよう si を進める
         while (si < samples.length - 2 && samples[si + 1].dist < d) {
             si++;
         }
-        var a = samples[si];
-        var b = samples[Math.min(si + 1, samples.length - 1)];
-        var span = b.dist - a.dist;
-        var frac = span > 0 ? (d - a.dist) / span : 0;
+        const a = samples[si];
+        const b = samples[Math.min(si + 1, samples.length - 1)];
+        const span = b.dist - a.dist;
+        let frac = span > 0 ? (d - a.dist) / span : 0;
         if (frac < 0) frac = 0;
         if (frac > 1) frac = 1;
 
@@ -358,18 +366,18 @@ function resampleByDist(samples, step) {
  * @returns {number} 通過タイム[s]
  */
 function refTimeAtDist(d) {
-    var rl = analysisState.refLap;
+    const rl = analysisState.refLap;
     if (!rl || !rl.time || rl.time.length === 0) {
         return 0;
     }
-    var N = rl.time.length;
+    const N = rl.time.length;
     if (N === 1) {
         return rl.time[0];
     }
-    var i = Math.floor(d / STEP);
+    let i = Math.floor(d / STEP);
     if (i < 0) i = 0;
     if (i > N - 2) i = N - 2;
-    var frac = (d - i * STEP) / STEP;
+    let frac = (d - i * STEP) / STEP;
     if (frac < 0) frac = 0;
     if (frac > 1) frac = 1;
     return rl.time[i] + (rl.time[i + 1] - rl.time[i]) * frac;
@@ -384,18 +392,18 @@ function detectPeaksValleys(refLap) {
     refLap.peaks = [];
     refLap.valleys = [];
 
-    var sp = refLap.speed;
-    var n = sp ? sp.length : 0;
+    const sp = refLap.speed;
+    const n = sp ? sp.length : 0;
     if (n < SMOOTH_W) {
         return;
     }
 
     // 移動平均(窓 SMOOTH_W)
-    var sm = new Array(n);
-    var half = Math.floor(SMOOTH_W / 2);
-    for (var i = 0; i < n; i++) {
-        var sum = 0, cnt = 0;
-        for (var j = i - half; j <= i + half; j++) {
+    const sm = new Array(n);
+    const half = Math.floor(SMOOTH_W / 2);
+    for (let i = 0; i < n; i++) {
+        let sum = 0, cnt = 0;
+        for (let j = i - half; j <= i + half; j++) {
             if (j >= 0 && j < n) {
                 sum += sp[j];
                 cnt++;
@@ -404,7 +412,7 @@ function detectPeaksValleys(refLap) {
         sm[i] = sum / cnt;
     }
 
-    for (var m = 1; m < n - 1; m++) {
+    for (let m = 1; m < n - 1; m++) {
         if (sm[m] >= sm[m - 1] && sm[m] > sm[m + 1]) {
             if (localProminence(sm, m, 'max') > MIN_PROM) {
                 refLap.peaks.push({ x: refLap.x[m], z: refLap.z[m] });
@@ -425,17 +433,17 @@ function detectPeaksValleys(refLap) {
  * @returns {number} 顕著性[km/h]
  */
 function localProminence(arr, i, type) {
-    var a = Math.max(0, i - PROM_WINDOW);
-    var b = Math.min(arr.length - 1, i + PROM_WINDOW);
+    const a = Math.max(0, i - PROM_WINDOW);
+    const b = Math.min(arr.length - 1, i + PROM_WINDOW);
     if (type === 'max') {
-        var minSide = arr[i];
-        for (var j = a; j <= b; j++) {
+        let minSide = arr[i];
+        for (let j = a; j <= b; j++) {
             if (arr[j] < minSide) minSide = arr[j];
         }
         return arr[i] - minSide;
     }
-    var maxSide = arr[i];
-    for (var k = a; k <= b; k++) {
+    let maxSide = arr[i];
+    for (let k = a; k <= b; k++) {
         if (arr[k] > maxSide) maxSide = arr[k];
     }
     return maxSide - arr[i];
@@ -463,31 +471,20 @@ function classifyZone(throttle, brake) {
  * @param {Object} data - テレメトリデータ
  */
 function updateLiveDelta(data) {
-    var els = analysisState.els;
-    var rl = analysisState.refLap;
+    const els = analysisState.els;
+    const rl = analysisState.refLap;
 
     if (!rl) {
-        if (els.lapDelta) {
-            els.lapDelta.textContent = '--';
-            els.lapDelta.className = 'delta-value';
-        }
-        if (els.barNeg) {
-            els.barNeg.style.width = '0%';
-            els.barNeg.classList.remove('active');
-        }
-        if (els.barPos) {
-            els.barPos.style.width = '0%';
-            els.barPos.classList.remove('active');
-        }
+        clearDeltaUI();
         analysisState._liveDelta = 0;
         return;
     }
 
-    var curDist = analysisState.curLap.cumDist;
+    let curDist = analysisState.curLap.cumDist;
     if (curDist > rl.totalDist) {
         curDist = rl.totalDist;
     }
-    var liveDelta = ((data.current_laptime || 0) / 1000) - refTimeAtDist(curDist);
+    const liveDelta = ((data.current_laptime || 0) / 1000) - refTimeAtDist(curDist);
     analysisState._liveDelta = liveDelta;
 
     if (els.lapDelta) {
@@ -498,8 +495,8 @@ function updateLiveDelta(data) {
         els.lapDelta.className = 'delta-value' + (liveDelta > 0 ? ' negative' : '');
     }
 
-    var n = Math.max(-1, Math.min(1, liveDelta / MAX_DELTA_S));
-    var pct = (Math.abs(n) * 100) + '%';
+    const n = Math.max(-1, Math.min(1, liveDelta / MAX_DELTA_S));
+    const pct = (Math.abs(n) * 100) + '%';
     if (liveDelta < 0) {
         // 速い → negative バー(緑)
         if (els.barNeg) {
@@ -529,33 +526,36 @@ function updateLiveDelta(data) {
  * @param {Object} data - テレメトリデータ
  */
 function updateEstimatedLap(data) {
-    var els = analysisState.els;
+    const EST_MIN_PROGRESS = 0.05;
+    const EST_TENTATIVE_PROGRESS = 0.20;
+
+    const els = analysisState.els;
     if (!els.estLap) {
         return;
     }
 
-    var rl = analysisState.refLap;
+    const rl = analysisState.refLap;
     if (!rl) {
         els.estLap.textContent = '--:--.---';
         els.estLap.classList.remove('tentative', 'pb');
         return;
     }
 
-    var progress = rl.totalDist > 0 ? (analysisState.curLap.cumDist / rl.totalDist) : 0;
-    var estimated = rl.totalTime + analysisState._liveDelta;
+    const progress = rl.totalDist > 0 ? (analysisState.curLap.cumDist / rl.totalDist) : 0;
+    const estimated = rl.totalTime + analysisState._liveDelta;
     if (!isFinite(estimated) || estimated <= 0) {
         return;
     }
 
     els.estLap.classList.remove('tentative', 'pb');
 
-    if (progress < 0.05) {
+    if (progress < EST_MIN_PROGRESS) {
         els.estLap.textContent = '--:--.---';
         return;
     }
 
     els.estLap.textContent = formatLapTime(Math.round(estimated * 1000));
-    if (progress < 0.20) {
+    if (progress < EST_TENTATIVE_PROGRESS) {
         els.estLap.classList.add('tentative');
     }
     if (estimated * 1000 < rl.totalTime * 1000) {
@@ -574,7 +574,8 @@ function updateEstimatedLap(data) {
  * @param {string} severity - good|warning|serious|critical|pb
  */
 function pushNotification(label, value, severity) {
-    var q = analysisState.notif.queue;
+    const MAX_NOTIFICATIONS = 3;
+    const q = analysisState.notif.queue;
     q.push({
         label: label,
         value: (value == null) ? '' : String(value),
@@ -582,8 +583,8 @@ function pushNotification(label, value, severity) {
         ts: performance.now(),
         el: null
     });
-    while (q.length > 3) {
-        var removed = q.shift();
+    while (q.length > MAX_NOTIFICATIONS) {
+        const removed = q.shift();
         if (removed && removed.el && removed.el.parentNode) {
             removed.el.parentNode.removeChild(removed.el);
         }
@@ -595,7 +596,10 @@ function pushNotification(label, value, severity) {
  * 通知キューを #race-engineer-feed に描画する(フェードイン/4秒後自動撤去)。
  */
 function renderNotifications() {
-    var feed = analysisState.els.feed;
+    const NOTIF_TTL_MS = 4000;
+    const NOTIF_FADE_MS = 300;
+
+    const feed = analysisState.els.feed;
     if (!feed) {
         return;
     }
@@ -605,14 +609,14 @@ function renderNotifications() {
             return; // 既描画
         }
 
-        var div = document.createElement('div');
+        const div = document.createElement('div');
         div.className = 'engineer-alert ' + item.severity;
 
-        var label = document.createElement('span');
+        const label = document.createElement('span');
         label.className = 'ea-label';
         label.textContent = item.label;
 
-        var val = document.createElement('span');
+        const val = document.createElement('span');
         val.className = 'ea-value';
         val.textContent = item.value;
 
@@ -635,12 +639,12 @@ function renderNotifications() {
                 if (div.parentNode) {
                     div.parentNode.removeChild(div);
                 }
-                var idx = analysisState.notif.queue.indexOf(item);
+                const idx = analysisState.notif.queue.indexOf(item);
                 if (idx >= 0) {
                     analysisState.notif.queue.splice(idx, 1);
                 }
-            }, 300);
-        }, 4000);
+            }, NOTIF_FADE_MS);
+        }, NOTIF_TTL_MS);
     });
 }
 
@@ -650,10 +654,10 @@ function renderNotifications() {
  * @param {Object} data - テレメトリデータ
  */
 function checkEngineer(data) {
-    var notif = analysisState.notif;
+    const notif = analysisState.notif;
 
     // (a) 新トップスピード(起動直後の連発抑止で最初の数値だけ記録)
-    var sp = data.speed_kmh || 0;
+    const sp = data.speed_kmh || 0;
     if (sp > notif.topSpeed + TOPSPEED_MARGIN && notif.topSpeed > 0) {
         pushNotification('TOP SPEED', Math.round(sp) + ' km/h', 'good');
     }
@@ -662,9 +666,9 @@ function checkEngineer(data) {
     }
 
     // (b) 燃料 50/20/10% クロス
-    var cap = data.fuel_capacity;
+    const cap = data.fuel_capacity;
     if (cap > 0) {
-        var pct = (data.current_fuel / cap) * 100;
+        const pct = (data.current_fuel / cap) * 100;
         [50, 20, 10].forEach(function(th) {
             if (notif.prevFuelPct > th && pct <= th && !notif.firedFuel[th]) {
                 notif.firedFuel[th] = true;
@@ -677,7 +681,7 @@ function checkEngineer(data) {
 
     // (c) 残周回 / ファイナルラップ
     if (data.total_laps > 0) {
-        var rem = data.total_laps - data.lap_count;
+        const rem = data.total_laps - data.lap_count;
         [15, 10, 5, 2].forEach(function(th) {
             if (rem === th && !notif.firedLaps[th]) {
                 notif.firedLaps[th] = true;
@@ -700,32 +704,34 @@ function checkEngineer(data) {
  * @param {Object} data - テレメトリデータ
  */
 function updateGrip(data) {
-    var el = analysisState.els.gripStatus;
+    const SLIP_SPIN = 1.10, SLIP_LOCK = 0.85, SPIN_THROTTLE_PCT = 50, LOCK_BRAKE_PCT = 20;
+
+    const el = analysisState.els.gripStatus;
     if (!el) {
         return; // 要素が無ければ何もしない
     }
 
-    var rps = data.wheel_rps;
-    var rad = data.tyre_radius;
-    var speedMs = data.speed_ms || 0;
+    const rps = data.wheel_rps;
+    const rad = data.tyre_radius;
+    const speedMs = data.speed_ms || 0;
     if (!rps || !rad || rps.length < 4 || rad.length < 4 || speedMs < MIN_SPEED_MS) {
         return;
     }
 
     // 全輪の最大周速(駆動輪不明のため最大採用)
-    var maxSurface = 0;
-    for (var i = 0; i < 4; i++) {
-        var s = Math.abs(rps[i]) * (rad[i] || 0) * WHEEL_SPEED_K;
+    let maxSurface = 0;
+    for (let i = 0; i < 4; i++) {
+        const s = Math.abs(rps[i]) * (rad[i] || 0) * WHEEL_SPEED_K;
         if (s > maxSurface) maxSurface = s;
     }
-    var slip = maxSurface / Math.max(speedMs, 1);
+    const slip = maxSurface / Math.max(speedMs, 1);
 
-    var status = 'GRIP OK';
-    var cls = 'ok';
-    if (slip > 1.10 && (data.throttle_pct || 0) > 50) {
+    let status = 'GRIP OK';
+    let cls = 'ok';
+    if (slip > SLIP_SPIN && (data.throttle_pct || 0) > SPIN_THROTTLE_PCT) {
         status = 'SPIN';
         cls = 'spin';
-    } else if (slip < 0.85 && (data.brake_pct || 0) > 20) {
+    } else if (slip < SLIP_LOCK && (data.brake_pct || 0) > LOCK_BRAKE_PCT) {
         status = 'LOCK';
         cls = 'lock';
     }
@@ -737,20 +743,20 @@ function updateGrip(data) {
  * 直近ラップタイムのσ(一貫性)を #consistency-stat に反映する(任意)。
  */
 function updateConsistency() {
-    var el = analysisState.els.consistency;
+    const el = analysisState.els.consistency;
     if (!el) {
         return;
     }
-    var arr = analysisState.lapTimesMs;
+    const arr = analysisState.lapTimesMs;
     if (arr.length < 2) {
         el.textContent = 'σ --';
         return;
     }
-    var recent = arr.slice(-5);
-    var mean = recent.reduce(function(a, b) { return a + b; }, 0) / recent.length;
-    var varSum = 0;
+    const recent = arr.slice(-5);
+    const mean = recent.reduce(function(a, b) { return a + b; }, 0) / recent.length;
+    let varSum = 0;
     recent.forEach(function(v) { varSum += (v - mean) * (v - mean); });
-    var sd = Math.sqrt(varSum / recent.length);
+    const sd = Math.sqrt(varSum / recent.length);
     el.textContent = 'σ ' + (sd / 1000).toFixed(2) + 's';
 }
 
@@ -764,20 +770,20 @@ function updateConsistency() {
  * @returns {Object} {xs[],curSpeed[],refSpeed[],delta[]}
  */
 function getAnalysisChartData() {
-    var rl = analysisState.refLap;
-    var cur = resampleByDist(analysisState.curLap.samples, STEP);
-    var curN = cur.N || 0;
-    var refN = rl ? rl.time.length : 0;
-    var N = Math.max(curN, refN, 1);
-    var curDist = analysisState.curLap.cumDist;
+    const rl = analysisState.refLap;
+    const cur = resampleByDist(analysisState.curLap.samples, STEP);
+    const curN = cur.N || 0;
+    const refN = rl ? rl.time.length : 0;
+    const N = Math.max(curN, refN, 1);
+    const curDist = analysisState.curLap.cumDist;
 
-    var xs = new Array(N);
-    var curSpeed = new Array(N);
-    var refSpeed = new Array(N);
-    var delta = new Array(N);
+    const xs = new Array(N);
+    const curSpeed = new Array(N);
+    const refSpeed = new Array(N);
+    const delta = new Array(N);
 
-    for (var k = 0; k < N; k++) {
-        var d = k * STEP;
+    for (let k = 0; k < N; k++) {
+        const d = k * STEP;
         xs[k] = d;
 
         curSpeed[k] = (k < curN && d <= curDist) ? cur.speed[k] : null;

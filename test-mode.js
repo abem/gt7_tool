@@ -286,7 +286,8 @@ function getDemoSteering() {
  */
 function renderDemoFrame(point, demoInputs) {
     const t = testTrajectoryIndex;
-    
+    const DEMO_MAX_RPM = 9000;
+
     // 速度・ギア・RPM表示
     elements.speed.textContent = Math.round(point.speed);
     const gearEl = elements.gear;
@@ -294,14 +295,14 @@ function renderDemoFrame(point, demoInputs) {
     gearEl.classList.remove('reverse', 'low');
     if (demoInputs.gear <= 2) gearEl.classList.add('low');
     
-    const rpmPct = (demoInputs.rpm / 9000 * 100);
+    const rpmPct = (demoInputs.rpm / DEMO_MAX_RPM * 100);
     // #rpm-bar は現行UIには存在しない。存在時のみ更新(RPMはシフトライト+rpm-textで表現)。
     if (elements.rpmBar) elements.rpmBar.style.width = rpmPct + '%';
     elements.rpmText.textContent = Math.round(demoInputs.rpm) + ' RPM';
     
     // シフトライト更新
     if (typeof updateShiftLights === 'function') {
-        updateShiftLights(demoInputs.rpm, 9000);
+        updateShiftLights(demoInputs.rpm, DEMO_MAX_RPM);
     }
 
     // ペダル表示（トップバー）
@@ -440,13 +441,14 @@ function renderDemoFrame(point, demoInputs) {
 
     // オフライン検証: 合成ラップ(demoTrajectory 20点=1周)で解析全経路を駆動。
     // refLap生成/delta/estimated/overlay/peak/notif を PS5 不要で検証可能にする。
+    const DEMO_LAP_SHORTEN_MS = 40;
+    const lapLen = demoTrajectory.length;              // 20
+    const stepMs = TEST_MODE_CONFIG.intervalMs;        // 200
+    const lapNum = Math.floor(testTrajectoryIndex / lapLen) + 1;
     if (typeof analysisOnFrame === 'function') {
-        const lapLen = demoTrajectory.length;              // 20
-        const stepMs = TEST_MODE_CONFIG.intervalMs;        // 200
-        const lapNum = Math.floor(testTrajectoryIndex / lapLen) + 1;
         const posInLap = testTrajectoryIndex % lapLen;
         const curLapMs = posInLap * stepMs;                // 0..3800
-        const lastLapMs = lapLen * stepMs - lapNum * 40;   // 周毎に短縮→PB連発で検証
+        const lastLapMs = lapLen * stepMs - lapNum * DEMO_LAP_SHORTEN_MS;   // 周毎に短縮→PB連発で検証
         analysisOnFrame({
             lap_count: lapNum, total_laps: 5,
             current_laptime: curLapMs,
@@ -464,14 +466,11 @@ function renderDemoFrame(point, demoInputs) {
 
     // DRIVE ビュー(有効時のみ内部で更新)。TEST MODE でも走行ビューを検証可能にする
     if (typeof driveViewOnFrame === 'function') {
-        const lapLen2 = demoTrajectory.length;
-        const stepMs2 = TEST_MODE_CONFIG.intervalMs;
-        const lapNum2 = Math.floor(testTrajectoryIndex / lapLen2) + 1;
         driveViewOnFrame({
-            lap_count: lapNum2, total_laps: 5,
-            last_laptime: lapNum2 > 1 ? lapLen2 * stepMs2 - lapNum2 * 40 : -1,
-            best_laptime: lapNum2 > 2 ? lapLen2 * stepMs2 - lapNum2 * 40 : -1,
-            fuel_laps_remaining: Math.max(0, 6 - lapNum2),
+            lap_count: lapNum, total_laps: 5,
+            last_laptime: lapNum > 1 ? lapLen * stepMs - lapNum * DEMO_LAP_SHORTEN_MS : -1,
+            best_laptime: lapNum > 2 ? lapLen * stepMs - lapNum * DEMO_LAP_SHORTEN_MS : -1,
+            fuel_laps_remaining: Math.max(0, 6 - lapNum),
             tyre_temp: tyreData.temps
         });
     }

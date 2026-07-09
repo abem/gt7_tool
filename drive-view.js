@@ -107,6 +107,9 @@ function driveViewOnFrame(data) {
     }
     const els = ensureDriveViewEls();
 
+    const FUEL_CRIT_LAPS = 3;
+    const FUEL_WARN_LAPS = 5;
+
     // Tier-1: ライブデルタ(ギア隣接・大型)。telemetry-analysis.js の距離基準値を再利用
     if (els.delta) {
         let deltaText = '--';
@@ -144,13 +147,13 @@ function driveViewOnFrame(data) {
     if (els.fuel && data.fuel_laps_remaining !== undefined) {
         const laps = data.fuel_laps_remaining;
         els.fuel.textContent = laps || '--';
-        els.fuel.classList.toggle('crit', laps > 0 && laps < 3);
-        els.fuel.classList.toggle('warn', laps >= 3 && laps < 5);
+        els.fuel.classList.toggle('crit', laps > 0 && laps < FUEL_CRIT_LAPS);
+        els.fuel.classList.toggle('warn', laps >= FUEL_CRIT_LAPS && laps < FUEL_WARN_LAPS);
     }
 
     // Tier-2: タイヤ状態ブロック(数値でなく色で読む: MoTeC ゲージ規約)
     if (data.tyre_temp && typeof getTyreTempClass === 'function') {
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < els.tyres.length; i++) {
             const el = els.tyres[i];
             if (el) {
                 el.className = 'drive-tyre ' + getTyreTempClass(data.tyre_temp[i]);

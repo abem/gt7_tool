@@ -110,6 +110,7 @@ function drawAccelChart() {
 
     const maxDataPoints = Math.max(accelData.accelG.length, accelData.accelDecel.length);
     const stepX = width / Math.max(maxDataPoints - 1, 1);
+    const ACCEL_G_FULL_SCALE = 10;
 
     // 基準線（0G, --axis）
     accelCtx.strokeStyle = '#2C313A';
@@ -119,43 +120,24 @@ function drawAccelChart() {
     accelCtx.lineTo(width, height / 2);
     accelCtx.stroke();
 
+    const drawSeries = (arr, color) => {
+        if (!arr.length) return;
+        accelCtx.strokeStyle = color;
+        accelCtx.lineWidth = config.lineWidth;
+        accelCtx.beginPath();
+        arr.forEach((v, i) => {
+            const x = i * stepX;
+            const y = height / 2 - (v / ACCEL_G_FULL_SCALE) * (height / 2);
+            if (i === 0) accelCtx.moveTo(x, y);
+            else accelCtx.lineTo(x, y);
+        });
+        accelCtx.stroke();
+    };
+
     // 加速G（緑）
-    if (accelData.accelG.length > 0) {
-        accelCtx.strokeStyle = config.lineColor;
-        accelCtx.lineWidth = config.lineWidth;
-        accelCtx.beginPath();
-
-        for (let i = 0; i < accelData.accelG.length; i++) {
-            const x = i * stepX;
-            const y = height / 2 - (accelData.accelG[i] / 10) * (height / 2);
-
-            if (i === 0) {
-                accelCtx.moveTo(x, y);
-            } else {
-                accelCtx.lineTo(x, y);
-            }
-        }
-        accelCtx.stroke();
-    }
-
+    drawSeries(accelData.accelG, config.lineColor);
     // 減速G（赤）
-    if (accelData.accelDecel.length > 0) {
-        accelCtx.strokeStyle = COLORS.accentRed;
-        accelCtx.lineWidth = config.lineWidth;
-        accelCtx.beginPath();
-
-        for (let i = 0; i < accelData.accelDecel.length; i++) {
-            const x = i * stepX;
-            const y = height / 2 - (accelData.accelDecel[i] / 10) * (height / 2);
-
-            if (i === 0) {
-                accelCtx.moveTo(x, y);
-            } else {
-                accelCtx.lineTo(x, y);
-            }
-        }
-        accelCtx.stroke();
-    }
+    drawSeries(accelData.accelDecel, COLORS.accentRed);
 
     // テキスト表示
     accelCtx.font = '12px sans-serif';
@@ -205,8 +187,6 @@ function initCharts() {
     if (chartsInitialized) {
         return;
     }
-
-    let initSucceeded = false;
 
     const chartElements = {
         'speed-chart': document.getElementById('speed-chart'),
@@ -260,13 +240,11 @@ function initCharts() {
         // リサイズ処理設定
         setupChartResize(chartElements);
 
-        initSucceeded = true;
+        chartsInitialized = true;
 
     } catch (e) {
         console.error('[CHART] Error:', e);
     }
-
-    chartsInitialized = initSucceeded;
 }
 
 /**

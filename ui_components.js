@@ -247,35 +247,6 @@ function getSpeedColor(speed) {
 }
 
 /* ================================================================
- *  3D回転表示更新
- * ================================================================ */
-
-/**
- * 3D回転立方体の表示を更新
- * @param {number} pitch - ピッチ角（ラジアン）
- * @param {number} yaw - ヨー角（ラジアン）
- * @param {number} roll - ロール角（ラジアン）
- */
-function updateRotation3D(pitch, yaw, roll) {
-    if (!elements.rotationCube) {
-        return;
-    }
-
-    const transform = `rotateZ(${roll}rad) rotateX(${pitch}rad) rotateY(${yaw}rad)`;
-    elements.rotationCube.style.transform = transform;
-
-    if (elements.rotPitchDisplay) {
-        elements.rotPitchDisplay.textContent = pitch.toFixed(3);
-    }
-    if (elements.rotYawDisplay) {
-        elements.rotYawDisplay.textContent = yaw.toFixed(3);
-    }
-    if (elements.rotRollDisplay) {
-        elements.rotRollDisplay.textContent = roll.toFixed(3);
-    }
-}
-
-/* ================================================================
  *  ステアリングメーター更新
  * ================================================================ */
 
@@ -365,12 +336,13 @@ function drawGForceMeter(lat, long) {
     ctx.stroke();
 
     // 同心円（Gの目盛り）
+    const MAX_G = 2.0;
     const gLevels = [0.5, 1.0, 1.5, 2.0];
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
     ctx.lineWidth = 1;
     
     gLevels.forEach(g => {
-        const r = (g / 2.0) * radius; // 2G = 最大半径
+        const r = (g / MAX_G) * radius; // 2G = 最大半径
         ctx.beginPath();
         ctx.arc(centerX, centerY, r, 0, Math.PI * 2);
         ctx.stroke();
@@ -395,8 +367,8 @@ function drawGForceMeter(lat, long) {
     // 履歴を描画（フェードアウト）
     gforceState.history.forEach((point, index) => {
         const alpha = (index / gforceState.maxHistory) * 0.5;
-        const x = centerX + (point.lat / 2.0) * radius;
-        const y = centerY - (point.long / 2.0) * radius;
+        const x = centerX + (point.lat / MAX_G) * radius;
+        const y = centerY - (point.long / MAX_G) * radius;
         
         ctx.beginPath();
         ctx.arc(x, y, 2, 0, Math.PI * 2);
@@ -405,8 +377,8 @@ function drawGForceMeter(lat, long) {
     });
     
     // 現在位置のドット
-    const dotX = centerX + (lat / 2.0) * radius;
-    const dotY = centerY - (long / 2.0) * radius;
+    const dotX = centerX + (lat / MAX_G) * radius;
+    const dotY = centerY - (long / MAX_G) * radius;
     
     // ドットのグロー（抑制ハロ, --accent-brand azure）
     const gradient = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, 15);
@@ -431,7 +403,7 @@ function drawGForceMeter(lat, long) {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.textAlign = 'center';
     gLevels.forEach(g => {
-        const r = (g / 2.0) * radius;
+        const r = (g / MAX_G) * radius;
         ctx.fillText(g + 'G', centerX + r - 12, centerY + 4);
     });
 }

@@ -181,6 +181,9 @@ class GT7Decoder:
     MIN_PACKET_SIZE = 0x100
     MIN_PARSE_SIZE = 0x128  # 296 bytes (Packet A)
 
+    # ペダル値(0-255)をパーセント(0-100)へ変換する除数 (255 / 100)
+    PEDAL_PCT_DIVISOR = 2.55
+
     # ハートビートタイプ別XOR値
     XOR_MAP = {
         b'A': 0xDEADBEAF,
@@ -296,9 +299,9 @@ class GT7Decoder:
             "gear": gear_byte & 0x0F,
             "suggested_gear": suggested if suggested < 15 else None,
             "throttle": f('B', d, 0x91)[0],
-            "throttle_pct": f('B', d, 0x91)[0] / 2.55,
+            "throttle_pct": f('B', d, 0x91)[0] / GT7Decoder.PEDAL_PCT_DIVISOR,
             "brake": f('B', d, 0x92)[0],
-            "brake_pct": f('B', d, 0x92)[0] / 2.55,
+            "brake_pct": f('B', d, 0x92)[0] / GT7Decoder.PEDAL_PCT_DIVISOR,
 
             # クラッチ
             "clutch": f('f', d, 0xF4)[0],
@@ -407,8 +410,8 @@ class GT7Decoder:
 
         # Packet ~ 拡張フィールド (344 bytes以上)
         if len(d) >= 0x158:
-            result["throttle_filtered_pct"] = f('B', d, 0x13C)[0] / 2.55
-            result["brake_filtered_pct"] = f('B', d, 0x13D)[0] / 2.55
+            result["throttle_filtered_pct"] = f('B', d, 0x13C)[0] / GT7Decoder.PEDAL_PCT_DIVISOR
+            result["brake_filtered_pct"] = f('B', d, 0x13D)[0] / GT7Decoder.PEDAL_PCT_DIVISOR
             result["torque_vector"] = [f('f', d, 0x140 + i * 4)[0] for i in range(4)]
             result["energy_recovery"] = f('f', d, 0x150)[0]
 

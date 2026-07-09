@@ -42,7 +42,7 @@ function updateLapList() {
 
     elements.lapList.innerHTML = '';
 
-    lapState.lapTimes.forEach(function(lap) {
+    lapState.lapTimes.forEach((lap) => {
         const item = document.createElement('div');
         item.className = 'lap-history-item' + (lap.number === lapState.bestLapNumber ? ' best' : '');
 
@@ -70,7 +70,7 @@ function updateLapList() {
  * @param {number} lapTime - ラップタイム（ms）
  */
 function addLapData(lapNumber, lapTime) {
-    const idx = lapState.lapTimes.findIndex(function(l) {
+    const idx = lapState.lapTimes.findIndex((l) => {
         return l.number === lapNumber;
     });
 
@@ -168,16 +168,3 @@ function updateMaxSpeed(speed) {
         elements.maxSpeed.textContent = lapState.maxSpeed;
     }
 }
-
-/* ================================================================
- *  エクスポート（グローバル露出）
- * ================================================================ */
-// グローバル変数として既存コードとの互換性を維持
-var currentLapNumber = 0;
-var lastLapNumber = 0;
-var bestLapTime = Infinity;
-var bestLapNumber = 0;
-var lapTimes = [];
-var currentLapData = [];
-var bestLapData = [];
-var maxSpeed = 0;
