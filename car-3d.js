@@ -77,6 +77,13 @@ function initCar3D() {
 
     car3DState.canvas = canvas;
     car3DState.ctx = canvas.getContext('2d');
+    if (!car3DState.ctx) {
+        // Canvas2D すら使えない極端な環境。契約どおり例外は投げず、静かに中止する（二重生成も防ぐ）。
+        console.error('[ATTITUDE_2D] 2D context unavailable');
+        container.removeChild(canvas);
+        car3DState.canvas = null;
+        return;
+    }
     car3DState.pitchEl = document.getElementById('car-3d-pitch');
     car3DState.rollEl  = document.getElementById('car-3d-roll');
     car3DState.yawEl   = document.getElementById('car-3d-yaw');
@@ -99,7 +106,7 @@ function initCar3D() {
 
 function resizeAttitude2D() {
     var c = car3DState.canvas;
-    if (!c) return;
+    if (!c || !car3DState.ctx) return;
     var rect = c.getBoundingClientRect();
     var w = Math.max(1, Math.round(rect.width));
     var h = Math.max(1, Math.round(rect.height));
@@ -124,13 +131,20 @@ function resizeAttitude2D() {
  * @param {number} steering ステア角（rad, 前輪を切る）
  * @param {number[]} susp   4輪サスペンション値 [FL,FR,RL,RR]（相対表示なので単位不問）
  */
+// 数値以外（undefined/NaN/±Infinity/文字列）を 0 に落とす。姿勢が NaN だと投影全体が NaN 化し、
+// キャンバスが無音のまま真っ白になる（moveTo/lineTo が NaN で描画されない）のを防ぐ。
+function finiteOr0(v) {
+    v = +v;
+    return isFinite(v) ? v : 0;
+}
+
 function updateCar3D(pitch, yaw, roll, rpm, steering, susp) {
-    car3DState.pitch = pitch || 0;
-    car3DState.yaw = yaw || 0;
-    car3DState.roll = roll || 0;
-    car3DState.steering = steering || 0;
+    car3DState.pitch = finiteOr0(pitch);
+    car3DState.yaw = finiteOr0(yaw);
+    car3DState.roll = finiteOr0(roll);
+    car3DState.steering = finiteOr0(steering);
     if (susp && susp.length >= 4) {
-        car3DState.susp = [susp[0] || 0, susp[1] || 0, susp[2] || 0, susp[3] || 0];
+        car3DState.susp = [finiteOr0(susp[0]), finiteOr0(susp[1]), finiteOr0(susp[2]), finiteOr0(susp[3])];
     }
     // 数値読み出し（旧版と同じ DOM を更新）
     if (car3DState.pitchEl) car3DState.pitchEl.textContent = (car3DState.pitch * 180 / Math.PI).toFixed(2) + '°';
@@ -285,24 +299,26 @@ function drawBody() {
     ctx.stroke();
 }
 
-// 4輪 + サスペンションストラット + 接地影
-function drawWheels() {
-    var ctx = car3DState.ctx;
+// 車体中心の投影奥行き（車輪を車体の前/後どちらに描くかの基準）
+function bodyMeanDepth() {
+    var midY = (ATTITUDE_2D.bodyBottom + ATTITUDE_2D.bodyTop) / 2;
+    return projLocal(0, midY, 0).depth;
+}
+
+// 4輪ジオメトリ（取付点・ハブ・接地点・色）を計算
+function computeWheels() {
     var W = ATTITUDE_2D.halfWid, L = ATTITUDE_2D.halfLen, B = ATTITUDE_2D.bodyBottom;
     var norm = suspNorm();
-    var r = ATTITUDE_2D.wheelR * ATTITUDE_2D.scale;
-
     // 車体コーナー（下面）: 並びは susp 配列順 FL, FR, RL, RR
     var corners = [
         [-W, B,  L], [W, B,  L],   // FL, FR
         [-W, B, -L], [W, B, -L]    // RL, RR
     ];
-
-    var wheels = corners.map(function (c, i) {
+    return corners.map(function (c, i) {
         // サス偏差: 伸び(norm>0)ほどストラットが長い＝ホイールが車体から離れる
         var strut = ATTITUDE_2D.strutBase + norm[i] * ATTITUDE_2D.strutTravel;
         var wx = c[0], wy = c[1] - strut, wz = c[2];
-        var wr = rotateAttitude(wx, wy, wz);           // ワールド座標
+        var wr = rotateAttitude(wx, wy, wz);           // ワールド座標（接地点用）
         return {
             i: i, norm: norm[i], col: strutColor(norm[i]),
             top: projLocal(c[0], c[1], c[2]),          // 取付点（車体コーナー）
@@ -310,34 +326,41 @@ function drawWheels() {
             ground: project(wr[0], 0, wr[2])           // 真下の接地点（水平面）
         };
     });
-    wheels.sort(function (a, b) { return a.hub.depth - b.hub.depth; });
+}
 
-    // 接地影（先に全部）
+// 接地影（常に最下層）
+function drawWheelShadows(wheels) {
+    var ctx = car3DState.ctx;
+    var r = ATTITUDE_2D.wheelR * ATTITUDE_2D.scale;
     wheels.forEach(function (w) {
         ctx.beginPath();
         ctx.ellipse(w.ground.x, w.ground.y, r * 0.72, r * 0.30, 0, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(0,0,0,0.30)';
         ctx.fill();
     });
+}
 
-    ctx.lineCap = 'round';
-    wheels.forEach(function (w) {
+// 指定した車輪群（ストラット＋ホイール）を奥→手前に描く
+function drawWheelSet(wheels) {
+    var ctx = car3DState.ctx;
+    var r = ATTITUDE_2D.wheelR * ATTITUDE_2D.scale;
+    wheels.slice().sort(function (a, b) { return a.hub.depth - b.hub.depth; }).forEach(function (w) {
         // ストラット（サス）: 太いバー＋白ハイライトで伸縮を色表現
+        ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(w.top.x, w.top.y); ctx.lineTo(w.hub.x, w.hub.y);
         ctx.lineWidth = 7; ctx.strokeStyle = w.col; ctx.stroke();
         ctx.beginPath(); ctx.moveTo(w.top.x, w.top.y); ctx.lineTo(w.hub.x, w.hub.y);
         ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.stroke();
+        ctx.lineCap = 'butt';
         // 取付点マーカー
         ctx.beginPath(); ctx.arc(w.top.x, w.top.y, 3, 0, Math.PI * 2);
         ctx.fillStyle = w.col; ctx.fill();
-
         // ホイール（投影円 ≒ 楕円） + サス色のリム
         ctx.beginPath();
         ctx.ellipse(w.hub.x, w.hub.y, r * 0.6, r, 0, 0, Math.PI * 2);
         ctx.fillStyle = ATTITUDE_COLORS.wheel; ctx.fill();
         ctx.lineWidth = 3; ctx.strokeStyle = w.col; ctx.stroke();
     });
-    ctx.lineCap = 'butt';
 }
 
 // サス凡例（縮み=赤 / 伸び=青）
@@ -389,8 +412,19 @@ function render() {
     if (!ctx) return;
     ctx.clearRect(0, 0, car3DState.W, car3DState.H);
     drawGround();
+
+    var wheels = computeWheels();
+    drawWheelShadows(wheels);                 // 影は常に最下層
+
+    // 車体中心より奥の車輪は車体の前に、手前の車輪は車体の後に描く（正しい前後関係で、
+    // 奥の車輪がルーフの上に浮いて見える不具合を解消）
+    var bd = bodyMeanDepth();
+    var back = [], front = [];
+    wheels.forEach(function (w) { (w.hub.depth <= bd ? back : front).push(w); });
+    drawWheelSet(back);
     drawBody();
-    drawWheels();   // 車体の後に描き、4輪すべて見えるようにする
+    drawWheelSet(front);
+
     drawLegend();
     drawReadout();
 }

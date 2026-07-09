@@ -20,6 +20,14 @@
 - **互換**: 公開口 `initCar3D()` / `updateCar3D()` / `car3DState.initialized` を維持（呼び出し側は susp 引数追加のみ）。`initCar3D` は例外を投げない。
 - **検証**: Playwright headless で **WebGL を完全無効化**した状態で TEST MODE 実行 → 姿勢図が描画・4輪サス色分け・PITCH/ROLL/YAW 更新・未捕捉例外0 を確認（複数姿勢のスクリーンショットで目視）。
 
+### fix: 敵対的レビュー指摘の反映（前後関係の描画・防御・テスト刷新）
+- **前後関係(depth)の不具合**: 車輪を車体の後にまとめて描いていたため、奥側の車輪がルーフの上に浮いて見えた（ヨー大で顕著）。車体中心の投影奥行きを基準に**奥の車輪→車体→手前の車輪**の順で描くよう `render()` を修正し、正しい遮蔽に。実デプロイ済みコンテナ（WebGL無効）で yaw≈75° の姿勢で解消を目視確認。
+- **防御的ハードニング**（到達経路は稀だが「例外を投げない」契約を厳守）:
+  - `updateCar3D` に `finiteOr0()` を追加。`NaN`/`±Infinity`/文字列の pitch/yaw/roll/susp を 0 に落とし、投影の NaN 伝播でキャンバスが無音のまま真っ白になるのを防止。
+  - `initCar3D` で `getContext('2d')` が null の場合、生成済み canvas を除去して静かに中止（二重生成防止）。`resizeAttitude2D` も ctx 無しなら早期 return。
+- **テスト刷新**: `tests/test-glass.js` を旧WebGLの青ガラス/赤ルーフのピクセル検査から、**Canvas2D姿勢図のスモークテスト**へ全面刷新（削除済み `THREE` global と `car3DState.renderer/scene/camera` への参照で常時ハードフェイルしていた指摘2件を解消）。検査内容: `initCar3D` 存在・THREE非依存・`car3DState.initialized===true`・canvas非空・ページ例外0。
+- **レビュー体制**: `car-3d.js` に対し3観点（投影/回転の数学・実行時エッジケース・呼び出し口整合）× 敵対的検証のワークフローを実施。**本番コードの must-fix はゼロ**（数学/エッジ系の指摘4件は呼び出し側の `|| 0` と数値テレメトリにより到達不能として REFUTED）、CONFIRMED 2件はいずれも上記テストコードの陳腐化で対応済み。
+
 ---
 
 ## 2026-07-09 — 挙動保存リファクタリング（フロント/バック横断）
