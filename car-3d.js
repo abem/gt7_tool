@@ -58,6 +58,7 @@ var ATTITUDE_COLORS = {
     hub: '#0E1319',
     tyre: 'rgba(155,172,196,0.60)',       // タイヤ輪郭（細線）
     tyreFill: 'rgba(10,14,20,0.28)',
+    heading: 'rgba(120,220,255,0.92)',    // 接地点の進行方向アロー（ステア可視化）
     strutCompress: '#E8563B',             // 縮み（荷重大, 赤）
     strutNeutral: '#5AD08A',
     strutExtend: '#43A6FF'                // 伸び（荷重小, 青）
@@ -262,6 +263,8 @@ function computeCorner(i) {
     return {
         i: i, norm: norm, col: strutColor(norm), depth: pHub.depth,
         ubj: P(ubj), lbj: P(lbj), hub: pHub,
+        hubLocal: hub,                            // タイヤを 3D 円盤で描くための局所座標
+        steer: (i < 2) ? car3DState.steering : 0, // 前輪(FL,FR)のみキングピン軸まわりに実際に切る
         uF: P(uF), uR: P(uR), lF: P(lF), lR: P(lR),
         sprTop: P(sprTop), sprBot: P(sprBot),
         ground: project(hub[0], 0, hub[2])       // ハブ真下の接地点（水平面）
@@ -286,22 +289,61 @@ function drawSpring(a, b, col) {
     ctx.lineWidth = 2.4; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.stroke(); ctx.lineCap = 'butt';
 }
 
-// ホイール（針金: タイヤ輪郭＋サス色リム＋スポーク）
+// タイヤ円盤の輪郭点（3D→投影）。円盤は「上(0,1,0)」と「転がり方向 fwd」の張る平面上。
+// fwd はステア角で y 軸まわりに回転するので、前輪を切ると投影された楕円の向きが変わる＝実際に切れる。
+function projDisc(hx, hy, hz, radius, fx, fz, n) {
+    var pts = [];
+    for (var k = 0; k < n; k++) {
+        var th = k / n * Math.PI * 2;
+        var ct = Math.cos(th), st = Math.sin(th);   // ct=上成分, st=前後成分
+        pts.push(project(hx + radius * st * fx, hy + radius * ct, hz + radius * st * fz));
+    }
+    return pts;
+}
+function strokePoly(pts) {
+    var ctx = car3DState.ctx;
+    ctx.beginPath();
+    pts.forEach(function (p, k) { if (k === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    ctx.closePath();
+}
+
+// ホイール（針金: タイヤ輪郭＋サス色リム＋スポーク）。前輪はステア角で切れる。
+// 実舵角は小さめなので、視認性のため見た目の切れ角だけ誇張する（正確な角度は STEERING ゲージ）。
+var STEER_GAIN = 2.2, STEER_CAP = 0.9;
 function drawWheelWire(c) {
     var ctx = car3DState.ctx;
-    var r = ATTITUDE_2D.wheelR * ATTITUDE_2D.scale;
-    var cx = c.hub.x, cy = c.hub.y, rx = r * 0.60, ry = r;
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    var R = ATTITUDE_2D.wheelR;
+    var hx = c.hubLocal[0], hy = c.hubLocal[1], hz = c.hubLocal[2];
+    var sv = Math.max(-STEER_CAP, Math.min(STEER_CAP, c.steer * STEER_GAIN));
+    var fx = Math.sin(sv), fz = Math.cos(sv);             // 転がり方向（前方, 誇張後）
+
+    // 接地点の進行方向アロー（前輪の切れ角がひと目で分かる最重要キュー）。
+    // 後輪は常に前方(+z)を指し基準になる。前輪はステアで振れる。
+    var gBack = project(hx - R * 0.7 * fx, 0.01, hz - R * 0.7 * fz);
+    var gTip = project(hx + R * 1.9 * fx, 0.01, hz + R * 1.9 * fz);
+    ctx.lineCap = 'round';
+    wire(gBack, gTip, 3, ATTITUDE_COLORS.heading);
+    var dx = gTip.x - gBack.x, dy = gTip.y - gBack.y, Ld = Math.hypot(dx, dy) || 1;
+    var ux = dx / Ld, uy = dy / Ld, nx = -uy, ny = ux, ah = 9, aw = 5.5;   // 矢じり
+    ctx.beginPath();
+    ctx.moveTo(gTip.x, gTip.y);
+    ctx.lineTo(gTip.x - ux * ah + nx * aw, gTip.y - uy * ah + ny * aw);
+    ctx.lineTo(gTip.x - ux * ah - nx * aw, gTip.y - uy * ah - ny * aw);
+    ctx.closePath(); ctx.fillStyle = ATTITUDE_COLORS.heading; ctx.fill();
+    ctx.lineCap = 'butt';
+
+    // タイヤ外周
+    strokePoly(projDisc(hx, hy, hz, R, fx, fz, 24));
     ctx.fillStyle = ATTITUDE_COLORS.tyreFill; ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = ATTITUDE_COLORS.tyre; ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx * 0.55, ry * 0.55, 0, 0, Math.PI * 2);
+    // リム（サス色）
+    strokePoly(projDisc(hx, hy, hz, R * 0.55, fx, fz, 20));
     ctx.lineWidth = 2.2; ctx.strokeStyle = c.col; ctx.stroke();
+    // スポーク（中心→リム, 4本）
     ctx.lineWidth = 1; ctx.strokeStyle = ATTITUDE_COLORS.tyre;
-    for (var s = 0; s < 4; s++) {
-        var ang = s * Math.PI / 4;
-        ctx.beginPath(); ctx.moveTo(cx, cy);
-        ctx.lineTo(cx + Math.cos(ang) * rx * 0.55, cy + Math.sin(ang) * ry * 0.55); ctx.stroke();
-    }
+    projDisc(hx, hy, hz, R * 0.5, fx, fz, 4).forEach(function (p) {
+        ctx.beginPath(); ctx.moveTo(c.hub.x, c.hub.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    });
     node(c.hub, 2.5, ATTITUDE_COLORS.hub);
 }
 
