@@ -458,3 +458,16 @@ function renderLoop() {
     car3DState.needsRender = false;
     render();
 }
+
+// ページ読み込み時に自動初期化する。WebSocket 接続や TEST MODE を待たずに、まず中立姿勢の図を
+// 必ず表示する（未接続でも「何も出ない」を防ぐ）。initCar3D は initialized ガードで冪等。
+function autoInitCar3D() {
+    if (document.getElementById('car-3d-view')) initCar3D();
+}
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', autoInitCar3D);
+    } else {
+        autoInitCar3D();
+    }
+}

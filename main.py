@@ -313,7 +313,8 @@ async def websocket_handler(request):
 
 async def index_handler(request):
     """メインダッシュボードを配信"""
-    return web.FileResponse('index.html')
+    # no-cache: ブラウザは ETag で必ず再検証する（デプロイ後に古い JS/HTML を掴み続けるのを防ぐ）
+    return web.FileResponse('index.html', headers={'Cache-Control': 'no-cache'})
 
 
 async def static_handler(request):
@@ -333,7 +334,8 @@ async def static_handler(request):
     if not os.path.isfile(filepath):
         return web.Response(status=404, text="File not found")
 
-    return web.FileResponse(filepath)
+    # no-cache: ブラウザは ETag で必ず再検証する（デプロイ後に古い JS/CSS を掴み続けるのを防ぐ）
+    return web.FileResponse(filepath, headers={'Cache-Control': 'no-cache'})
 
 
 @web.middleware

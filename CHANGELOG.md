@@ -37,6 +37,13 @@
   - 各コーナーを奥→手前でソートして自然な重なりに。接地影は最下層。
 - **検証**: headless（WebGL無効）で複数姿勢（yaw 23〜97°）を描画・目視。4輪のウィッシュボーン/ばね/色分け・PITCH/ROLL/YAW・未捕捉例外0 を確認。
 
+### fix: 「CAR ATTITUDE が何も表示されない」を解消（キャッシュ無効化＋自動初期化）
+- **原因**: (1) 静的配信に `Cache-Control` が無く、ブラウザが**古い WebGL 版の car-3d.js をキャッシュから使い続ける**と、GPU が落ちた環境では旧コードが例外を投げて何も描かれない。(2) `initCar3D()` は WebSocket 接続時か TEST MODE 押下時しか呼ばれず、未接続だとキャンバス自体が生成されなかった。
+- **修正**:
+  - `main.py` の `index_handler` / `static_handler` に `Cache-Control: no-cache` を付与。ETag による再検証を必須化し、デプロイ後に古い JS/HTML を掴み続ける問題を恒久的に排除（304 で軽量）。
+  - `car-3d.js` にページ読み込み時の**自動初期化**を追加（`DOMContentLoaded`）。WebSocket 接続や TEST MODE を待たず、まず中立姿勢の図を必ず表示する。`initCar3D` は `initialized` ガードで冪等なので二重初期化なし。
+- **検証**: 再ビルド後、`Cache-Control: no-cache` の送出を確認。TEST MODE を押さない通常ロードで中立姿勢図（シャシー＋4輪＋緑ばね, PITCH/ROLL/YAW=0.0°）が描画・未捕捉例外0 を確認。
+
 ---
 
 ## 2026-07-09 — 挙動保存リファクタリング（フロント/バック横断）
