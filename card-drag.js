@@ -4,8 +4,9 @@
  * - トップレベルの .card を対象（ネストした子カードは除外）。
  * - ハンドル = そのカードのタイトル(.card-title、ヘッダ内などネストしていても可)。
  *   タイトルの無いカード(スタット系)は「カード全体」をハンドルにする。
- * - ドラッグ開始でカードを body 直下へ「浮かせて」(position:fixed)自由移動する。
+ * - ドラッグ開始でカードを body 直下へ「浮かせて」(position:absolute)自由移動する。
  *   列(.left/center/right-panel)は overflow クリップ + contain:content のため。
+ *   座標はドキュメント基準なので、ページがスクロールする幅(≤1399px)でも内容に追従する。
  * - 位置は localStorage に保存し次回ロードで復元（画面外はクランプ）。
  * - ヘッダ「↻ 配置」で全リセット / ハンドルのダブルクリックで個別リセット。
  *
@@ -39,6 +40,26 @@
     function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; } }
     function saveStore(m) { try { localStorage.setItem(STORE_KEY, JSON.stringify(m)); } catch (e) {} }
     function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+    // スクロール量とドキュメント境界（浮遊は position:absolute でドキュメント基準に置く）
+    function scrollX() { return window.pageXOffset || document.documentElement.scrollLeft || 0; }
+    function scrollY() { return window.pageYOffset || document.documentElement.scrollTop || 0; }
+    function pageW() { return document.documentElement.clientWidth || window.innerWidth; }
+    function pageBottom() { return Math.max(document.documentElement.scrollHeight, window.innerHeight); }
+    // ページが縦スクロールできるか（デスクトップは body/html overflow:hidden で不可）。
+    // scrollHeight は浮遊ブロック自身で膨らむため overflow スタイルで判定する。
+    function pageCanScrollY() {
+        function blocked(v) { return v === 'hidden' || v === 'clip'; }
+        return !(blocked(getComputedStyle(document.body).overflowY) ||
+                 blocked(getComputedStyle(document.documentElement).overflowY));
+    }
+    // top をクランプ。スクロール可ならページ全高まで、不可ならビューポート内に収める
+    // （＝レイアウト切替でブロックが画面外に取り残されて掴めなくなるのを防ぐ）。
+    function clampTop(top, h) {
+        var visible = Math.min(h, 40);
+        var bound = pageCanScrollY() ? Math.max(0, pageBottom() - visible)
+                                     : Math.max(0, window.innerHeight - visible);
+        return clamp(top, 0, bound);
+    }
     // ドラッグを開始しない要素（本物の操作系のみ）。canvas は当ダッシュボードでは
     // 表示専用（uPlot は cursor:{show:false}、他も入力ハンドラ無し）なので除外しない
     // → チャート/ビジュアライズ系カードも本体のどこからでも掴めるようにする。
@@ -46,12 +67,13 @@
         return !!(t && t.closest && t.closest('button, input, select, textarea, a, [contenteditable], [role="button"]'));
     }
 
+    // left/top はドキュメント基準座標（ページスクロールに追従させるため position:absolute）
     function floatCard(c, left, top, width, height) {
         if (c.el.classList.contains('floating')) return;
         var s = c.el.style;
         s.width = width + 'px';
         s.height = height + 'px';
-        s.position = 'fixed';
+        s.position = 'absolute';
         s.left = left + 'px';
         s.top = top + 'px';
         s.margin = '0';
@@ -78,7 +100,8 @@
     function persist(c) {
         var r = c.el.getBoundingClientRect();
         var s = loadStore();
-        s[c.id] = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+        // ドキュメント基準座標で保存（復元後もスクロール位置に依存しない）
+        s[c.id] = { left: Math.round(r.left + scrollX()), top: Math.round(r.top + scrollY()), width: Math.round(r.width), height: Math.round(r.height) };
         saveStore(s);
     }
     function forget(c) { var s = loadStore(); delete s[c.id]; saveStore(s); }
@@ -99,14 +122,18 @@
                 if (Math.hypot(e.clientX - startX, e.clientY - startY) < THRESHOLD) return;
                 var r = c.el.getBoundingClientRect();
                 grabX = startX - r.left; grabY = startY - r.top;
-                floatCard(c, r.left, r.top, r.width, r.height);
+                floatCard(c, r.left + scrollX(), r.top + scrollY(), r.width, r.height);
                 c.el.classList.add('dragging');
                 dragging = true;
             }
             if (!dragging) return;
+            // ポインタはビューポート座標。表示内に収まるようクランプしてからスクロール量を足し、
+            // ドキュメント基準の absolute 座標にする（ドロップ後はスクロールに追従する）。
             var w = c.el.offsetWidth, h = c.el.offsetHeight;
-            c.el.style.left = clamp(e.clientX - grabX, 0, Math.max(0, window.innerWidth - w)) + 'px';
-            c.el.style.top = clamp(e.clientY - grabY, 0, Math.max(0, window.innerHeight - Math.min(h, 40))) + 'px';
+            var vpLeft = clamp(e.clientX - grabX, 0, Math.max(0, window.innerWidth - w));
+            var vpTop = clamp(e.clientY - grabY, 0, Math.max(0, window.innerHeight - Math.min(h, 40)));
+            c.el.style.left = (vpLeft + scrollX()) + 'px';
+            c.el.style.top = (vpTop + scrollY()) + 'px';
             c.el.style.zIndex = String(++zTop);
             e.preventDefault();
         }
@@ -165,8 +192,9 @@
             if (!s) return;
             var w = s.width || c.el.getBoundingClientRect().width;
             var h = s.height || c.el.getBoundingClientRect().height;
-            var left = clamp(s.left, 0, Math.max(0, window.innerWidth - w));
-            var top = clamp(s.top, 0, Math.max(0, window.innerHeight - Math.min(h, 40)));
+            // ドキュメント基準でクランプ（左は表示幅、上はスクロール可否に応じて）
+            var left = clamp(s.left, 0, Math.max(0, pageW() - w));
+            var top = clampTop(s.top, h);
             floatCard(c, left, top, w, h);
         });
     }
@@ -175,8 +203,8 @@
         cards.forEach(function (c) {
             if (!c.el.classList.contains('floating')) return;
             var w = c.el.offsetWidth, h = c.el.offsetHeight;
-            c.el.style.left = clamp(parseFloat(c.el.style.left) || 0, 0, Math.max(0, window.innerWidth - w)) + 'px';
-            c.el.style.top = clamp(parseFloat(c.el.style.top) || 0, 0, Math.max(0, window.innerHeight - Math.min(h, 40))) + 'px';
+            c.el.style.left = clamp(parseFloat(c.el.style.left) || 0, 0, Math.max(0, pageW() - w)) + 'px';
+            c.el.style.top = clampTop(parseFloat(c.el.style.top) || 0, h) + 'px';
         });
     }
 
