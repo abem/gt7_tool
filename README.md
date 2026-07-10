@@ -40,8 +40,10 @@ git clone https://github.com/abem/gt7_tool.git
 cd gt7_tool
 
 # 2. PS5 の IP アドレスを設定
-#    config.json の "ps5_ip" を PS5 の実際の IP に変更
-nano config.json
+#    docker-compose.yml の environment: PS5_IP を直接編集するか、
+#    リポジトリ直下に .env を作成し PS5_IP=... を記載（.env.example 参照）
+cp .env.example .env
+nano .env
 
 # 3. 起動
 docker compose up --build
@@ -51,6 +53,8 @@ docker compose up --build
 ```
 
 > **PS5 の IP 確認方法:** 設定 → ネットワーク → 接続状態の詳細 → IP アドレス
+>
+> **注意:** `main.py` は環境変数優先・`config.json` フォールバックのため、`docker compose` 起動時は `config.json` の `ps5_ip` を編集しても反映されません。`config.json` の `ps5_ip` は `docker compose` を使わず `python main.py` を直接起動する場合のみのフォールバックです。
 
 ### テストモード
 

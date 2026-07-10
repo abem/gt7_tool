@@ -5,7 +5,7 @@
  * @module test-mode
  * @depends constants.js (TEST_MODE_CONFIG)
  * @depends ui_components.js (elements, debugLog, updateSteeringGauge)
- * @depends websocket.js (packetCount)
+ * @depends websocket.js (packetCount, getSectorClass)
  * @depends steer-response.js (initSteerResponse, updateSteerResponse)
  * @depends car-3d.js (updateCar3D, initCar3D, car3DState)
  */

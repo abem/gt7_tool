@@ -8,5 +8,6 @@ services:
       # Only mount data directory (excludes .git, node_modules, etc.)
       - ./gt7data:/app/gt7data
     environment:
-      - PS5_IP=192.168.1.128
+      # PS5 の実IPに合わせる(.env の PS5_IP でも上書き可)
+      - PS5_IP=${PS5_IP:-192.168.1.128}
       - PYTHONUNBUFFERED=1

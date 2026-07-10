@@ -4,7 +4,7 @@
  *
  * @module websocket
  * @depends constants.js (UPDATE_INTERVALS, WEBSOCKET_CONFIG)
- * @depends ui_components.js (elements, debugLog, updateSteeringGauge)
+ * @depends ui_components.js (elements, debugLog, updateSteeringGauge, cacheElements, getTyreTempColor)
  * @depends lap-manager.js (updateLapState, updateMaxSpeed)
  * @depends charts.js (timeCounter, timeData, speedData, rpmData, throttleData, brakeData,
  *                     speedChart, rpmChart, throttleChart, brakeChart, initCharts, updateAccelChart)
@@ -392,11 +392,13 @@ function updateTyreState(data) {
  * @returns {string} CSSクラス名（'purple'|'green'|'yellow'|'red'|''）
  */
 function getSectorClass(current, best) {
+    const SECTOR_GREEN_THRESH = 0.1;
+    const SECTOR_YELLOW_THRESH = 0.3;
     if (!best || best <= 0) return '';
     const diff = current - best;
     if (diff < 0) return 'purple';  // 新ベスト
-    if (diff < 0.1) return 'green';  // ベストに近い
-    if (diff < 0.3) return 'yellow'; // 普通
+    if (diff < SECTOR_GREEN_THRESH) return 'green';  // ベストに近い
+    if (diff < SECTOR_YELLOW_THRESH) return 'yellow'; // 普通
     return 'red';  // 遅い
 }
 

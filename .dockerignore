@@ -28,6 +28,10 @@ uplot-test.html
 # Node - exclude node_modules but keep package files for npm install
 node_modules/
 
+# Dev-only dirs (Dockerfile はファイルを明示 COPY するため未使用だが、ビルドコンテキスト送信を軽量化)
+scripts/
+tests/
+
 # Docs
 docs/
 *.md

@@ -10,6 +10,11 @@
 6. [テストモード](#テストモード)
 7. [トラブルシューティング](#トラブルシューティング)
 8. [FAQ](#faq)
+9. [キーボードショートカット](#キーボードショートカット)
+10. [用語集](#用語集)
+11. [サポート](#サポート)
+12. [動作確認について](#動作確認について)
+13. [ライセンス](#ライセンス)
 
 ## はじめに
 
@@ -67,27 +72,39 @@ docker compose build
 
 ### 2. 設定ファイルの編集
 
-`config.json` をテキストエディタで開き、PS5のIPアドレスを設定します。
+`main.py` は環境変数を優先し `config.json` にフォールバックする設計です。`docker compose` で起動する場合、`config.json` の `ps5_ip` を編集しても反映されないため、以下のいずれかの方法で設定してください。
 
-```json
-{
-    "ps5_ip": "192.168.1.10",
-    "send_port": 33739,
-    "receive_port": 33740,
-    "http_port": 8080,
-    "heartbeat_interval": 10
-}
+**方法A: docker-compose.yml を直接編集**
+
+`docker-compose.yml` の `environment:` にある `PS5_IP` を PS5 の実際の IP に書き換えます。
+
+**方法B: .env ファイルを使用（推奨）**
+
+リポジトリ直下に `.env` を作成し、PS5 の IP アドレス等を記載します（`.env.example` を参照）。
+
+```bash
+cp .env.example .env
+```
+
+```
+PS5_IP=192.168.1.10
+SEND_PORT=33739
+RECEIVE_PORT=33740
+HTTP_PORT=8080
+HEARTBEAT_INTERVAL=10
 ```
 
 **設定項目の説明:**
 
 | 項目 | 説明 | デフォルト値 |
 |------|------|-------------|
-| `ps5_ip` | PS5のIPアドレス | 必須設定 |
-| `send_port` | ハートビート送信ポート | 33739 |
-| `receive_port` | テレメトリ受信ポート | 33740 |
-| `http_port` | Webサーバーポート | 8080 |
-| `heartbeat_interval` | ハートビート間隔(秒) | 10 |
+| `PS5_IP` | PS5のIPアドレス | 必須設定 |
+| `SEND_PORT` | ハートビート送信ポート | 33739 |
+| `RECEIVE_PORT` | テレメトリ受信ポート | 33740 |
+| `HTTP_PORT` | Webサーバーポート | 8080 |
+| `HEARTBEAT_INTERVAL` | ハートビート間隔(秒) | 10 |
+
+> `config.json` の `ps5_ip` 等の同名項目は、`docker compose` を使わず `python main.py` を直接起動する場合のみのフォールバック値です（環境変数が未設定のときに使われます）。
 
 ### 3. GT7でテレメトリを有効化
 
@@ -102,14 +119,18 @@ docker compose build
 docker compose up --build
 ```
 
-以下のメッセージが表示されれば成功です：
+以下のメッセージが表示されれば成功です（`logging` モジュールによる `YYYY-MM-DD HH:MM:SS - <logger名> - INFO - <メッセージ>` 形式）：
 
 ```
-Starting GT7 Dashboard Server on port 8080...
-HTTPS: https://0.0.0.0:8080
-WebSocket: ws://0.0.0.0:8080/ws
-[Heartbeat] Sending to 192.168.1.10:33739 - waiting for data...
-[RX] Started receiving 296 bytes from ('192.168.1.10', 33740)
+2026-07-10 10:00:00 - __main__ - INFO - Starting GT7 Dashboard Server on port 8080...
+2026-07-10 10:00:00 - __main__ - INFO - HTTPS: https://0.0.0.0:8080
+2026-07-10 10:00:00 - __main__ - INFO - WebSocket: wss://0.0.0.0:8080/ws
+2026-07-10 10:00:01 - telemetry - INFO - Heartbeat sent to 192.168.1.10:33739 - waiting for data...
+2026-07-10 10:00:01 - telemetry - INFO - Started receiving data: 344 bytes from ('192.168.1.10', 33740)
+2026-07-10 10:00:01 - decoder - INFO - Parsed: 85.3 km/h, RPM: 4200, Gear: 3
+2026-07-10 10:00:01 - decoder - INFO - Parsed: 86.1 km/h, RPM: 4260, Gear: 3
+2026-07-10 10:00:01 - decoder - INFO - Parsed: 87.0 km/h, RPM: 4310, Gear: 3
+2026-07-10 10:00:01 - decoder - INFO - Telemetry stream active (suppressing per-packet logs)
 ```
 
 ---

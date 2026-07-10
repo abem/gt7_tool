@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # アプリケーションファイルをコピー
 COPY main.py telemetry.py decoder.py ./
-COPY config.json packet_def.json ./
+COPY config.json ./
 COPY course_database.json* ./
 COPY index.html ./
 COPY styles.css ./

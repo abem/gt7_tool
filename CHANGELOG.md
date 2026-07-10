@@ -7,6 +7,29 @@
 
 ---
 
+## 2026-07-10 — 第2次リファクタリング（ルート整理・ビルド衛生・ドキュメント精度）
+
+### refactor: ルート直下の遺物ドキュメント 12本を docs/archive/ へ集約
+- 2〜3月の計画書/レポート類（PLAN_*×6, REFACTORING_PLAN/REPORT, PROPOSAL_RACING_DASHBOARD, QA_REPORT, CHANGELOG_MOTION_EFFECTS, TROUBLESHOOTING）を `git mv` で docs/archive/ へ移動。全て「実装済み・不採用・解決済み」を監査で確認（Three.js 前提の計画等）。CHANGELOG_MOTION_EFFECTS と TROUBLESHOOTING には解決済み注記を1行追加（本文不変）。docs/index.md のアーカイブ目次に12本を掲載。ルートの追跡 MD は README / CHANGELOG のみに。
+
+### refactor: ビルド衛生・コード品質
+- **package-lock.json 再生成**: 前回削除した three / uplot の残骸エントリを除去（package.json と再整合）。
+- **Dockerfile**: どの .py からも読まれない参照用 `packet_def.json` を COPY 対象から除外。
+- **docker-compose.yml**: `PS5_IP=${PS5_IP:-192.168.1.128}` 化 — `.env` の PS5_IP で上書き可能に。
+- **.dockerignore**: scripts/ と tests/ を追加（ビルドコンテキスト軽量化）。
+- **@depends ヘッダ補正**: websocket.js（+cacheElements, getTyreTempColor）、test-mode.js（+getSectorClass）。
+- **websocket.js getSectorClass**: セクター判定閾値 0.1/0.3 を関数ローカル named const 化（挙動不変）。
+
+### docs: 精度修正（実装との突合で発見）
+- **【実害バグ】PS5 IP 設定手順の是正**: compose の environment が env 優先の `main.py` により config.json を常に上書きするため、「config.json を編集」という従来手順では**設定が反映されなかった**。README / USER_GUIDE を「docker-compose.yml を直接編集 or `.env` に記載」に書き換え、.env.example の優先順位注記も実挙動（compose が .env を自動読込・直接起動では自動では読まれない）に修正。
+- USER_GUIDE: 起動ログ例を実際の logging 形式・実文言に修正（Parsed×3 → stream active の実遷移含む）。目次に欠落5節を追加。
+- common-issues: 目次に欠落4節を追加。
+- test-mode.md: 更新頻度 10Hz→実装どおり 5Hz(200ms)、架空のラップタイム記述（1:34〜1:37）→実態（約4秒/周の合成値）に修正。
+- architecture.md: コンポーネント図に欠落していた constants/lap-manager/telemetry-analysis/drive-view を追加し実読み込み順に再構成。
+- **検証**: 監査4次元＋敵対的検証（CONFIRMED 23/REFUTED 1）→ 実施 → 差分レビュー3観点×反証者2名（CONFIRMED 4件→即修正: 誤 @depends 1件は監査側の grep 誤マッチ `COLORS.`⊂`ATTITUDE_COLORS.` が原因）。再ビルド後 headless smoke 全グリーン・未捕捉例外0。
+
+---
+
 ## 2026-07-10 — リソース整理・表示内容の最適化・ドキュメント全面同期
 
 ### refactor: 死コード・未使用リソースの一掃（23ファイル、純減 約380行）
@@ -407,4 +430,4 @@
 
 ---
 
-> モーション演出の詳細な変更履歴は [CHANGELOG_MOTION_EFFECTS.md](CHANGELOG_MOTION_EFFECTS.md) を参照。
+> モーション演出の詳細な変更履歴は [CHANGELOG_MOTION_EFFECTS.md](docs/archive/CHANGELOG_MOTION_EFFECTS.md) を参照。
