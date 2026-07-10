@@ -7,6 +7,22 @@
 
 ---
 
+## 2026-07-11 — 操作系刷新: ドロップダウンメニューを廃止しフラット1段ツールバーへ
+
+### feat: ヘッダー操作ツールバー（menu.js 全面書換）
+- **動機**: 実操作は5つ（ANALYSIS/DRIVE 切替・TEST MODE・整列・全画面）しかないのにドロップダウン4本＋無効ヒント行2つに分散し、状態もメニューを開かないと見えなかった。
+- **新構成**: `[ANALYSIS│DRIVE セグメント] [● TEST MODE トグルピル] [⊞ 整列] [⛶ 全画面]` — 全操作1クリック・状態常時視認。
+- **設計プロセス**: 3設計者（racing-ux / robustness / visual-polish の異視点）×3審査員の全 fable パネルで **racing-ux 案を全員一致採択**。走行中の一瞥可読性を最優先: 点灯セグメント・点滅ドット（prefers-reduced-motion 対応）・点灯側クリック無効・TEST の 250ms 連打防止・状態系とユーティリティの空間分離・DRIVE 中のタップ標的拡大（34px）。
+- **実装方式**: 実績ある「隠しプロキシ」方式を踏襲（`#test-mode-btn` / `#view-mode-btn` / `#layout-reset-btn` を `.click()` 駆動、test-mode.js / drive-view.js / card-drag.js 無改変）。状態同期は **MutationObserver（プロキシの class 監視）+ fullscreenchange のイベント駆動** — 表示と実態の乖離を構造的に排除。init 失敗時は nav 撤去＋元ボタン残置のフォールバック維持。旧「配置」メニューの操作ヒントはツールチップ（title）へ集約。狭幅（≤700px）はユーティリティをアイコンのみに縮退（状態ラベルは維持）。
+- **検証**: headless — セグメント切替 / 点灯側 no-op / TEST トグル＋スロットル / 整列で浮遊カードリセット / 全画面点灯 / localStorage 復元→セグメント同期 / 狭幅縮退 / JS エラー0。敵対的レビュー3観点×反証者2名: **CONFIRMED 0**（所見6件すべて反証却下 — 時計巻き戻し・カスケード順・フォーカスリング等も実地検証で問題なしと確認）。
+
+### docs: ツールバーをドキュメント全体へ反映・操作ガイド充実
+- USER_GUIDE「操作ツールバー」節を全面刷新: スクリーンショット掲載＋4コントロールの表（操作・状態表示・**ツールチップ全7文言を menu.js と一字一致で転記**）＋DRIVE 中の挙動＋狭幅縮退。
+- README / architecture.md / development.md / common-issues.md / test-mode.md / index.md の旧メニューバー記述を一掃（歴史記録は除く）。TEST MODE 起動手順は全文書「ツールバーの ● TEST MODE」に統一。
+- スクリーンショット再生成: `docs/images/dashboard-screenshot.png`（新ヘッダーのフル画面）＋ `docs/images/toolbar.png`（ツールバー近接）新規追加。
+
+---
+
 ## 2026-07-11 — 第3次リファクタリング（バックエンド堅牢化・等価リファクタ・ドキュメント再構成）
 
 ### fix: main.py の堅牢化 7件（全て敵対的検証 CONFIRMED）
