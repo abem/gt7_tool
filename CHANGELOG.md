@@ -35,6 +35,11 @@
 - **修正**: 当ダッシュボードの canvas は表示専用（uPlot は `cursor:{show:false}` で入力ハンドラ無し、他の canvas も同様）と確認できたため、除外対象から `canvas` を外し **カード本体のどこからでも**（canvas 上でも）ドラッグ開始できるように。除外は本物の操作系（`button/input/select/textarea/a/[contenteditable]/[role=button]`）のみ＝各ボタン/チャート凡例操作は従来どおり。
 - **検証**: 実コンテナで各カードを**中央（＝canvas）掴み**→ 20/20 浮上（うち canvas 直掴み3枚＝CAR ATTITUDE/COURSE MAP/加速チャートを含む）・未捕捉例外0 を確認。
 
+### fix: チャートタイル(SPEED/RPM/THROTTLE/BRAKE)も移動可能に
+- **原因**: これらは `.card` ではなく `.charts-container` 内の `.chart-wrapper` で、ドラッグ対象が `.card` 限定だったため掴めなかった。
+- **修正**: ドラッグ対象「ブロック」を `.card, .chart-wrapper` に拡張（`isTopLevelBlock` で入れ子は除外）。タイトル検出も `.card-title` に加え `.chart-title` を対象に。ボタン表記も「ブロック」に。
+- **検証**: 実コンテナで**トップレベル 24ブロック（カード20＋チャート4）が 24/24 draggable**、SPEED/RPM/THROTTLE/BRAKE それぞれドラッグ浮上・未捕捉例外0 を確認。
+
 ---
 
 ## 2026-07-10 — CAR ATTITUDE を WebGL不要の2D図に刷新

@@ -17,16 +17,18 @@
     var THRESHOLD = 4;        // クリックとドラッグの区別(px)
     var zTop = 1000;
     var cards = [];           // { el, id, handle, orig:{parent,index} }
+    // ドラッグ対象「ブロック」= カード + チャートタイル(SPEED/RPM/THROTTLE/BRAKE 等)
+    var BLOCK_SEL = '.card, .chart-wrapper';
 
-    function isTopLevelCard(el) {
-        return el.classList.contains('card') &&
-            !(el.parentElement && el.parentElement.closest('.card'));
+    function isTopLevelBlock(el) {
+        return el.matches(BLOCK_SEL) &&
+            !(el.parentElement && el.parentElement.closest(BLOCK_SEL));
     }
-    // このカードに属する .card-title（ネスト下でも可 / 子カードのものは除外）
+    // このブロックに属するタイトル（.card-title / .chart-title、ネスト下でも可・子ブロックのものは除外）
     function ownTitle(el) {
-        var titles = el.querySelectorAll('.card-title');
+        var titles = el.querySelectorAll('.card-title, .chart-title');
         for (var i = 0; i < titles.length; i++) {
-            if (titles[i].closest('.card') === el) return titles[i];
+            if (titles[i].closest(BLOCK_SEL) === el) return titles[i];
         }
         return null;
     }
@@ -145,7 +147,7 @@
         btn.type = 'button';
         btn.className = 'test-mode-btn layout-reset-btn';
         btn.textContent = '↻ 配置';
-        btn.title = 'カード配置を初期化。カード(またはタイトル)をドラッグで移動 / ダブルクリックで個別リセット';
+        btn.title = 'ブロック配置を初期化。ブロック(カード/チャート)をドラッグで移動 / ダブルクリックで個別リセット';
         btn.addEventListener('click', resetAll);
         var status = document.getElementById('connection-status');
         if (status) header.insertBefore(btn, status); else header.appendChild(btn);
@@ -174,7 +176,7 @@
     }
 
     function init() {
-        var all = Array.prototype.slice.call(document.querySelectorAll('.card')).filter(isTopLevelCard);
+        var all = Array.prototype.slice.call(document.querySelectorAll(BLOCK_SEL)).filter(isTopLevelBlock);
         all.forEach(function (el, idx) {
             var titleEl = ownTitle(el);
             var handle = el;                               // カード全体をハンドルに（どこでも掴める）
