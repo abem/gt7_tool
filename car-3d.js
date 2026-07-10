@@ -28,7 +28,6 @@ var car3DState = {
     animationId: null,
     needsRender: true,
     resizeObserver: null,
-    pitchEl: null, rollEl: null, yawEl: null,
     webglFailed: false            // 互換のため保持（未使用）
 };
 
@@ -106,20 +105,9 @@ function initCar3D() {
         car3DState.canvas = null;
         return;
     }
-    car3DState.pitchEl = document.getElementById('car-3d-pitch');
-    car3DState.rollEl  = document.getElementById('car-3d-roll');
-    car3DState.yawEl   = document.getElementById('car-3d-yaw');
-
     resizeAttitude2D();
     car3DState.resizeObserver = new ResizeObserver(resizeAttitude2D);
     car3DState.resizeObserver.observe(container);
-
-    // 旧WebGL版の名残で空だった「TOP VIEW」枠は不要になったので非表示にして詰める
-    var topView = document.querySelector('.car-top-view-container');
-    if (topView) topView.style.display = 'none';
-    // PITCH/ROLL/YAW はキャンバス上に直接描くため、DOM の数値行は非表示（カード高が狭い環境での重なり防止）
-    var info = document.querySelector('.car-3d-info');
-    if (info) info.style.display = 'none';
 
     car3DState.initialized = true;
     if (typeof debugLog === 'function') debugLog('ATTITUDE_2D', 'Initialized 2D attitude view');
@@ -168,10 +156,6 @@ function updateCar3D(pitch, yaw, roll, rpm, steering, susp) {
     if (susp && susp.length >= 4) {
         car3DState.susp = [finiteOr0(susp[0]), finiteOr0(susp[1]), finiteOr0(susp[2]), finiteOr0(susp[3])];
     }
-    // 数値読み出し（旧版と同じ DOM を更新）
-    if (car3DState.pitchEl) car3DState.pitchEl.textContent = (car3DState.pitch * 180 / Math.PI).toFixed(2) + '°';
-    if (car3DState.rollEl)  car3DState.rollEl.textContent  = (car3DState.roll  * 180 / Math.PI).toFixed(2) + '°';
-    if (car3DState.yawEl)   car3DState.yawEl.textContent   = (car3DState.yaw   * 180 / Math.PI).toFixed(2) + '°';
     car3DState.needsRender = true;
 }
 

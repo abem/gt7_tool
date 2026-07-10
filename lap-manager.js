@@ -91,20 +91,6 @@ function addLapData(lapNumber, lapTime) {
     elements.bestLapTime.textContent = formatLapTime(lapState.bestLapTime);
 }
 
-/**
- * ラップ状態をリセット
- */
-function resetLapState() {
-    lapState.currentLapNumber = 0;
-    lapState.lastLapNumber = 0;
-    lapState.bestLapTime = Infinity;
-    lapState.bestLapNumber = 0;
-    lapState.lapTimes = [];
-    lapState.currentLapData = [];
-    lapState.bestLapData = [];
-    lapState.maxSpeed = 0;
-}
-
 /* ================================================================
  *  テレメトリデータからのラップ更新
  * ================================================================ */

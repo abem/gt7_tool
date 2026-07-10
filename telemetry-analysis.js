@@ -8,7 +8,7 @@
  *   - ライブ・タイムデルタ: 同一距離でのベスト通過タイム秒差(#lap-delta/#delta-bar-*)
  *   - 推定ラップタイム: refLap.totalTime + liveDelta の全周外挿 + PB判定(#est-lap-time)
  *   - 距離軸チャート供給: 現在ラップ speed + ベスト speed 重畳 / タイムデルタ(charts.js C 実装)
- *   - 入力ゾーン分類: コースマップ着色(course-map.js C 実装)用の classifyZone / peaks・valleys
+ *   - 入力ゾーン分類: recordFrame が毎フレーム呼ぶ classifyZone / peaks・valleys
  *   - レースエンジニア通知: トップスピード/PB/燃料/残周回/ファイナルラップの一過性トースト
  *
  * バックエンド(main.py/decoder.py)は不変。全て既存デコード済みフィールドから計算する。
@@ -51,7 +51,6 @@ const analysisState = {
     // samples 要素: {dist, t, speed, throttle, brake, x, z, gear, zone}
     refLap: null,                // {dist[],time[],speed[],throttle[],brake[],x[],z[],N,totalDist,totalTime,peaks[],valleys[]} or null
     lapTimesMs: [],              // 一貫性σ用の確定ラップタイム履歴
-    lineMode: 'speed',           // 'speed'|'line'
     notif: {
         queue: [], topSpeed: 0, topSpeedFired: false,
         prevFuelPct: 100, firedFuel: { 50: false, 20: false, 10: false },
@@ -436,7 +435,7 @@ function localProminence(arr, i, type) {
 }
 
 /**
- * 入力ゾーンを分類する。course-map.js の着色分岐からも参照される。
+ * 入力ゾーンを分類する。recordFrame から毎フレーム呼ばれる。
  * @param {number} throttle - スロットル率[%]
  * @param {number} brake - ブレーキ率[%]
  * @returns {string} 'brake' | 'throttle' | 'coast'

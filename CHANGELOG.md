@@ -7,6 +7,29 @@
 
 ---
 
+## 2026-07-10 — リソース整理・表示内容の最適化・ドキュメント全面同期
+
+### refactor: 死コード・未使用リソースの一掃（23ファイル、純減 約380行）
+- **監査体制**: 5次元並列監査（JS死コード/未使用CSS/資産・バックエンド/表示内容/ドキュメント）→ 除去候補は懐疑エージェントが再grepで敵対的検証（CONFIRMED 23 / REFUTED 1）→ 実施 → 差分全体を4観点×反証者2名で再レビュー（CONFIRMED 5件を追加修正、反証却下 0件）。
+- **JS 死コード除去**: `courseMapState` / `getSpeedColor` / `COURSE_MAP_CONFIG` / `SPEED_THRESHOLDS`（course-map 残骸）、`resetLapState`（呼出ゼロ）、`analysisState.lineMode`（旧コースライン着色キー）、`getRotationArrow`・`updateRotationArrows`（表示先 DOM なしの no-op）、car-3d.js の `pitchEl/rollEl/yawEl` 参照。
+- **死んだ要素キャッシュ整理**: index.html に存在しない id への `getElementById` 17件と対応する書込みコードを削除（wheel-rotation-detail, pitch/roll/yaw-rate, rot-pitch/yaw/roll, suggested-gear, torque-1〜4, energy-recovery, pitch/roll/yaw-indicator, wheel-rotation）。※「現行UIに無い」注記付きの意図的フォールバック（accel-g / accel-decel / course-name / rpm-bar）は維持。
+- **CSS**: course-map 系の死にセレクタ6ブロック、`.car-top-view-*` / `.car-3d-info` 系ルール、共有数値フォントセレクタ列の死に断片、残骸コメントを削除。
+- **Python**: decoder.py の呼出ゼロメソッド `update_database_from_data` / `save_database` を削除。main.py の node_modules 残骸コメント修正。
+- **ビルド**: Dockerfile から Node.js/npm/gcc と `npm install` を除去（Three.js 廃止済み・uPlot はベンダー版のためランタイムは Python のみ）。**イメージ 352MB → 168MB（−52%）**。package.json から未使用の `three` / `uplot` を削除（playwright / puppeteer-core はホスト側テストが使用するため維持）。.gitignore の無効な TROUBLESHOOTING.md エントリ削除。
+
+### refactor: 表示内容の最適化整理
+- **PEDALS カードの STEER 行を削除**: 舵角の数値表示が PEDALS / STEERING ANGLE ゲージ / STEER RESPONSE の3箇所に重複していたため、STEERING ANGLE ゲージと STEER RESPONSE に一本化（ユーザー可視の変更はこの1点のみ）。
+- **不可視残骸の撤去**: CAR ATTITUDE の角速度 DOM 行（.car-3d-info）と空の TOP VIEW 枠（旧 WebGL 版の名残。いずれも従来から JS で常時非表示）を HTML/CSS/JS から削除。
+- BODY ACCEL カードは LAT/VERT/LONG の3軸表示で冗長でないため維持。
+
+### docs: 現行コードへの全面同期
+- README / docs/index.md / architecture.md / USER_GUIDE.md / common-issues.md / test-mode.md: course-map・コースライン着色・固定3パネル・削除済みボタンの記述を一掃し、STEER RESPONSE・メニューバー・ブロック自由配置を記載。構成表は index.html の実読み込み順に一致させた。
+- API.md: 未記載だった `fuel_consumed` / `laps_since_refuel`、course の `name_en`/`name_ja`/`verified`/`source` を追記。`pre_race_position` の「開始後 -1」→「開始後 null」、filtered ペダルの型 byte → float を実装に合わせ修正。
+- 過去記録（3D_ROTATION_PLAN.md / bugfix-webgl-*.md）に「不採用・過去の記録」注記を1行追加（本文不変）。docs/index.md に「過去の記録（アーカイブ）」目次を新設。
+- **検証**: 実HTTPSコンテナ headless — 25ブロック描画・メニューバー・TEST MODE・CAR ATTITUDE / STEER RESPONSE 描画・撤去要素の不在を確認、未捕捉例外0。
+
+---
+
 ## 2026-07-10 — COURSE MAP を廃止し STEER RESPONSE（操舵応答）ペインを新設
 
 ### feat: 舵角に対して車が実際にどれだけ曲がっているかを図示（steer-response.js）

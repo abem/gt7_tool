@@ -72,24 +72,6 @@ const TYRE_TEMP = Object.freeze({
 });
 
 /* ================================================================
- *  コースマップ設定
- * ================================================================ */
-const COURSE_MAP_CONFIG = Object.freeze({
-    colors: Object.freeze({
-        grid: 'rgba(255, 255, 255, 0.05)',
-        text: '#6B7480',
-        car: '#FFFFFF',
-        trajectoryLow: '#215B94',
-        trajectoryMid: '#3D8AE0',
-        trajectoryHigh: '#8CC6FF'
-    }),
-    /** 軌跡サンプリング間隔 */
-    trajectorySampleInterval: 3,
-    /** 軌跡最大ポイント数 */
-    maxTrajectoryPoints: 2000
-});
-
-/* ================================================================
  *  更新レート設定
  * ================================================================ */
 const UPDATE_INTERVALS = Object.freeze({
@@ -127,14 +109,4 @@ const TEST_MODE_CONFIG = Object.freeze({
         background: 'var(--accent-brand, #3D9BFF)',
         color: 'var(--on-accent, #06121F)'
     })
-});
-
-/* ================================================================
- *  速度閾値（コースマップ軌跡色分け用）
- * ================================================================ */
-const SPEED_THRESHOLDS = Object.freeze({
-    /** 低速閾値（km/h） */
-    LOW: 60,
-    /** 中速閾値（km/h） */
-    HIGH: 120
 });

@@ -102,10 +102,6 @@
                     </div>
                     <span class="pedal-value" id="clutch-value">0%</span>
                 </div>
-                <div class="pedal-row">
-                    <span class="pedal-label">STEER</span>
-                    <span class="pedal-value" id="wheel-rotation-detail">0.0&deg;</span>
-                </div>
             </div>
 
             <div class="card fuel-card">
@@ -134,7 +130,7 @@
                 </div>
             </div>
 
-            <!-- G-FORCE 廃止: 重心点として CAR ATTITUDE(car-3d.js)に統合 -->
+            <!-- G-FORCE カード廃止: 加速度は BODY ACCEL カードと ACCEL (G) チャートに集約 -->
 
             <div class="card fuel-boost-grid">
                 <div class="fuel-boost-item">
@@ -234,27 +230,6 @@
                 <div class="card-title">CAR ATTITUDE</div>
                 <div class="car-3d-container">
                     <div id="car-3d-view"></div>
-                    <div class="car-3d-info">
-                        <div class="car-3d-info-row">
-                            <span class="car-3d-label">PITCH</span>
-                            <span class="car-3d-value" id="car-3d-pitch">0.00&deg;</span>
-                            <span class="car-3d-rate" id="pitch-rate">0.00</span>
-                        </div>
-                        <div class="car-3d-info-row">
-                            <span class="car-3d-label">ROLL</span>
-                            <span class="car-3d-value" id="car-3d-roll">0.00&deg;</span>
-                            <span class="car-3d-rate" id="roll-rate">0.00</span>
-                        </div>
-                        <div class="car-3d-info-row">
-                            <span class="car-3d-label">YAW</span>
-                            <span class="car-3d-value" id="car-3d-yaw">0.00&deg;</span>
-                            <span class="car-3d-rate" id="yaw-rate">0.00</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="car-top-view-container">
-                    <div class="card-title mini">TOP VIEW</div>
-                    <div id="car-top-view"></div>
                 </div>
                 <div class="steering-gauge-container">
                     <div class="card-title mini">STEERING ANGLE</div>

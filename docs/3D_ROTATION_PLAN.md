@@ -1,5 +1,7 @@
 # GT7 ダッシュボード - 3D 姿勢可視化機能 詳細計画書
 
+> ※本計画は不採用となった過去の検討記録。現行実装は Canvas2D 方式（README / docs/architecture.md 参照）。
+
 バージョン: 2.0
 作成日: 2026-02-14
 作成者: Planning Team

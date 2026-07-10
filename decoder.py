@@ -131,47 +131,6 @@ class CourseEstimator:
         """bounds の面積 (max_x-min_x)*(max_z-min_z) を返す"""
         return (bounds['max_x'] - bounds['min_x']) * (bounds['max_z'] - bounds['min_z'])
 
-    def update_database_from_data(self, data_points, course_id, course_name):
-        """テレメトリデータからコースの座標範囲を更新"""
-        if not data_points:
-            return
-
-        x_values = [p['x'] for p in data_points]
-        z_values = [p['z'] for p in data_points]
-        bounds = {
-            'min_x': min(x_values),
-            'max_x': max(x_values),
-            'min_z': min(z_values),
-            'max_z': max(z_values),
-        }
-
-        for course in self.courses:
-            if course.get('id') == course_id:
-                course['bounds'] = bounds
-                logger.info(f"Updated course bounds: {course_name}")
-                return
-
-        self.courses.append({'id': course_id, 'name': course_name, 'bounds': bounds})
-        logger.info(f"Added new course: {course_name}")
-
-    def save_database(self, db_file='course_database.json'):
-        """コースデータベースをファイルに保存"""
-        try:
-            data = {
-                'courses': self.courses,
-                'known_courses': self.known_courses,
-                'test_mode': self.test_mode,
-                'metadata': {
-                    'version': '1.0.0',
-                    'description': 'GT7コースデータベース - 位置座標(x, z)からコースを推定',
-                },
-            }
-            with open(db_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
-            logger.info(f"Saved {len(self.courses)} courses to {db_file}")
-        except Exception as e:
-            logger.error(f"Failed to save course database: {e}")
-
 
 class GT7Decoder:
     """GT7テレメトリーパケットの復号と解析"""

@@ -3,28 +3,13 @@
  * DOM要素キャッシュ・ユーティリティ関数
  *
  * @module ui_components
- * @depends constants.js (COLORS, TYRE_TEMP, SPEED_THRESHOLDS)
+ * @depends constants.js (COLORS, TYRE_TEMP)
  */
 
 /* ================================================================
  *  デバッグモード
  * ================================================================ */
 let DEBUG_MODE = false;
-
-/* ================================================================
- *  コースマップ状態
- * ================================================================ */
-const courseMapState = {
-    canvas: null,
-    ctx: null,
-    domReady: false,
-    initialized: false,
-    bounds: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 },
-    trajectory: [],
-    currentPosition: { x: 0, y: 0, z: 0 },
-    sampleCount: 0,
-    infoEl: null
-};
 
 /* ================================================================
  *  加速度データ
@@ -53,13 +38,10 @@ function cacheElements() {
         throttleValueDetail: document.getElementById('throttle-value-detail'),
         brakeBarDetail: document.getElementById('brake-bar-detail'),
         brakeValueDetail: document.getElementById('brake-value-detail'),
-        wheelRotationDetail: document.getElementById('wheel-rotation-detail'),
 
         // 速度・ギア
         speed: document.getElementById('speed'),
         gear: document.getElementById('gear'),
-        suggestedGear: document.getElementById('suggested-gear'),
-        wheelRotation: document.getElementById('wheel-rotation'),
         maxSpeed: document.getElementById('max-speed'),
 
         // RPM
@@ -96,9 +78,6 @@ function cacheElements() {
         velZ: document.getElementById('vel-z'),
 
         // 姿勢角
-        rotPitch: document.getElementById('rot-pitch'),
-        rotYaw: document.getElementById('rot-yaw'),
-        rotRoll: document.getElementById('rot-roll'),
         orientation: document.getElementById('orientation'),
         bodyHeight: document.getElementById('body-height'),
 
@@ -140,18 +119,6 @@ function cacheElements() {
         bodyHeave: document.getElementById('body-heave'),
         bodySurge: document.getElementById('body-surge'),
 
-        // 角速度（CAR ATTITUDEセクションに統合）
-        pitchRate: document.getElementById('pitch-rate'),
-        yawRate: document.getElementById('yaw-rate'),
-        rollRate: document.getElementById('roll-rate'),
-
-        // トルクベクタリング
-        torque1: document.getElementById('torque-1'),
-        torque2: document.getElementById('torque-2'),
-        torque3: document.getElementById('torque-3'),
-        torque4: document.getElementById('torque-4'),
-        energyRecovery: document.getElementById('energy-recovery'),
-
         // ラップ
         currentLap: document.getElementById('current-lap'),
         runningLapTime: document.getElementById('running-lap-time'),
@@ -170,11 +137,6 @@ function cacheElements() {
         // フラグ・ステータス
         flagsBar: document.getElementById('flags-bar'),
         connectionStatus: document.getElementById('connection-status'),
-
-        // 回転矢印インジケーター
-        pitchIndicator: document.getElementById('pitch-indicator'),
-        yawIndicator: document.getElementById('yaw-indicator'),
-        rollIndicator: document.getElementById('roll-indicator'),
 
         // ステアリングメーター
         steeringNeedle: document.getElementById('steering-needle'),
@@ -229,21 +191,6 @@ function getTyreTempColor(temp) {
         return STATUS.warning;      // tyre-warm = #FAB219
     }
     return STATUS.critical;         // tyre-hot = #D03B3B
-}
-
-/**
- * 速度に応じた軌跡色を取得
- * @param {number} speed - 速度（km/h）
- * @returns {string} CSS色文字列
- */
-function getSpeedColor(speed) {
-    if (speed < SPEED_THRESHOLDS.LOW) {
-        return COURSE_MAP_CONFIG.colors.trajectoryLow;
-    }
-    if (speed < SPEED_THRESHOLDS.HIGH) {
-        return COURSE_MAP_CONFIG.colors.trajectoryMid;
-    }
-    return COURSE_MAP_CONFIG.colors.trajectoryHigh;
 }
 
 /* ================================================================

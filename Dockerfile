@@ -2,19 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Node.jsをインストール（Three.js用）
-RUN apt-get update && apt-get install -y \
-    gcc \
-    nodejs \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Node.js依存関係をインストール
-COPY package*.json ./
-RUN npm install --production
 
 # アプリケーションファイルをコピー
 COPY main.py telemetry.py decoder.py ./

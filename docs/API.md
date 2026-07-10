@@ -123,7 +123,11 @@ ws.onmessage = (event) => {
     "course": {
         "id": "suzuka",
         "name": "Suzuka Circuit",
-        "confidence": 1.0
+        "name_en": "Suzuka Circuit",
+        "name_ja": "鈴鹿サーキット",
+        "confidence": 1.0,
+        "verified": true,
+        "source": "known"
     },
     "wheel_rotation": 0.15,
     "body_accel_sway": 0.3,
@@ -137,6 +141,8 @@ ws.onmessage = (event) => {
     "accel_decel": 0.0,
     "fuel_per_lap": 2.15,
     "fuel_laps_remaining": 21.2,
+    "fuel_consumed": 0.03,
+    "laps_since_refuel": 2,
     "timestamp": "2026-02-13T16:30:45.123456"
 }
 ```
@@ -186,8 +192,8 @@ ws.onmessage = (event) => {
 | `best_laptime` | int32 | 0x78 | ベストラップタイム (ms, -1=未設定) |
 | `last_laptime` | int32 | 0x7C | 前回ラップタイム (ms, -1=未設定) |
 | `current_laptime` | int32 | 0x80 | 現在ラップ経過時間 (ms) |
-| `pre_race_position` | int16 | 0x84 | スタート順位 (レース前のみ、開始後-1) |
-| `num_cars_pre_race` | int16 | 0x86 | レース前参加台数 (開始後-1) |
+| `pre_race_position` | int16 | 0x84 | スタート順位 (レース前のみ、開始後null) |
+| `num_cars_pre_race` | int16 | 0x86 | レース前参加台数 (開始後null) |
 | `flags` | uint16 | 0x8E | フラグビットマスク (下記参照) |
 | `car_id` | int32 | 0x124 | 車種ID |
 
@@ -204,8 +210,8 @@ ws.onmessage = (event) => {
 
 | フィールド | 型 | オフセット | 説明 |
 |-----------|------|-----------|------|
-| `throttle_filtered_pct` | byte | 0x13C | TCS補正後スロットル% |
-| `brake_filtered_pct` | byte | 0x13D | ABS補正後ブレーキ% |
+| `throttle_filtered_pct` | float（生バイト値をPEDAL_PCT_DIVISORで除算した計算値） | 0x13C | TCS補正後スロットル% |
+| `brake_filtered_pct` | float（生バイト値をPEDAL_PCT_DIVISORで除算した計算値） | 0x13D | ABS補正後ブレーキ% |
 | `torque_vector` | float[4] | 0x140-0x14C | トルクベクタリング |
 | `energy_recovery` | float | 0x150 | 回生エネルギー (EV/ハイブリッド) |
 
@@ -217,6 +223,8 @@ ws.onmessage = (event) => {
 | `accel_decel` | float | 減速G (速度差分から計算) |
 | `fuel_per_lap` | float | 1周あたりの燃料消費量 (L) |
 | `fuel_laps_remaining` | float | 残り周回数 (燃料ベース) |
+| `fuel_consumed` | float | 直近更新時の燃料消費量 (L、給油検出時は0にリセット) |
+| `laps_since_refuel` | int | 最後の給油からの経過ラップ数 |
 | `course` | object | コース推定結果 |
 | `timestamp` | string | ISO 8601形式のタイムスタンプ |
 
@@ -240,7 +248,7 @@ ws.onmessage = (event) => {
 #### 注意事項
 
 - **タイヤ空気圧**: GT7のテレメトリパケットにタイヤ空気圧データは存在しない。オフセット0x94は路面法線ベクトル。
-- **レース順位**: パケットにリアルタイムのレース順位は含まれない。0x84はレース前のスタート順位のみで、レース開始後は-1になる。
+- **レース順位**: パケットにリアルタイムのレース順位は含まれない。0x84はレース前のスタート順位のみで、レース開始後はnull(JSON)になる。
 - **水温・油温**: 常に固定値（水温≈85, 油温≈110）のため表示から除外。
 - **ギア比**: 8速を超えるギアを持つ車両ではcar_id (0x124) が上書きされる可能性がある。
 

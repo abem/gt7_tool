@@ -1,5 +1,7 @@
 # バグ修正: WebGL 非対応環境で TEST MODE が起動しない
 
+> ※翌日 2026-07-10 の Canvas2D 移行により car-3d.js は現在 WebGL を使用しない。本書は過去の記録。
+
 > **日付**: 2026-07-09
 > **ブランチ**: `fix/webgl-graceful-degradation-2026-07-09`
 > **対象**: `car-3d.js`（`initCar3D`）

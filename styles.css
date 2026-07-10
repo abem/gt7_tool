@@ -160,8 +160,6 @@ body {
 .susp-value,
 .position-value,
 .body-accel-value,
-.car-3d-value,
-.car-3d-rate,
 .steering-value,
 .race-position,
 .lap-number-big,
@@ -170,8 +168,7 @@ body {
 .sector-value,
 .delta-value,
 .lap-hist-time,
-.lap-hist-delta,
-.course-map-info {
+.lap-hist-delta {
     font-family: var(--font-num);
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
@@ -922,56 +919,6 @@ body {
     height: 100% !important;
 }
 
-.car-3d-info {
-    display: flex;
-    justify-content: space-around;
-    padding: var(--sp-3) var(--sp-4);
-    background: var(--surface-2);
-    border-top: 1px solid var(--border-hairline);
-}
-
-.car-3d-info-row {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--sp-1);
-}
-
-.car-3d-label {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    color: var(--text-muted);
-    text-transform: uppercase;
-}
-
-.car-3d-value {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.car-3d-rate {
-    font-size: 10px;
-    color: var(--text-muted);
-}
-
-.car-top-view-container {
-    border-top: 1px solid var(--border-hairline);
-    background: var(--surface-1);
-}
-
-#car-top-view {
-    width: 100%;
-    height: 96px;
-}
-
-#car-top-view canvas {
-    display: block;
-    width: 100% !important;
-    height: 100% !important;
-}
-
 /* --- Steering gauge ---------------------------------------------------- */
 .steering-gauge-container {
     border-top: 1px solid var(--border-hairline);
@@ -1076,29 +1023,6 @@ body {
     min-height: 180px;
 }
 
-.course-map-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-3);
-    margin-bottom: var(--sp-3);
-}
-
-.course-map-header .card-title {
-    margin-bottom: 0;
-}
-
-.course-name {
-    flex: 1;
-    text-align: center;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .test-mode-btn {
     font-size: 10px;
     font-weight: 600;
@@ -1121,32 +1045,6 @@ body {
     background: var(--accent-brand);
     color: var(--on-accent);
     border-color: var(--accent-brand);
-}
-
-.course-map-container {
-    flex: 1;
-    position: relative;
-    background: var(--surface-2);
-    border-radius: var(--r-sm);
-    overflow: hidden;
-    min-height: 120px;
-}
-
-#course-map {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-.course-map-info {
-    position: absolute;
-    top: var(--sp-2);
-    left: var(--sp-2);
-    font-size: 10px;
-    color: var(--text-muted);
-    background: color-mix(in srgb, var(--surface-0) 78%, transparent);
-    padding: 3px 7px;
-    border-radius: var(--r-sm);
 }
 
 /* --- Tyres ------------------------------------------------------------- */
@@ -1880,7 +1778,7 @@ body.drive-mode .shift-light {
     height: clamp(18px, 2.2vw, 30px);
 }
 
-/* コースマップは走行中も位置把握に有用なので中央に単独で残す */
+/* STEER RESPONSE は走行中も操舵の追従状態を把握するのに有用なので中央に単独で残す */
 body.drive-mode .center-split {
     grid-template-columns: 1fr;
     flex: 1;
@@ -2053,9 +1951,6 @@ body.drive-mode .steer-response-card {
     color: var(--text-secondary);
 }
 
-/* #course-line-mode-btn uses class="test-mode-btn" and inherits the existing
-   .test-mode-btn / .test-mode-btn.active rules — no extra CSS required. */
-
 /* --- Card drag (free move) ---------------------------------------------
    カードをつまんで自由移動（card-drag.js）。ハンドル=タイトル(無ければカード全体)。
    ドラッグ中は body 直下へ浮かせて(position:fixed)列のクリップ外へ出す。 */
@@ -2079,7 +1974,7 @@ body.drive-mode .steer-response-card {
 }
 .draggable-card.dragging .card-drag-handle { cursor: grabbing; }
 .layout-reset-btn { white-space: nowrap; }
-/* DRIVE モードでは浮かせたカードも隠す（コースマップと上部レーシングバーは走行中も残す） */
+/* DRIVE モードでは浮かせたカードも隠す（STEER RESPONSE と上部レーシングバーは走行中も残す） */
 body.drive-mode .draggable-card.floating:not(.steer-response-card):not(.racing-top-bar) { display: none; }
 
 /* --- 操作帯（Windows 風ドロップダウン・メニューバー / menu.js） ------------

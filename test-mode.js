@@ -4,7 +4,7 @@
  *
  * @module test-mode
  * @depends constants.js (TEST_MODE_CONFIG)
- * @depends ui_components.js (elements, courseMapState, debugLog, updateSteeringGauge)
+ * @depends ui_components.js (elements, debugLog, updateSteeringGauge)
  * @depends websocket.js (packetCount)
  * @depends steer-response.js (initSteerResponse, updateSteerResponse)
  * @depends car-3d.js (updateCar3D, initCar3D, car3DState)
@@ -65,9 +65,9 @@ function initTestMode() {
 
         if (testModeActive) {
             ensureCar3DInitialized();
-            // チャート/コースマップはライブでは ws.onopen 内で初期化されるが、
+            // チャート/STEER RESPONSE はライブでは ws.onopen 内で初期化されるが、
             // TEST MODE(オフライン)では onopen が発火しないためここで初期化する。
-            // どちらも内部フラグで冪等なので二重初期化にはならない。
+            // いずれも内部フラグで冪等なので二重初期化にはならない。
             if (typeof initCharts === 'function') initCharts();
             if (typeof initSteerResponse === 'function') initSteerResponse();
             startTestMode();

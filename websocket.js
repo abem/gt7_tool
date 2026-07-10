@@ -41,36 +41,6 @@ const wsState = {
 };
 
 /* ================================================================
- *  回転矢印表示
- * ================================================================ */
-
-/**
- * 回転角に応じた矢印を取得
- * @param {number} angle - 角度（ラジアン）
- * @returns {string} 矢印文字
- */
-function getRotationArrow(angle) {
-    if (angle > 0.1) return '↑';
-    if (angle < -0.1) return '↓';
-    return '→';
-}
-
-/**
- * 回転矢印表示を更新
- * @param {number} pitch - ピッチ角
- * @param {number} yaw - ヨー角
- * @param {number} roll - ロール角
- */
-function updateRotationArrows(pitch, yaw, roll) {
-    if (!elements.pitchIndicator) {
-        return;
-    }
-    elements.pitchIndicator.textContent = getRotationArrow(pitch);
-    elements.yawIndicator.textContent = getRotationArrow(yaw);
-    elements.rollIndicator.textContent = getRotationArrow(roll);
-}
-
-/* ================================================================
  *  ギア比表示
  * ================================================================ */
 
@@ -155,23 +125,6 @@ function updateVehicleState(data) {
         gearEl.classList.add('low');
     }
     
-    if (elements.suggestedGear) {
-        if (data.suggested_gear != null && data.suggested_gear !== gear) {
-            elements.suggestedGear.textContent = '\u2192' + data.suggested_gear;
-        } else {
-            elements.suggestedGear.textContent = '';
-        }
-    }
-
-    // ステアリング回転
-    if (data.wheel_rotation !== undefined) {
-        const deg = (data.wheel_rotation * 180 / Math.PI).toFixed(1);
-        if (elements.wheelRotation) elements.wheelRotation.textContent = deg + '\u00B0';
-        if (elements.wheelRotationDetail) {
-            elements.wheelRotationDetail.textContent = deg + '\u00B0';
-        }
-    }
-
     // RPM
     const rpm = Math.round(data.rpm || 0);
     const maxRpm = data.max_rpm || 9000;
@@ -430,17 +383,6 @@ function updateTyreState(data) {
             );
         }
     }
-
-    // トルクベクタリング
-    if (data.torque_vector && elements.torque1) {
-        elements.torque1.textContent = data.torque_vector[0].toFixed(2);
-        elements.torque2.textContent = data.torque_vector[1].toFixed(2);
-        elements.torque3.textContent = data.torque_vector[2].toFixed(2);
-        elements.torque4.textContent = data.torque_vector[3].toFixed(2);
-    }
-    if (data.energy_recovery !== undefined && elements.energyRecovery) {
-        elements.energyRecovery.textContent = (data.energy_recovery || 0).toFixed(2);
-    }
 }
 
 /**
@@ -494,18 +436,6 @@ function updatePositionText(data) {
     elements.velX.textContent = (data.velocity_x || 0).toFixed(1);
     elements.velY.textContent = (data.velocity_y || 0).toFixed(1);
     elements.velZ.textContent = (data.velocity_z || 0).toFixed(1);
-
-    // 回転
-    if (elements.rotPitch) {
-        elements.rotPitch.textContent = (data.rotation_pitch || 0).toFixed(3);
-        elements.rotYaw.textContent = (data.rotation_yaw || 0).toFixed(3);
-        elements.rotRoll.textContent = (data.rotation_roll || 0).toFixed(3);
-    }
-
-    // 角速度（CAR ATTITUDEセクション）
-    if (elements.pitchRate) elements.pitchRate.textContent = (data.angular_velocity_x || 0).toFixed(3);
-    if (elements.yawRate) elements.yawRate.textContent = (data.angular_velocity_y || 0).toFixed(3);
-    if (elements.rollRate) elements.rollRate.textContent = (data.angular_velocity_z || 0).toFixed(3);
 
     // 方角・車体高さ
     elements.orientation.textContent = (data.orientation || 0).toFixed(3);
@@ -615,11 +545,6 @@ function handleTelemetryMessage(data, nowTs) {
     );
 
     if (doRotation) {
-        updateRotationArrows(
-            data.rotation_pitch || 0,
-            data.rotation_yaw || 0,
-            data.rotation_roll || 0
-        );
         updateSteeringGauge(data.wheel_rotation || 0);
         wsState.lastRotationTs = now;
     }

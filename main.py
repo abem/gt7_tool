@@ -328,7 +328,7 @@ async def static_handler(request):
     if '..' in filename or filename.startswith('/'):
         return web.Response(status=403, text="Forbidden")
 
-    # node_modules配下のファイルも許可
+    # リポジトリ直下の静的ファイル（CSS/JS等）を配信
     filepath = filename
     
     if not os.path.isfile(filepath):
