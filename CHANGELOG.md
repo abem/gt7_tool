@@ -7,6 +7,15 @@
 
 ---
 
+## 2026-07-10 — 上部レーシングバーも移動可能に
+
+### fix: 上から2番目のブロック(.racing-top-bar)をドラッグ対象に追加
+- **変更**: ドラッグ対象「ブロック」に `.racing-top-bar`（速度/ギア/RPM/ペダルの大型バー）を追加（`.card, .chart-wrapper, .racing-top-bar`）。ヘッダー直下の帯を掴んで移動できるように。
+- **DRIVE モード保護**: 浮遊ブロックを隠す規則に `.racing-top-bar` を除外指定（コースマップと同様、走行中の主表示なので浮かせても隠さない）。
+- **検証**: 実HTTPSコンテナで **25/25 draggable**、`.racing-top-bar` を掴んで浮上（`position:fixed`・body直下）・未捕捉例外0 を headless で確認。
+
+---
+
 ## 2026-07-10 — TEST MODE ボタンを上部メニューへ移動
 
 ### feat: TEST MODE ボタンをヘッダーへ移設

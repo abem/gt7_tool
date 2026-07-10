@@ -18,7 +18,8 @@
     var zTop = 1000;
     var cards = [];           // { el, id, handle, orig:{parent,index} }
     // ドラッグ対象「ブロック」= カード + チャートタイル(SPEED/RPM/THROTTLE/BRAKE 等)
-    var BLOCK_SEL = '.card, .chart-wrapper';
+    //   + 上部の大型バー(速度/ギア/ペダル = .racing-top-bar)
+    var BLOCK_SEL = '.card, .chart-wrapper, .racing-top-bar';
 
     function isTopLevelBlock(el) {
         return el.matches(BLOCK_SEL) &&

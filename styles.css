@@ -2060,5 +2060,5 @@ body.drive-mode .course-map-card {
 }
 .draggable-card.dragging .card-drag-handle { cursor: grabbing; }
 .layout-reset-btn { white-space: nowrap; }
-/* DRIVE モードでは浮かせたカードも隠す（コースマップは走行中も残す） */
-body.drive-mode .draggable-card.floating:not(.course-map-card) { display: none; }
+/* DRIVE モードでは浮かせたカードも隠す（コースマップと上部レーシングバーは走行中も残す） */
+body.drive-mode .draggable-card.floating:not(.course-map-card):not(.racing-top-bar) { display: none; }
