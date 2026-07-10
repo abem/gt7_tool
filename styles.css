@@ -2036,3 +2036,29 @@ body.drive-mode .course-map-card {
 
 /* #course-line-mode-btn uses class="test-mode-btn" and inherits the existing
    .test-mode-btn / .test-mode-btn.active rules — no extra CSS required. */
+
+/* --- Card drag (free move) ---------------------------------------------
+   カードをつまんで自由移動（card-drag.js）。ハンドル=タイトル(無ければカード全体)。
+   ドラッグ中は body 直下へ浮かせて(position:fixed)列のクリップ外へ出す。 */
+.card-drag-handle { cursor: grab; touch-action: none; }
+.card-drag-handle:active { cursor: grabbing; }
+/* カード全体がハンドルでも、内部の操作系は通常のカーソル/操作を維持 */
+.draggable-card button,
+.draggable-card a,
+.draggable-card input,
+.draggable-card select,
+.draggable-card textarea { cursor: pointer; }
+.draggable-card canvas { cursor: default; }   /* canvas 上からはドラッグ開始しない */
+.draggable-card.floating {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.60);
+    outline: 1px solid rgba(61, 155, 255, 0.55);
+}
+.draggable-card.dragging {
+    user-select: none;
+    cursor: grabbing;
+    opacity: 0.97;
+}
+.draggable-card.dragging .card-drag-handle { cursor: grabbing; }
+.layout-reset-btn { white-space: nowrap; }
+/* DRIVE モードでは浮かせたカードも隠す（コースマップは走行中も残す） */
+body.drive-mode .draggable-card.floating:not(.course-map-card) { display: none; }
