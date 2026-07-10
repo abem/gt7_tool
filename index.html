@@ -11,12 +11,16 @@
 <body>
     <div class="dashboard">
         <div class="header">
-            <span class="header-title">GT7 TELEMETRY DASHBOARD</span>
-            <div class="header-flags" id="flags-bar"></div>
-            <button id="test-mode-btn" class="test-mode-btn">TEST MODE</button>
-            <button id="view-mode-btn" class="test-mode-btn view-mode-btn" aria-pressed="false"
-                    title="走行用の最小表示(DRIVE)と解析用の全表示(ANALYSIS)を切り替え">ANALYSIS</button>
-            <div id="connection-status" class="disconnected" role="status" aria-live="polite">Disconnected</div>
+            <div class="header-row">
+                <span class="header-title">GT7 TELEMETRY DASHBOARD</span>
+                <div class="header-flags" id="flags-bar"></div>
+                <!-- 個別ボタンはメニューに統合済み。menu.js が非表示にし、メニュー項目から .click() で駆動する -->
+                <button id="test-mode-btn" class="test-mode-btn">TEST MODE</button>
+                <button id="view-mode-btn" class="test-mode-btn view-mode-btn" aria-pressed="false"
+                        title="走行用の最小表示(DRIVE)と解析用の全表示(ANALYSIS)を切り替え">ANALYSIS</button>
+                <div id="connection-status" class="disconnected" role="status" aria-live="polite">Disconnected</div>
+            </div>
+            <!-- 操作帯(Windows風メニューバー)は menu.js が .header に追加する -->
         </div>
 
         <!-- Race engineer notifications (transient toasts, fixed top-right) -->
@@ -586,5 +590,6 @@
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>
     <script src="/card-drag.js"></script>
+    <script src="/menu.js"></script>
 </body>
 </html>

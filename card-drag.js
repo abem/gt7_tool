@@ -139,6 +139,8 @@
         cards.slice().sort(function (a, b) { return a.orig.index - b.orig.index; }).forEach(unfloat);
         saveStore({});
     }
+    // メニュー(menu.js)などから配置リセットを呼べるように公開
+    window.gt7ResetLayout = resetAll;
 
     function addResetButton() {
         var header = document.querySelector('.header');
@@ -151,7 +153,9 @@
         btn.title = 'ブロック配置を初期化。ブロック(カード/チャート)をドラッグで移動 / ダブルクリックで個別リセット';
         btn.addEventListener('click', resetAll);
         var status = document.getElementById('connection-status');
-        if (status) header.insertBefore(btn, status); else header.appendChild(btn);
+        // connection-status は .header 直下でなく .header-row 内なので親基準で挿入する
+        if (status && status.parentNode) status.parentNode.insertBefore(btn, status);
+        else header.appendChild(btn);
     }
 
     function restoreSaved() {
