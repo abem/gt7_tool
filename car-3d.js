@@ -230,11 +230,14 @@ function drawGround() {
     }
 }
 
-// サス偏差を -1..1 に正規化（相対表示: 単位に依存しない）
+// サス偏差を -1..1 に正規化（相対表示: 単位に依存しない）。
+// GT7 の susp_height は「値が大きいほど縮み（圧縮）」の符号（実データ 45k サンプルで確認:
+// ブレーキ時に前輪 susp_height が増加＝前が沈む / 加速時に後輪が増加＝リアスクワット）。
+// このモジュールは norm>0=伸び / norm<0=縮み に統一しているため、平均との偏差を反転する。
 function suspNorm() {
     var s = car3DState.susp;
     var avg = (s[0] + s[1] + s[2] + s[3]) / 4;
-    var dev = [s[0] - avg, s[1] - avg, s[2] - avg, s[3] - avg];
+    var dev = [avg - s[0], avg - s[1], avg - s[2], avg - s[3]];   // 反転: susp_height 大=縮み → norm<0
     var maxAbs = Math.max(Math.abs(dev[0]), Math.abs(dev[1]), Math.abs(dev[2]), Math.abs(dev[3]));
     if (maxAbs < 1e-6) return [0, 0, 0, 0];
     return [dev[0] / maxAbs, dev[1] / maxAbs, dev[2] / maxAbs, dev[3] / maxAbs];
