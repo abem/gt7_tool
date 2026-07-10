@@ -7,6 +7,14 @@
 
 ---
 
+## 2026-07-10 — TEST MODE ボタンを上部メニューへ移動
+
+### feat: TEST MODE ボタンをヘッダーへ移設
+- **変更**: これまで COURSE MAP カードのヘッダー内にあった `#test-mode-btn`（TEST MODE）を、最上部の `.header`（タイトル / ANALYSIS / ↻配置 と同じ並び）へ移動。id は不変のため `test-mode.js`（`getElementById('test-mode-btn')`）はそのまま動作。COURSE MAP ヘッダーには SPEED 切替（`#course-line-mode-btn`）が残る。
+- **検証**: 実HTTPSコンテナで `#test-mode-btn` が `.header` 配下にあること、クリックで TEST MODE 起動（ボタン→STOP TEST / active、デモ速度 180km/h 反映）、COURSE MAP の SPEED ボタン残存、未捕捉例外0 を headless で確認。
+
+---
+
 ## 2026-07-10 — カードを自由移動（ドラッグ配置）
 
 ### feat: カード(.card)をマウスでピックして自由に移動
