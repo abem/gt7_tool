@@ -56,7 +56,22 @@
   - タイヤ円盤自体の切れ角は視認性のため誇張（`STEER_GAIN`）。**正確な角度は従来どおり STEERING ゲージ**に数値表示。
 - **検証**: 舵角を固定注入した headless 比較（直進=4輪のアロー平行 / 右舵=前2輪のみ旋回・後2輪は基準）で前輪のみが切れることを目視確認・未捕捉例外0。
 
----
+### change: G-FORCE パネルを廃止し、重心点として CAR ATTITUDE に統合
+- **要望**: 「CAR ATTITUDE に重心点を置けないか／G-FORCE を廃止してグラフを一緒に」。
+- **内容**:
+  - **重心点(CoG)を CAR ATTITUDE に追加**（`car-3d.js`）。`body_accel_sway`(横G)/`body_accel_surge`(縦G) を受ける `setCarGForce()` を新設し、G に応じて重心ドットを地面基準で移動。**g-g トレール**（軌跡）と 1G 参照リング・中心十字も地面に描画し、旧 G-FORCE メーターの機能を統合。CoG は接地マーカー＋鉛直線＋浮いたドット＋`CoG x.xxG` ラベルで表示。
+  - 重心の移動方向は「荷重側（＝加速と逆向き）」を既定に（`COG.signLat/signLong`。実車で逆に見えたら符号反転）。移動量は `COG.gain`、最大半径は `COG.maxR` でクランプ。
+  - **G-FORCE パネルを完全廃止**: `index.html` の `.gforce-card`、`ui_components.js` の `gforceState`/`initGForceMeter`/`drawGForceMeter`/`updateGForceMeter`、`styles.css` の `.gforce-*` を削除。呼び出し元（`websocket.js`/`test-mode.js`）を `updateGForceMeter(...)` → `setCarGForce(...)` に置換。
+  - **BODY ACCEL パネル（sway/heave/surge 数値）は存置**（別物）。デモの `getDemoGForceData()` も存置（BODY ACCEL と CoG の両方へ供給）。
+- **検証**: headless（WebGL無効）TEST MODE で重心ドット＋G値ラベル＋トレールが描画・BODY ACCEL 数値は継続・未捕捉例外0・`gforce`/`updateGForceMeter` の残存参照0 を確認。
+
+### refine: ワイヤーを細く・重心点をマゼンタ＋点滅に
+- **要望**: 「ウィッシュボーンの線を細く／重心点が青でサスと被る→点滅」。
+- **内容**:
+  - ウィッシュボーン等の線を細線化（アーム 2.2–2.6→1.5、アップライト 3→2、ハブキャリア 2.4→1.6、節点も縮小）で見やすく。
+  - 重心点の色をサスの青（伸び）と被らない**マゼンタ (#FF4FC3)** に変更（ドット/グロー/鉛直線/接地マーカー/トレールを統一）。
+  - 重心ドット＋グローを **~1.3Hz で明滅**（`cogPulse()`, `globalAlpha` を 0.35–1.0 で脈動）。明滅のため `renderLoop` を毎フレーム描画に変更（小キャンバスでコスト軽微）。
+- **検証**: 固定G注入の headless 2フレーム比較でグロー強度が脈動（点滅）を確認・未捕捉例外0。
 
 ## 2026-07-09 — 挙動保存リファクタリング（フロント/バック横断）
 

@@ -153,7 +153,6 @@ body {
 .fuel-bar-value,
 .fuel-bar-capacity,
 .fuel-stat-value,
-.gforce-num,
 .gear-ratio-val,
 .tyre-temp-value,
 .tyre-rps,
@@ -731,54 +730,7 @@ body {
     margin-top: var(--sp-1);
 }
 
-/* --- G-Force ----------------------------------------------------------- */
-.gforce-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--sp-3);
-}
-
-#gforce-canvas {
-    width: 140px;
-    height: 140px;
-    background: var(--surface-2);
-    border-radius: 50%;
-    border: 1px solid var(--border-strong);
-}
-
-.gforce-values {
-    display: flex;
-    gap: var(--sp-5);
-    width: 100%;
-    justify-content: center;
-}
-
-.gforce-value-row {
-    display: flex;
-    align-items: baseline;
-    gap: var(--sp-1);
-}
-
-.gforce-label {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    color: var(--text-muted);
-}
-
-.gforce-num {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-    min-width: 44px;
-    text-align: right;
-}
-
-.gforce-unit {
-    font-size: 10px;
-    color: var(--text-muted);
-}
+/* G-Force パネルは廃止（重心点として CAR ATTITUDE に統合） */
 
 /* --- Stat tiles (fuel/boost, max speed, ids) --------------------------- */
 .fuel-boost-grid {

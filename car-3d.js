@@ -23,6 +23,8 @@ var car3DState = {
     // 最新姿勢（ラジアン）
     pitch: 0, yaw: 0, roll: 0, steering: 0,
     susp: [0, 0, 0, 0],           // FL, FR, RL, RR（生値。単位は問わない=相対表示）
+    gLat: 0, gLong: 0,            // 車体加速度 G（sway=横, surge=縦）。重心点＝旧G-FORCEを統合
+    cogTrail: [],                 // 重心の軌跡（g-g トレール表示用）
     animationId: null,
     needsRender: true,
     resizeObserver: null,
@@ -49,6 +51,18 @@ var ATTITUDE_2D = {
     horizonY: 0.58      // 基準線の縦位置（キャンバス高さ比）
 };
 
+// 重心点（旧 G-FORCE を CAR ATTITUDE に統合）
+var COG = {
+    gain: 0.5,          // 1G あたりの重心移動量（無次元）
+    maxR: 1.25,         // 重心移動の最大半径
+    height: 0.50,       // 重心の高さ
+    refRingG: 1.0,      // 参照リング（1G）
+    trailMax: 30,       // g-g トレールの点数
+    // 加速度から重心オフセットへの符号。荷重側（＝加速と逆向き）へ動かす。
+    // 実車データで逆に見えたら符号を反転する。
+    signLat: -1, signLong: -1
+};
+
 var ATTITUDE_COLORS = {
     grid: 'rgba(120,140,170,0.18)',
     gridAxis: 'rgba(120,140,170,0.36)',
@@ -59,6 +73,10 @@ var ATTITUDE_COLORS = {
     tyre: 'rgba(155,172,196,0.60)',       // タイヤ輪郭（細線）
     tyreFill: 'rgba(10,14,20,0.28)',
     heading: 'rgba(120,220,255,0.92)',    // 接地点の進行方向アロー（ステア可視化）
+    cog: '#FF4FC3',                       // 重心ドット（サスの青と被らないマゼンタ）
+    cogRGB: '255,79,195',                 // 上記の RGB（トレール/グロー用）
+    cogGlow: 'rgba(255,79,195,0.32)',
+    cogRef: 'rgba(160,180,210,0.28)',     // 参照リング/十字
     strutCompress: '#E8563B',             // 縮み（荷重大, 赤）
     strutNeutral: '#5AD08A',
     strutExtend: '#43A6FF'                // 伸び（荷重小, 青）
@@ -154,6 +172,19 @@ function updateCar3D(pitch, yaw, roll, rpm, steering, susp) {
     if (car3DState.pitchEl) car3DState.pitchEl.textContent = (car3DState.pitch * 180 / Math.PI).toFixed(2) + '°';
     if (car3DState.rollEl)  car3DState.rollEl.textContent  = (car3DState.roll  * 180 / Math.PI).toFixed(2) + '°';
     if (car3DState.yawEl)   car3DState.yawEl.textContent   = (car3DState.yaw   * 180 / Math.PI).toFixed(2) + '°';
+    car3DState.needsRender = true;
+}
+
+/**
+ * 車体加速度 G を受け取り、重心点＋g-g トレールを更新する（旧 G-FORCE メーターの統合先）。
+ * @param {number} lat  横G（body_accel_sway）
+ * @param {number} long 縦G（body_accel_surge）
+ */
+function setCarGForce(lat, long) {
+    car3DState.gLat = finiteOr0(lat);
+    car3DState.gLong = finiteOr0(long);
+    car3DState.cogTrail.push({ lat: car3DState.gLat, long: car3DState.gLong });
+    if (car3DState.cogTrail.length > COG.trailMax) car3DState.cogTrail.shift();
     car3DState.needsRender = true;
 }
 
@@ -351,23 +382,23 @@ function drawWheelWire(c) {
 function drawCorner(c) {
     var ctx = car3DState.ctx;
     ctx.lineCap = 'round';
-    // 下ウィッシュボーン（Aアーム）
-    wire(c.lF, c.lbj, 2.6, ATTITUDE_COLORS.arm);
-    wire(c.lR, c.lbj, 2.6, ATTITUDE_COLORS.arm);
+    // 下ウィッシュボーン（Aアーム）— 細線で見やすく
+    wire(c.lF, c.lbj, 1.5, ATTITUDE_COLORS.arm);
+    wire(c.lR, c.lbj, 1.5, ATTITUDE_COLORS.arm);
     // 上ウィッシュボーン
-    wire(c.uF, c.ubj, 2.2, ATTITUDE_COLORS.arm);
-    wire(c.uR, c.ubj, 2.2, ATTITUDE_COLORS.arm);
+    wire(c.uF, c.ubj, 1.5, ATTITUDE_COLORS.arm);
+    wire(c.uR, c.ubj, 1.5, ATTITUDE_COLORS.arm);
     // アップライト（ナックル）＋ハブキャリア
-    wire(c.ubj, c.lbj, 3, ATTITUDE_COLORS.upright);
-    wire({ x: (c.ubj.x + c.lbj.x) / 2, y: (c.ubj.y + c.lbj.y) / 2 }, c.hub, 2.4, ATTITUDE_COLORS.upright);
+    wire(c.ubj, c.lbj, 2, ATTITUDE_COLORS.upright);
+    wire({ x: (c.ubj.x + c.lbj.x) / 2, y: (c.ubj.y + c.lbj.y) / 2 }, c.hub, 1.6, ATTITUDE_COLORS.upright);
     // コイルオーバー（サス色）
     drawSpring(c.sprBot, c.sprTop, c.col);
     ctx.lineCap = 'butt';
     // 節点
-    node(c.uF, 2, ATTITUDE_COLORS.pivot); node(c.uR, 2, ATTITUDE_COLORS.pivot);
-    node(c.lF, 2, ATTITUDE_COLORS.pivot); node(c.lR, 2, ATTITUDE_COLORS.pivot);
-    node(c.sprTop, 2.4, ATTITUDE_COLORS.pivot);
-    node(c.ubj, 2.4, c.col); node(c.lbj, 2.4, c.col);
+    node(c.uF, 1.6, ATTITUDE_COLORS.pivot); node(c.uR, 1.6, ATTITUDE_COLORS.pivot);
+    node(c.lF, 1.6, ATTITUDE_COLORS.pivot); node(c.lR, 1.6, ATTITUDE_COLORS.pivot);
+    node(c.sprTop, 2, ATTITUDE_COLORS.pivot);
+    node(c.ubj, 2, c.col); node(c.lbj, 2, c.col);
     // ホイール
     drawWheelWire(c);
 }
@@ -378,6 +409,7 @@ function drawLegend() {
     var y = car3DState.H - 12;
     ctx.font = '9px "Segoe UI", system-ui, sans-serif';
     ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';   // 直前の描画状態に依存しないよう明示
     var items = [
         [ATTITUDE_COLORS.strutCompress, '縮み'],
         [ATTITUDE_COLORS.strutExtend, '伸び']
@@ -416,11 +448,84 @@ function drawReadout() {
     ctx.textAlign = 'left';
 }
 
+// 重心オフセット（荷重側へ = 加速と逆向き）。半径をクランプ。lat/long → [ox, oz]
+function cogOffset(lat, long) {
+    var ox = COG.signLat * lat * COG.gain;
+    var oz = COG.signLong * long * COG.gain;
+    var r = Math.hypot(ox, oz);
+    if (r > COG.maxR) { var k = COG.maxR / r; ox *= k; oz *= k; }
+    return [ox, oz];
+}
+
+// 地面の g-g 参照（中心十字＋1Gリング）＋重心トレール。車輪の下（早い段階）に描く。
+function drawCoGGround() {
+    var ctx = car3DState.ctx;
+    ctx.strokeStyle = ATTITUDE_COLORS.cogRef; ctx.lineWidth = 1;
+    var rg = COG.gain * COG.refRingG;
+    ctx.beginPath();
+    for (var a = 0; a <= 28; a++) {
+        var th = a / 28 * Math.PI * 2;
+        var p = projGround(Math.cos(th) * rg, 0, Math.sin(th) * rg);
+        if (a === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath(); ctx.stroke();
+    var a1 = projGround(-0.13, 0, 0), a2 = projGround(0.13, 0, 0);
+    var b1 = projGround(0, 0, -0.13), b2 = projGround(0, 0, 0.13);
+    ctx.beginPath(); ctx.moveTo(a1.x, a1.y); ctx.lineTo(a2.x, a2.y); ctx.moveTo(b1.x, b1.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
+    // 重心トレール（フェード）
+    var trail = car3DState.cogTrail, n = trail.length;
+    for (var i = 0; i < n; i++) {
+        var o = cogOffset(trail[i].lat, trail[i].long);
+        var q = projGround(o[0], 0, o[1]);
+        var alpha = 0.05 + (i / n) * 0.40;   // 最古点/単一点でも消えないよう下限
+        ctx.beginPath(); ctx.arc(q.x, q.y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + ATTITUDE_COLORS.cogRGB + ',' + alpha.toFixed(3) + ')'; ctx.fill();
+    }
+}
+
+// 明滅位相（0.35..1.0）。performance.now が無ければ 1（常時点灯）にフォールバック。
+function cogPulse() {
+    var t = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+    return 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 0.008));  // ~1.3Hz
+}
+
+// 重心ドット本体（接地マーカー＋鉛直線＋浮いたドット＋G値）。最前面に描く。ドットは明滅。
+function drawCoGDot() {
+    var ctx = car3DState.ctx;
+    var rgb = ATTITUDE_COLORS.cogRGB;
+    var o = cogOffset(car3DState.gLat, car3DState.gLong);
+    var g = projGround(o[0], 0, o[1]);          // 接地投影
+    var top = project(o[0], COG.height, o[1]);  // 重心（高さあり）
+    // 鉛直線＋接地マーカー（点灯のまま）
+    ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(top.x, top.y);
+    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(' + rgb + ',0.55)'; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(g.x, g.y, 5, 2.4, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = ATTITUDE_COLORS.cog; ctx.lineWidth = 1.5; ctx.stroke();
+    // ドット＋グローを明滅（サスの青と区別しやすいマゼンタで点滅）
+    ctx.save();
+    ctx.globalAlpha = cogPulse();
+    var grad = ctx.createRadialGradient(top.x, top.y, 0, top.x, top.y, 15);
+    grad.addColorStop(0, ATTITUDE_COLORS.cogGlow); grad.addColorStop(1, 'rgba(' + rgb + ',0)');
+    ctx.beginPath(); ctx.arc(top.x, top.y, 15, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+    ctx.beginPath(); ctx.arc(top.x, top.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = ATTITUDE_COLORS.cog; ctx.fill();
+    ctx.strokeStyle = '#0E1319'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+    // G値ラベル（点灯のまま）
+    var gmag = Math.hypot(car3DState.gLat, car3DState.gLong);
+    ctx.font = '700 10px "Segoe UI", system-ui, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(180,205,235,0.90)';
+    ctx.fillText('CoG ' + gmag.toFixed(2) + 'G', top.x + 10, top.y);
+    ctx.textAlign = 'left';
+}
+
 function render() {
     var ctx = car3DState.ctx;
     if (!ctx) return;
     ctx.clearRect(0, 0, car3DState.W, car3DState.H);
     drawGround();
+    drawCoGGround();            // 重心の g-g 参照＋トレール（地面, 車輪の下）
 
     var corners = [0, 1, 2, 3].map(computeCorner);
 
@@ -435,13 +540,15 @@ function render() {
     // 奥→手前でコーナーを描く（針金なので厳密でなくてよいが自然な重なりに）
     corners.slice().sort(function (a, b) { return a.depth - b.depth; }).forEach(drawCorner);
 
+    drawCoGDot();               // 重心ドット（最前面）
     drawLegend();
     drawReadout();
 }
 
 function renderLoop() {
     car3DState.animationId = requestAnimationFrame(renderLoop);
-    if (!car3DState.needsRender) return;
+    // 重心ドットの明滅のため毎フレーム描画（小さなキャンバスなのでコストは軽微）。
+    // needsRender はデータ更新の記録用に残すが、描画ゲートには使わない。
     car3DState.needsRender = false;
     render();
 }

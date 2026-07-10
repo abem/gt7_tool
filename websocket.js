@@ -422,9 +422,9 @@ function updateTyreState(data) {
         elements.bodyHeave.textContent = (data.body_accel_heave || 0).toFixed(3);
         elements.bodySurge.textContent = (data.body_accel_surge || 0).toFixed(3);
         
-        // G-Forceメーター更新（sway = 横G, surge = 縦G）
-        if (typeof updateGForceMeter === 'function') {
-            updateGForceMeter(
+        // 重心点(CAR ATTITUDE)へ G を反映（sway = 横G, surge = 縦G）
+        if (typeof setCarGForce === 'function') {
+            setCarGForce(
                 data.body_accel_sway || 0,
                 data.body_accel_surge || 0
             );

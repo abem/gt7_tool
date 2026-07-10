@@ -385,9 +385,9 @@ function renderDemoFrame(point, demoInputs) {
     if (elements.bodyHeave) elements.bodyHeave.textContent = gforceData.heave.toFixed(3);
     if (elements.bodySurge) elements.bodySurge.textContent = gforceData.surge.toFixed(3);
     
-    // G-Forceメーター更新
-    if (typeof updateGForceMeter === 'function') {
-        updateGForceMeter(gforceData.sway, gforceData.surge);
+    // 重心点(CAR ATTITUDE)へ G を反映
+    if (typeof setCarGForce === 'function') {
+        setCarGForce(gforceData.sway, gforceData.surge);
     }
     
     // セクターデータ（デモ）

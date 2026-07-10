@@ -146,7 +146,7 @@ function resetAnalysis() {
 
 /**
  * 初回のみ DOM をキャッシュし、ボタン配線・解析チャート初期化を行う(lazy-init)。
- * 既存 initGForceMeter/initPedalTrace と同じく「初回 analysisOnFrame 時」に実行。
+ * 既存 initPedalTrace と同じく「初回 analysisOnFrame 時」に実行。
  */
 function ensureAnalysisInit() {
     if (analysisState.initialized) {
