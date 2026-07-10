@@ -2048,7 +2048,7 @@ body.drive-mode .course-map-card {
 .draggable-card input,
 .draggable-card select,
 .draggable-card textarea { cursor: pointer; }
-.draggable-card canvas { cursor: default; }   /* canvas 上からはドラッグ開始しない */
+/* canvas は表示専用なのでカードごとドラッグ可（grab カーソルを継承させる） */
 .draggable-card.floating {
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.60);
     outline: 1px solid rgba(61, 155, 255, 0.55);

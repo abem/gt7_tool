@@ -30,6 +30,11 @@
   - [low×2] 浮かせたカードが DRIVE モードの非表示を逃れる → `body.drive-mode .draggable-card.floating:not(.course-map-card){display:none}` を追加。
 - **検証**: headless で 20/20 draggable・CAR ATTITUDE/COURSE MAP/TYRES/スタット系のドラッグ浮上・未捕捉例外0 を確認。実デプロイ済みコンテナでも確認。
 
+### fix: チャート/ビジュアライズ系カードも本体から掴めるように（「一部しか動かない」の解消）
+- **原因**: ドラッグ開始判定 `isInteractive` が `canvas` を除外していたため、本体が canvas のカード（CAR ATTITUDE、COURSE MAP、ROAD SURFACE、ペダル/加速トレース等）は中央を掴んでも動かず、テキスト系カードだけ動く状態だった。
+- **修正**: 当ダッシュボードの canvas は表示専用（uPlot は `cursor:{show:false}` で入力ハンドラ無し、他の canvas も同様）と確認できたため、除外対象から `canvas` を外し **カード本体のどこからでも**（canvas 上でも）ドラッグ開始できるように。除外は本物の操作系（`button/input/select/textarea/a/[contenteditable]/[role=button]`）のみ＝各ボタン/チャート凡例操作は従来どおり。
+- **検証**: 実コンテナで各カードを**中央（＝canvas）掴み**→ 20/20 浮上（うち canvas 直掴み3枚＝CAR ATTITUDE/COURSE MAP/加速チャートを含む）・未捕捉例外0 を確認。
+
 ---
 
 ## 2026-07-10 — CAR ATTITUDE を WebGL不要の2D図に刷新

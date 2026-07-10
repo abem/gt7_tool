@@ -36,8 +36,11 @@
     function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; } }
     function saveStore(m) { try { localStorage.setItem(STORE_KEY, JSON.stringify(m)); } catch (e) {} }
     function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+    // ドラッグを開始しない要素（本物の操作系のみ）。canvas は当ダッシュボードでは
+    // 表示専用（uPlot は cursor:{show:false}、他も入力ハンドラ無し）なので除外しない
+    // → チャート/ビジュアライズ系カードも本体のどこからでも掴めるようにする。
     function isInteractive(t) {
-        return !!(t && t.closest && t.closest('button, input, select, textarea, a, canvas, [contenteditable]'));
+        return !!(t && t.closest && t.closest('button, input, select, textarea, a, [contenteditable], [role="button"]'));
     }
 
     function floatCard(c, left, top, width, height) {
