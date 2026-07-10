@@ -1058,12 +1058,22 @@ body {
     margin-top: var(--sp-2);
 }
 
-/* --- Course map -------------------------------------------------------- */
-.course-map-card {
+/* --- Steer response (舵角 vs 実旋回) ----------------------------------- */
+.steer-response-card {
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
+}
+.steer-response-container {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+#steer-response-view {
+    width: 100%;
+    height: 100%;
+    min-height: 180px;
 }
 
 .course-map-header {
@@ -1877,7 +1887,7 @@ body.drive-mode .center-split {
     min-height: 0;
 }
 
-body.drive-mode .course-map-card {
+body.drive-mode .steer-response-card {
     min-height: clamp(240px, 40vh, 560px);
 }
 
@@ -2070,7 +2080,7 @@ body.drive-mode .course-map-card {
 .draggable-card.dragging .card-drag-handle { cursor: grabbing; }
 .layout-reset-btn { white-space: nowrap; }
 /* DRIVE モードでは浮かせたカードも隠す（コースマップと上部レーシングバーは走行中も残す） */
-body.drive-mode .draggable-card.floating:not(.course-map-card):not(.racing-top-bar) { display: none; }
+body.drive-mode .draggable-card.floating:not(.steer-response-card):not(.racing-top-bar) { display: none; }
 
 /* --- 操作帯（Windows 風ドロップダウン・メニューバー / menu.js） ------------
    .header 内のタイトル行の下に置く帯。見出しをクリックで操作一覧が開く。 */

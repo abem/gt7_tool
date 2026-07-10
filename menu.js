@@ -3,7 +3,7 @@
  *
  * ヘッダーのタイトル行の下に「表示 / モード / 配置 / 設定」の見出しを並べ、
  * クリックで操作一覧をドロップダウン表示する。各操作は既存のボタン
- * (#test-mode-btn / #view-mode-btn / #course-line-mode-btn / 配置リセット)を
+ * (#test-mode-btn / #view-mode-btn / 配置リセット)を
  * 「隠しプロキシ」として .click() で駆動し、状態(✓)はそのボタンの class から
  * 読む。これにより test-mode.js / drive-view.js / telemetry-analysis.js /
  * card-drag.js のロジックには一切手を入れずに一元化する。
@@ -20,8 +20,6 @@
     // ---- 状態参照(プロキシの class / text がソース) ----
     function isDrive() { var b = byId('view-mode-btn'); return !!(b && b.classList.contains('active')); }
     function isTest() { var b = byId('test-mode-btn'); return !!(b && b.classList.contains('active')); }
-    function courseMode() { var b = byId('course-line-mode-btn'); return b ? (b.textContent.trim() || 'SPEED') : 'SPEED'; }
-    function hasCourseBtn() { return !!byId('course-line-mode-btn'); }
     function isFullscreen() { return !!document.fullscreenElement; }
     function resetLayout() {
         if (typeof window.gt7ResetLayout === 'function') window.gt7ResetLayout();
@@ -44,9 +42,7 @@
             { label: 'DRIVE 表示', check: function () { return isDrive(); }, action: function () { if (!isDrive()) proxyClick('view-mode-btn'); } }
         ] },
         { label: 'モード', items: [
-            { label: 'TEST MODE', check: function () { return isTest(); }, hint: function () { return isTest() ? '実行中' : ''; }, action: function () { proxyClick('test-mode-btn'); } },
-            { sep: true },
-            { label: 'コースライン着色', hint: function () { return courseMode(); }, action: function () { proxyClick('course-line-mode-btn'); }, disabled: function () { return !hasCourseBtn(); } }
+            { label: 'TEST MODE', check: function () { return isTest(); }, hint: function () { return isTest() ? '実行中' : ''; }, action: function () { proxyClick('test-mode-btn'); } }
         ] },
         { label: '配置', items: [
             { label: '全ブロックを整列（リセット）', action: function () { resetLayout(); } },

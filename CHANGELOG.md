@@ -7,6 +7,26 @@
 
 ---
 
+## 2026-07-10 — COURSE MAP を廃止し STEER RESPONSE（操舵応答）ペインを新設
+
+### feat: 舵角に対して車が実際にどれだけ曲がっているかを図示（steer-response.js）
+- **概要**: COURSE MAP（走行軌跡）を撤去し、その枠に **STEER RESPONSE** を新設。ドライバーの舵角から期待される旋回（狙い）と、実際のヨーレートから求めた旋回（実際）を2本の弧で重ねて描き、アンダー/ニュートラル/オーバーを一目で判別できるようにした。
+- **物理**:
+  - `wheel_rotation` はステアリングホイール角（±π rad 相当、路面切れ角ではない）。実際の曲率は κ_act = ω / v（幾何的に厳密）。
+  - 期待ヨーレート ω_exp = v·δsw / L_eff。L_eff（中立ゲイン）は車ごとに異なるため、**低〜中速(6–28 m/s)・低横G の準キネマティック領域**で自走中に EMA 自動較正（`neutralL` 初期値 61＝フリート中央値、[25,130] にクランプ）。
+  - バランス比 = |ω| / |ω_exp|：<0.9 アンダー / >1.1 オーバー。逆位相（スピン/カウンター）は強オーバー扱い。
+- **UI**: 狙い＝青破線・実際＝橙実線の弧、車グリフ、アンダー↔オーバーのバランスバー（針）、読み値（舵角°/ヨー°/横G/R）、状態ラベル（アンダー/ニュートラル/オーバー ＋ %）。
+- **撤去**: `course-map.js` と関連関数（initCourseMap/updateCourseMap/drawCourseMap/resetCourseMap）、「コースライン着色」メニュー項目・`course-line-mode-btn` バインドを削除。データ供給（websocket.js/test-mode.js）を `updateSteerResponse(wheel_rotation, angular_velocity_y, speed_ms, body_accel_sway)` へ差し替え。
+- **敵対的レビュー（4観点×検証）で CONFIRMED 7件を修正**:
+  - [HIGH] 実機でコース認識時に `#course-name` が無く `updatePositionText` が null 参照でクラッシュ → 要素存在ガードを追加。
+  - [MED] 中立ゲイン固定だと低速の緩旋回で誤オーバー判定 → 低速キネマティック領域での自動較正を実装。
+  - [LOW] `wExp*yaw<=0` がヨー0の直進プラウを誤オーバー化 → `<0` に厳格化。
+  - [LOW] TEST MODE の合成データが実走較正を汚染 → `!inTest` ガード。
+  - [LOW] デモの横Gが最大7G＝非現実 → ±0.3–1.0g に是正。/ [LOW] デモがオーバーを一度も示さない → 係数スイープを 0.3–1.3 に拡大。/ [LOW] 旧 @depends コメントの残骸を更新。
+- **検証**: 実HTTPSコンテナで headless 確認 — STEER RESPONSE 描画、TEST MODE で アンダー→ニュートラル→オーバー を巡回、横G最大0.93g（有界）、コース認識ガードで例外なし、未捕捉例外0。
+
+---
+
 ## 2026-07-10 — CAR ATTITUDE のサス伸縮が逆だった不具合を修正
 
 ### fix: susp_height の符号を実データで確認して反転

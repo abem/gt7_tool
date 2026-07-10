@@ -15,9 +15,8 @@
  *
  * @module telemetry-analysis
  * @depends constants.js  (未直接参照だが読込順を保証)
- * @depends ui_components.js (formatLapTime, courseMapState)
+ * @depends ui_components.js (formatLapTime)
  * @depends charts.js (initAnalysisCharts, renderAnalysisCharts — C 実装, typeof ガードで呼出)
- * @depends course-map.js (drawCourseMap — typeof ガードで呼出)
  *
  * 全公開関数はグローバル function 宣言(巻き上げ)。呼出側は typeof fn === 'function' でガードする。
  */
@@ -162,19 +161,6 @@ function ensureAnalysisInit() {
         gripStatus: document.getElementById('grip-status'),
         consistency: document.getElementById('consistency-stat')
     };
-
-    // コースマップ着色モード SPEED↔LINE トグル(1回だけ配線)
-    const btn = document.getElementById('course-line-mode-btn');
-    if (btn) {
-        btn.addEventListener('click', function() {
-            analysisState.lineMode = (analysisState.lineMode === 'speed') ? 'line' : 'speed';
-            btn.textContent = (analysisState.lineMode === 'line') ? 'LINE' : 'SPEED';
-            btn.classList.toggle('active', analysisState.lineMode === 'line');
-            if (typeof drawCourseMap === 'function') {
-                drawCourseMap();
-            }
-        });
-    }
 
     // 距離軸解析チャート初期化(C 実装・冪等・要素欠落時は内部でスキップ)
     if (typeof initAnalysisCharts === 'function') {

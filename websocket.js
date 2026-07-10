@@ -8,7 +8,7 @@
  * @depends lap-manager.js (updateLapState, updateMaxSpeed)
  * @depends charts.js (timeCounter, timeData, speedData, rpmData, throttleData, brakeData,
  *                     speedChart, rpmChart, throttleChart, brakeChart, initCharts, updateAccelChart)
- * @depends course-map.js (initCourseMap, updateCourseMap)
+ * @depends steer-response.js (initSteerResponse, updateSteerResponse)
  * @depends car-3d.js (initCar3D, updateCar3D)
  */
 
@@ -524,8 +524,8 @@ function updatePositionText(data) {
         elements.racePosition.textContent = 'P' + data.pre_race_position;
     }
 
-    // コース名
-    if (data.course && data.course.name && data.course.id !== 'unknown') {
+    // コース名（COURSE MAP 廃止で #course-name は無い。要素があるときだけ更新）
+    if (elements.courseName && data.course && data.course.name && data.course.id !== 'unknown') {
         elements.courseName.textContent = data.course.name;
     }
 }
@@ -624,15 +624,13 @@ function handleTelemetryMessage(data, nowTs) {
         wsState.lastRotationTs = now;
     }
 
-    if (doMap && data.position_x !== undefined && data.position_z !== undefined) {
-        updateCourseMap(
-            data.position_x,
-            data.position_y || 0,
-            data.position_z,
-            data.speed_kmh || 0,
-            data.rotation_yaw || 0,  // 車両の向き
-            data.throttle_pct || 0,  // レースライン着色用
-            data.brake_pct || 0
+    if (doMap) {
+        // STEER RESPONSE: 舵角(ステアホイール角) vs 実ヨーレートでアンダー/オーバーを図示
+        updateSteerResponse(
+            data.wheel_rotation || 0,                            // ステア角 (rad)
+            data.angular_velocity_y || 0,                        // 実ヨーレート (rad/s)
+            (data.speed_ms != null ? data.speed_ms : (data.speed_kmh || 0) / 3.6),
+            data.body_accel_sway || 0                            // 横G (m/s^2)
         );
         wsState.lastMapTs = now;
     }
@@ -662,7 +660,7 @@ function connectWebSocket() {
         elements.connectionStatus.className = 'connected';
         wsState.reconnectDelay = WEBSOCKET_CONFIG.reconnectDelayInitial;
         initCharts();
-        initCourseMap();
+        initSteerResponse();
         initCar3D();
     };
 

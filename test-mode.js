@@ -6,7 +6,7 @@
  * @depends constants.js (TEST_MODE_CONFIG)
  * @depends ui_components.js (elements, courseMapState, debugLog, updateSteeringGauge)
  * @depends websocket.js (packetCount)
- * @depends course-map.js (updateCourseMap, drawCourseMap)
+ * @depends steer-response.js (initSteerResponse, updateSteerResponse)
  * @depends car-3d.js (updateCar3D, initCar3D, car3DState)
  */
 
@@ -69,7 +69,7 @@ function initTestMode() {
             // TEST MODE(オフライン)では onopen が発火しないためここで初期化する。
             // どちらも内部フラグで冪等なので二重初期化にはならない。
             if (typeof initCharts === 'function') initCharts();
-            if (typeof initCourseMap === 'function') initCourseMap();
+            if (typeof initSteerResponse === 'function') initSteerResponse();
             startTestMode();
         } else {
             stopTestMode();
@@ -127,7 +127,7 @@ function stopTestMode() {
     clearInterval(testModeInterval);
     testModeInterval = null;
     setTestModeUiState(false);
-    resetCourseMap();
+    testTrajectoryIndex = 0;
 
     // 再テスト時にクリーンスタートするため解析状態もリセット
     if (typeof resetAnalysis === 'function') {
@@ -157,16 +157,6 @@ function setTestModeUiState(active) {
     }
     elements.connectionStatus.style.background = '';
     elements.connectionStatus.style.color = '';
-}
-
-/**
- * コースマップをリセット
- */
-function resetCourseMap() {
-    testTrajectoryIndex = 0;
-    courseMapState.trajectory = [];
-    courseMapState.currentPosition = { x: 0, y: 0, z: 0 };
-    drawCourseMap();
 }
 
 /* ================================================================
@@ -422,9 +412,14 @@ function renderDemoFrame(point, demoInputs) {
     // 舵角メーター更新
     updateSteeringGauge(demoSteering);
 
-    // コースマップ更新（heading + 入力ゾーン着色用の throttle/brake 付き）
-    updateCourseMap(point.x, 0, point.z, point.speed, demoOrientation.yaw,
-        demoInputs.throttle, demoInputs.brake);
+    // STEER RESPONSE 更新（デモ: 弧が見えるようステア拡大、実/期待比を掃引して
+    //   アンダー↔中立↔オーバーを一巡表示。横Gは現実的な値で別途表示）
+    var demoSteerWheel = demoSteering * 6;                          // ステアホイール角相当（表示拡大）
+    var demoV = Math.max(6, point.speed / 3.6);                     // m/s
+    var demoF = 0.8 + 0.5 * Math.sin(t * 0.03);                    // 実/期待比 0.3..1.3
+    var demoYaw = (demoV * demoSteerWheel / STEER_RESP.neutralL) * demoF;
+    var demoLatG = (demoSteering >= 0 ? 1 : -1) * (0.3 + 0.7 * Math.abs(Math.sin(t * 0.03))) * 9.81; // ±0.3..1.0g
+    updateSteerResponse(demoSteerWheel, demoYaw, demoV, demoLatG);
 
     // メインチャート(速度/RPM/スロットル/ブレーキ + 加速度)給餐。
     // ライブと同一経路(updateChartState)を使い、TEST MODE でもチャートが描画される。

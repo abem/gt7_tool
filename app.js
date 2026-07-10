@@ -2,7 +2,7 @@
  * GT7 Telemetry Dashboard
  * エントリーポイント
  *
- * 依存: ui_components.js, charts.js, course-map.js, websocket.js, test-mode.js
+ * 依存: ui_components.js, charts.js, steer-response.js, websocket.js, test-mode.js
  */
 
 (function() {

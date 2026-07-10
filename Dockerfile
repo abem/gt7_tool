@@ -22,7 +22,7 @@ COPY config.json packet_def.json ./
 COPY course_database.json* ./
 COPY index.html ./
 COPY styles.css ./
-COPY ui_components.js charts.js course-map.js websocket.js test-mode.js app.js car-3d.js constants.js lap-manager.js telemetry-analysis.js drive-view.js card-drag.js menu.js ./
+COPY ui_components.js charts.js steer-response.js websocket.js test-mode.js app.js car-3d.js constants.js lap-manager.js telemetry-analysis.js drive-view.js card-drag.js menu.js ./
 COPY uplot.min.js uplot.min.css ./
 COPY ssl ./ssl
 
