@@ -163,9 +163,19 @@ async def broadcast_to_clients(message):
         return
 
     disconnected = set()
-    for ws in websocket_clients:
+    # list() スナップショット: 送信の await 中に websocket_handler が
+    # websocket_clients を変更しても RuntimeError にならないようにする
+    for ws in list(websocket_clients):
         try:
-            await ws.send_str(message)
+            # タイムアウト付き送信: 1クライアントの停滞が全体の配信を止めるのを防ぐ。
+            # タイムアウトしたクライアントは切断扱いにして close を試みる。
+            await asyncio.wait_for(ws.send_str(message), timeout=1.0)
+        except asyncio.TimeoutError:
+            disconnected.add(ws)
+            try:
+                await asyncio.wait_for(ws.close(), timeout=1.0)
+            except Exception:
+                pass
         except Exception:
             disconnected.add(ws)
 
@@ -181,14 +191,18 @@ async def _heartbeat_loop(client):
     かつ受信処理がハートビート間隔に引きずられないようにする。
     """
     interval = client.heartbeat_interval
-    try:
-        while True:
+    # try は while の内側に置く: 想定外例外でこのループ自体が死ぬと GT7 が
+    # テレメトリ送信を止め、恒久的なサイレント停止になるため、
+    # 例外はログして interval 秒後に再試行し続ける（CancelledError のみ終了）。
+    while True:
+        try:
             await client.send_heartbeat()
             await asyncio.sleep(interval)
-    except asyncio.CancelledError:
-        pass
-    except Exception as e:
-        logger.error(f"Heartbeat loop error: {e}", exc_info=True)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Heartbeat loop error: {e}; retrying in {interval}s", exc_info=True)
+            await asyncio.sleep(interval)
 
 
 async def telemetry_background_task():
@@ -232,8 +246,13 @@ async def telemetry_background_task():
                 decrypted = decoder.decrypt(raw_data)
                 if decrypted:
                     parsed = decoder.parse(decrypted)
-                    if parsed and parsed.get("package_id", 0) > last_package_id:
-                        last_package_id = parsed["package_id"]
+                    pid = parsed.get("package_id", 0) if parsed else 0
+                    # 受理条件: 通常は単調増加のみ（重複・順序逆転パケットを除外）。
+                    # ただしゲーム再起動で package_id が 0 付近にリセットされると
+                    # 「pid > last_package_id」を二度と満たせず全パケットが弾かれて
+                    # 無言で固まるため、大幅な後退（1000 超）はリセットとみなして受理する。
+                    if parsed and (pid > last_package_id or pid < last_package_id - 1000):
+                        last_package_id = pid
 
                         current_time = datetime.now()
                         parsed["timestamp"] = current_time.isoformat()
@@ -268,8 +287,11 @@ async def telemetry_background_task():
                         current_lap_data.append(parsed)
 
                         # ラップ境界検出：lap_countが変化したら保存
+                        # 同期 json 書込はイベントループを数百ms塞ぐためワーカースレッドへ。
+                        # 旧リストは保存スレッドに渡し切り、以後はここで新リストへ差し替えるので
+                        # 書込み中のリストが変更されることはない。
                         if lap_count > current_lap_number and current_lap_number > 0:
-                            save_lap_to_file(current_lap_data, current_lap_number)
+                            await asyncio.to_thread(save_lap_to_file, current_lap_data, current_lap_number)
                             current_lap_data = []
                         current_lap_number = lap_count
 
@@ -324,13 +346,14 @@ async def static_handler(request):
     if filename == 'favicon.ico':
         return web.Response(status=204)
 
-    # パストラバーサル防止
-    if '..' in filename or filename.startswith('/'):
-        return web.Response(status=403, text="Forbidden")
+    # 意図: リポジトリ直下の UI アセットのみ配信（鍵・設定・ソースの漏えい防止）。
+    # 許可リスト方式: パス区切りを含まず、拡張子が .js / .css のものだけを配信し、
+    # ssl 秘密鍵・config.json・Python ソース・gt7data 等へのアクセスを遮断する。
+    if '/' in filename or not filename.endswith(('.js', '.css')):
+        return web.Response(status=404, text="File not found")
 
-    # リポジトリ直下の静的ファイル（CSS/JS等）を配信
     filepath = filename
-    
+
     if not os.path.isfile(filepath):
         return web.Response(status=404, text="File not found")
 
@@ -454,7 +477,9 @@ def main():
     logger.info(f"{scheme.upper()}: {scheme}://0.0.0.0:{port}")
     logger.info(f"WebSocket: {ws_scheme}://0.0.0.0:{port}/ws")
 
-    web.run_app(app, host='0.0.0.0', port=port, ssl_context=ssl_context)
+    # access_log=None: アクセスログは logging_middleware が出すため、
+    # aiohttp デフォルトの access log と二重出力になるのを抑止する
+    web.run_app(app, host='0.0.0.0', port=port, ssl_context=ssl_context, access_log=None)
 
 
 if __name__ == "__main__":

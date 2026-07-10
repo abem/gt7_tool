@@ -7,6 +7,31 @@
 
 ---
 
+## 2026-07-11 — 第3次リファクタリング（バックエンド堅牢化・等価リファクタ・ドキュメント再構成）
+
+### fix: main.py の堅牢化 7件（全て敵対的検証 CONFIRMED）
+- **【セキュリティ】static_handler を許可リスト化**: 従来は cwd 配下の任意ファイル（**TLS秘密鍵 ssl/server-key.pem・config.json・Python ソース・gt7data のラップログ**）が HTTP で取得できた。トップレベルの .js/.css のみ配信に変更（favicon 204 維持、他は 404）。
+- **【安定性】ゲーム再起動でダッシュボードが無言で固まる問題**: package_id の単調増加フィルタが再起動後の小さい ID を全て弾いていた → 後方への大ジャンプ（pid < last−1000）をリセットとして受理。
+- **【安定性】broadcast_to_clients**: (1) set をイテレーション中の add/discard で `RuntimeError` → `list()` スナップショット化 (2) 1クライアントの停滞（スリープ等）が全配信と受信ループを止める → 送信を `wait_for(1.0s)` で包みタイムアウトは切断扱い。
+- **【安定性】heartbeat ループ**: 想定外例外で静かに死ぬと GT7 が送信を止め恒久停止 → ログして継続に変更。
+- **ラップ跨ぎのカクつき**: ラップ境界の同期 json 書込（数千サンプル）がイベントループを数百ms塞ぐ → `asyncio.to_thread` 化。
+- decoder.py の CourseEstimator docstring「現在未使用」（実際は全パケットで使用）を実態に修正。アクセスログの二重出力を `access_log=None` で解消。
+
+### refactor: JS 等価リファクタ（挙動不変を分岐単位で論証して適用）
+- **lap-manager.js**: 書込専用で無制限成長する `currentLapData`/`bestLapData` を除去（**メモリリーク解消** — 読み取りコードが存在しないことを grep 確認）。
+- 同型コード畳み込み: charts.js `makeStripChart`（uPlot 生成4ブロック）、ui_components.js `drawPedalSeries`（スロットル/ブレーキ鏡像）、websocket.js `TYRE_CORNERS` ループ（4隅逐語展開、||0 の有無等の微差を厳密保存）、telemetry-analysis.js `setDeltaBar`（デルタバー3コピー）。
+- 誤コメント修正: 存在しない `recordFrame` への参照2箇所→`analysisOnFrame`、`WHEEL_SPEED_K`「任意係数」→ 2πr の厳密換算である旨。charts.js initAccelChart の未使用引数除去。
+- styles.css: 完全等価の重複宣言・未参照デザイントークン14個を削除（「Legacy accent names (kept, remapped)」等の意図的保持は温存）。
+
+### docs: 構成の再設計 + 解説文書2本を新設
+- **docs/steer-response.md 新設（242行）**: STEER RESPONSE の完全解説 — 30秒の読み方 / 画面要素 / **走りへの活かし方（アンダー・オーバー時の操作指針）** / 物理モデルの導出（κ=ω/v、キネマティック自転車モデル、L_eff への レシオ畳み込み）/ 自動較正の設計根拠 / 既知の限界（高横G域の線形仮定等）/ 実装ノート（定数リファレンス）。TEST MODE で撮影したスクリーンショット付き。
+- **docs/development.md 新設**: 変更時の検証手順（pytest / 構文チェック / `--build` 必須の理由 / TEST MODE スモーク）。
+- **二重管理の解消（「正」を定めて参照化）**: ファイル構成表=architecture.md / トラブルシュート=common-issues.md / コースDB手順=USER_GUIDE / 暗号詳細=API.md / 履歴=CHANGELOG。README は各正への要約+リンクに縮約、docs/index.md は純粋なリンクハブ化。
+- **architecture.md に「実行モデルと制約」小節を新設**: プレーン `<script>`・単一グローバルスコープ・読み込み順依存・ES モジュール不使用（意図的）という開発上最重要の制約を初めて明文化。
+- **検証**: 全 fable の監査5次元（CONFIRMED 21/REFUTED 8 — 検証者が「価値が churn に見合わない」マイクロ最適化を的確に却下）→ 実施6並列 → 差分レビュー4観点×反証者2名（CONFIRMED 2件は誤記等の軽微、即修正）。pytest 12 passed、許可リストの 404/200 実測、TEST MODE でチャート4本/ペダルトレース/タイヤ4隅/両 Canvas ペインの描画・未捕捉例外0。
+
+---
+
 ## 2026-07-10 — 第2次リファクタリング（ルート整理・ビルド衛生・ドキュメント精度）
 
 ### refactor: ルート直下の遺物ドキュメント 12本を docs/archive/ へ集約

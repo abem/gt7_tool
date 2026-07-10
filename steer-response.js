@@ -74,7 +74,7 @@ function updateSteerResponse(steerRad, yawRadS, speedMs, latG) {
     s.latG = srFiniteOr0(latG);
 
     // 低速側(≈キネマティック領域)の緩い旋回で車固有の中立(幾何)ゲインを自動較正する。
-    //  - 低〜中速に限定＝スリップが小さく幾何ゲインに近い（高速の理解ステア分を基準に混ぜない）。
+    //  - 低〜中速に限定＝スリップが小さく幾何ゲインに近い（高速のアンダーステア分を基準に混ぜない）。
     //  - TEST MODE の合成データでは較正しない（実走基準を汚さないため）。
     var C = STEER_RESP;
     var inTest = (typeof testModeActive !== 'undefined') && testModeActive;

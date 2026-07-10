@@ -20,10 +20,6 @@ const lapState = {
     bestLapNumber: 0,
     /** ラップタイム履歴 */
     lapTimes: [],
-    /** 現在ラップのデータ */
-    currentLapData: [],
-    /** ベストラップのデータ */
-    bestLapData: [],
     /** 最高速度 */
     maxSpeed: 0
 };
@@ -84,7 +80,6 @@ function addLapData(lapNumber, lapTime) {
     if (lapTime > 0 && lapTime < lapState.bestLapTime) {
         lapState.bestLapTime = lapTime;
         lapState.bestLapNumber = lapNumber;
-        lapState.bestLapData = lapState.currentLapData.slice();
     }
 
     updateLapList();
@@ -112,18 +107,8 @@ function updateLapState(data, timeCounter) {
             addLapData(lapState.lastLapNumber, lastTime);
             elements.currentLapTime.textContent = formatLapTime(lastTime);
         }
-        lapState.currentLapData = [];
     }
     lapState.lastLapNumber = lapState.currentLapNumber;
-
-    // ラップデータ蓄積
-    lapState.currentLapData.push({
-        time: timeCounter,
-        speed: data.speed_kmh || 0,
-        rpm: data.rpm || 0,
-        throttle: data.throttle_pct || 0,
-        brake: data.brake_pct || 0
-    });
 
     // 速度デルタ計算
     updateSpeedDelta(data);
@@ -135,7 +120,7 @@ function updateLapState(data, timeCounter) {
  * #lap-delta / #delta-bar-* の書込は telemetry-analysis.js の updateLiveDelta に一本化した
  * （距離基準の「対ベスト秒差」= 実テレメトリソフト級のライブ・タイムデルタへ役割強化）。
  * ここで書き込むと後勝ちの二重書込・競合になるため当該 DOM 書込は行わない。
- * currentLapData の蓄積・addLapData/bestLapData（ラップ履歴）は updateLapState 側で温存。
+ * addLapData（ラップ履歴）は updateLapState 側で温存。
  *
  * @param {Object} data - テレメトリデータ
  */

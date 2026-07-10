@@ -8,7 +8,7 @@
  *   - ライブ・タイムデルタ: 同一距離でのベスト通過タイム秒差(#lap-delta/#delta-bar-*)
  *   - 推定ラップタイム: refLap.totalTime + liveDelta の全周外挿 + PB判定(#est-lap-time)
  *   - 距離軸チャート供給: 現在ラップ speed + ベスト speed 重畳 / タイムデルタ(charts.js C 実装)
- *   - 入力ゾーン分類: recordFrame が毎フレーム呼ぶ classifyZone / peaks・valleys
+ *   - 入力ゾーン分類: analysisOnFrame が毎フレーム呼ぶ classifyZone / peaks・valleys
  *   - レースエンジニア通知: トップスピード/PB/燃料/残周回/ファイナルラップの一過性トースト
  *
  * バックエンド(main.py/decoder.py)は不変。全て既存デコード済みフィールドから計算する。
@@ -34,7 +34,8 @@ const MIN_PROM = 15;           // ピーク顕著性[km/h]
 const MIN_SPEED_MS = 3;        // 空転判定の下限速度[m/s]
 const TOPSPEED_MARGIN = 1;     // 新トップスピード発火マージン[km/h]
 const CHART_CADENCE_MS = 100;  // 解析チャート再描画スロットル(10fps)
-const WHEEL_SPEED_K = 2 * Math.PI; // ホイール周速換算係数(|rps|*radius*K)。grip判定用の任意係数。
+const WHEEL_SPEED_K = 2 * Math.PI; // ホイール回転数→周速の厳密換算(1回転=2πr)。|rps|*radius*K [m/s]。
+                                   // 任意係数ではない: 変更すると updateGrip の slip 比(1.0=グリップ)の物理的意味が崩れる。
 const PROM_WINDOW = 8;         // ピーク顕著性評価窓(±8サンプル=±80m)
 
 /* ================================================================
@@ -75,6 +76,26 @@ function lerpA(a, b, f) {
     return a + (b - a) * f;
 }
 
+/**
+ * デルタバー2本の同時更新ヘルパー。
+ * onEl 側: width=pct + .active 付与(pct が '0%' でも付与＝従来挙動)。
+ * offEl 側: width='0%' + .active 除去。
+ * 全消灯は onEl=null で off 側だけ適用する。
+ * @param {Element|null} onEl - 点灯側バー(null なら off 側のみ)
+ * @param {Element|null} offEl - 消灯側バー
+ * @param {string} pct - 点灯側の width(例 '42%')
+ */
+function setDeltaBar(onEl, offEl, pct) {
+    if (onEl) {
+        onEl.style.width = pct;
+        onEl.classList.add('active');
+    }
+    if (offEl) {
+        offEl.style.width = '0%';
+        offEl.classList.remove('active');
+    }
+}
+
 /* ================================================================
  *  初期化・リセット
  * ================================================================ */
@@ -88,14 +109,8 @@ function clearDeltaUI() {
         els.lapDelta.textContent = '--';
         els.lapDelta.className = 'delta-value';
     }
-    if (els.barNeg) {
-        els.barNeg.style.width = '0%';
-        els.barNeg.classList.remove('active');
-    }
-    if (els.barPos) {
-        els.barPos.style.width = '0%';
-        els.barPos.classList.remove('active');
-    }
+    setDeltaBar(null, els.barNeg, '0%');
+    setDeltaBar(null, els.barPos, '0%');
 }
 
 /**
@@ -435,7 +450,7 @@ function localProminence(arr, i, type) {
 }
 
 /**
- * 入力ゾーンを分類する。recordFrame から毎フレーム呼ばれる。
+ * 入力ゾーンを分類する。analysisOnFrame から毎フレーム呼ばれる。
  * @param {number} throttle - スロットル率[%]
  * @param {number} brake - ブレーキ率[%]
  * @returns {string} 'brake' | 'throttle' | 'coast'
@@ -484,24 +499,10 @@ function updateLiveDelta(data) {
     const pct = (Math.abs(n) * 100) + '%';
     if (liveDelta < 0) {
         // 速い → negative バー(緑)
-        if (els.barNeg) {
-            els.barNeg.style.width = pct;
-            els.barNeg.classList.add('active');
-        }
-        if (els.barPos) {
-            els.barPos.style.width = '0%';
-            els.barPos.classList.remove('active');
-        }
+        setDeltaBar(els.barNeg, els.barPos, pct);
     } else {
         // 遅い/オンペース → positive バー(赤)
-        if (els.barPos) {
-            els.barPos.style.width = pct;
-            els.barPos.classList.add('active');
-        }
-        if (els.barNeg) {
-            els.barNeg.style.width = '0%';
-            els.barNeg.classList.remove('active');
-        }
+        setDeltaBar(els.barPos, els.barNeg, pct);
     }
 }
 

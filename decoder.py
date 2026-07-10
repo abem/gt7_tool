@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 class CourseEstimator:
-    """位置座標からコースを推定するクラス（現在未使用: 将来コース推定を有効化する際に使用）"""
+    """位置座標からコースを推定するクラス。
+
+    main.py が全テレメトリパケットで estimate_course() を呼び、
+    結果を course フィールドとして WebSocket クライアントへ配信している。
+    """
 
     def __init__(self, db_file='course_database.json'):
         self.courses = []

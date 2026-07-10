@@ -4,7 +4,7 @@
  *
  * @module charts
  * @depends constants.js (CHART_POINTS, COLORS, ACCEL_CHART_CONFIG)
- * @depends ui_components.js (accelData, debugLog)
+ * @depends ui_components.js (accelData)
  */
 
 /* ================================================================
@@ -196,44 +196,38 @@ function initCharts() {
     };
 
     // 加速度チャート初期化
-    initAccelChart(chartElements);
+    initAccelChart();
+
+    /**
+     * ストリップチャートを生成（4チャート共通形）
+     * @param {HTMLElement} el - コンテナ要素
+     * @param {Array} yData - Y軸データ配列
+     * @param {string} stroke - 線色
+     * @param {string} fill - 塗りつぶし色
+     * @returns {uPlot} チャートインスタンス
+     */
+    function makeStripChart(el, yData, stroke, fill) {
+        return new uPlot(
+            Object.assign({}, chartOptions, {
+                series: [{}, { stroke: stroke, width: 1.5, fill: fill }]
+            }),
+            [timeData, yData],
+            el
+        );
+    }
 
     try {
         // 速度チャート
-        speedChart = new uPlot(
-            Object.assign({}, chartOptions, {
-                series: [{}, { stroke: COLORS.accentBlue, width: 1.5, fill: 'rgba(47, 128, 214, 0.1)' }]
-            }),
-            [timeData, speedData],
-            chartElements['speed-chart']
-        );
+        speedChart = makeStripChart(chartElements['speed-chart'], speedData, COLORS.accentBlue, 'rgba(47, 128, 214, 0.1)');
 
         // RPMチャート
-        rpmChart = new uPlot(
-            Object.assign({}, chartOptions, {
-                series: [{}, { stroke: COLORS.rpmLine, width: 1.5, fill: 'rgba(189, 132, 16, 0.1)' }]
-            }),
-            [timeData, rpmData],
-            chartElements['rpm-chart']
-        );
+        rpmChart = makeStripChart(chartElements['rpm-chart'], rpmData, COLORS.rpmLine, 'rgba(189, 132, 16, 0.1)');
 
         // スロットルチャート
-        throttleChart = new uPlot(
-            Object.assign({}, chartOptions, {
-                series: [{}, { stroke: COLORS.accentGreen, width: 1.5, fill: 'rgba(31, 158, 87, 0.15)' }]
-            }),
-            [timeData, throttleData],
-            chartElements['throttle-chart']
-        );
+        throttleChart = makeStripChart(chartElements['throttle-chart'], throttleData, COLORS.accentGreen, 'rgba(31, 158, 87, 0.15)');
 
         // ブレーキチャート
-        brakeChart = new uPlot(
-            Object.assign({}, chartOptions, {
-                series: [{}, { stroke: COLORS.accentRed, width: 1.5, fill: 'rgba(216, 75, 79, 0.15)' }]
-            }),
-            [timeData, brakeData],
-            chartElements['brake-chart']
-        );
+        brakeChart = makeStripChart(chartElements['brake-chart'], brakeData, COLORS.accentRed, 'rgba(216, 75, 79, 0.15)');
 
         drawAccelChart();
 
@@ -249,9 +243,8 @@ function initCharts() {
 
 /**
  * 加速度チャートを初期化
- * @param {Object} chartElements - チャート要素マップ
  */
-function initAccelChart(chartElements) {
+function initAccelChart() {
     const accelCanvasEl = document.getElementById('accel-chart');
 
     if (!accelCanvasEl) {

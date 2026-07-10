@@ -319,48 +319,39 @@ function updateTyreTempBar(position, temp) {
  * @param {Object} data - テレメトリデータ
  */
 function updateTyreState(data) {
+    var TYRE_CORNERS = ['fl', 'fr', 'rl', 'rr'];
+
     // サスペンション
     if (data.susp_height) {
-        elements.flSusp.textContent = (data.susp_height[0] * 1000).toFixed(0);
-        elements.frSusp.textContent = (data.susp_height[1] * 1000).toFixed(0);
-        elements.rlSusp.textContent = (data.susp_height[2] * 1000).toFixed(0);
-        elements.rrSusp.textContent = (data.susp_height[3] * 1000).toFixed(0);
+        TYRE_CORNERS.forEach(function(p, i) {
+            elements[p + 'Susp'].textContent = (data.susp_height[i] * 1000).toFixed(0);
+        });
     }
 
     // タイヤ温度
     if (data.tyre_temp) {
         const temps = data.tyre_temp;
-        elements.flTemp.textContent = Math.round(temps[0]);
-        elements.frTemp.textContent = Math.round(temps[1]);
-        elements.rlTemp.textContent = Math.round(temps[2]);
-        elements.rrTemp.textContent = Math.round(temps[3]);
-        elements.flTemp.style.color = getTyreTempColor(temps[0]);
-        elements.frTemp.style.color = getTyreTempColor(temps[1]);
-        elements.rlTemp.style.color = getTyreTempColor(temps[2]);
-        elements.rrTemp.style.color = getTyreTempColor(temps[3]);
-        
-        // 温度バー更新
-        updateTyreTempBar('fl', temps[0]);
-        updateTyreTempBar('fr', temps[1]);
-        updateTyreTempBar('rl', temps[2]);
-        updateTyreTempBar('rr', temps[3]);
+        TYRE_CORNERS.forEach(function(p, i) {
+            elements[p + 'Temp'].textContent = Math.round(temps[i]);
+            elements[p + 'Temp'].style.color = getTyreTempColor(temps[i]);
+            // 温度バー更新
+            updateTyreTempBar(p, temps[i]);
+        });
     }
 
     // ホイール回転速度
     if (data.wheel_rps) {
         const rps = data.wheel_rps;
-        elements.flRps.textContent = Math.abs(rps[0] || 0).toFixed(1);
-        elements.frRps.textContent = Math.abs(rps[1] || 0).toFixed(1);
-        elements.rlRps.textContent = Math.abs(rps[2] || 0).toFixed(1);
-        elements.rrRps.textContent = Math.abs(rps[3] || 0).toFixed(1);
+        TYRE_CORNERS.forEach(function(p, i) {
+            elements[p + 'Rps'].textContent = Math.abs(rps[i] || 0).toFixed(1);
+        });
     }
 
     // タイヤ半径
     if (data.tyre_radius) {
-        elements.flRadius.textContent = (data.tyre_radius[0] || 0).toFixed(3);
-        elements.frRadius.textContent = (data.tyre_radius[1] || 0).toFixed(3);
-        elements.rlRadius.textContent = (data.tyre_radius[2] || 0).toFixed(3);
-        elements.rrRadius.textContent = (data.tyre_radius[3] || 0).toFixed(3);
+        TYRE_CORNERS.forEach(function(p, i) {
+            elements[p + 'Radius'].textContent = (data.tyre_radius[i] || 0).toFixed(3);
+        });
     }
 
     // 路面法線

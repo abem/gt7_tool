@@ -1,19 +1,10 @@
 # GT7 Tool APIドキュメント
 
+> 本書はプロトコルとスキーマ（HTTP/WebSocket API・パケット復号仕様・Python モジュール API）の正（一次情報）です。
+
 ## 概要
 
-GT7 Toolは、GT7（グランツーリスモ7）からのテレメトリデータを受信・解析・配信するためのAPIを提供します。
-
-## アーキテクチャ
-
-```
-PS5 (GT7) --[UDP]--> Python Backend --[WebSocket]--> Web Dashboard
-                      |-- Salsa20復号
-                      |-- データ解析
-                      |-- コース推定
-                      |-- 燃料計算
-                      |-- データ保存
-```
+GT7 Toolは、GT7（グランツーリスモ7）からのテレメトリデータを受信・解析・配信するためのAPIを提供します。システム構成とデータフローは [architecture.md](architecture.md) を参照してください。
 
 ## HTTP API
 
@@ -414,4 +405,4 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
 
 ---
 
-**最終更新**: 2026-07-08
+**最終更新**: 2026-07-10

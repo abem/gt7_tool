@@ -285,48 +285,41 @@ function drawPedalTrace() {
     
     const points = pedalTraceState.maxPoints;
     const stepX = width / (points - 1);
-    
-    // スロットル描画（上半分）
-    ctx.beginPath();
-    ctx.moveTo(0, height / 2);
-    
-    for (let i = 0; i < pedalTraceState.throttleHistory.length; i++) {
-        const x = i * stepX;
-        const y = (height / 2) - (pedalTraceState.throttleHistory[i] / 100) * (height / 2);
-        ctx.lineTo(x, y);
-    }
-    
-    ctx.strokeStyle = '#1F9E57';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
 
-    // スロットル塗りつぶし（--series-throttle）
-    ctx.lineTo(width, height / 2);
-    ctx.lineTo(0, height / 2);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(31, 158, 87, 0.2)';
-    ctx.fill();
-    
-    // ブレーキ描画（下半分）
-    ctx.beginPath();
-    ctx.moveTo(0, height / 2);
-    
-    for (let i = 0; i < pedalTraceState.brakeHistory.length; i++) {
-        const x = i * stepX;
-        const y = (height / 2) + (pedalTraceState.brakeHistory[i] / 100) * (height / 2);
-        ctx.lineTo(x, y);
-    }
-    
-    ctx.strokeStyle = '#D84B4F';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    /**
+     * ペダル系列を描画（線 + 塗りつぶし）
+     * @param {number[]} history - 履歴データ（0-100）
+     * @param {number} sign - Y方向符号（スロットル: -1 上半分, ブレーキ: +1 下半分）
+     * @param {string} strokeColor - 線色
+     * @param {string} fillColor - 塗りつぶし色
+     */
+    function drawPedalSeries(history, sign, strokeColor, fillColor) {
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
 
-    // ブレーキ塗りつぶし（--series-brake）
-    ctx.lineTo(width, height / 2);
-    ctx.lineTo(0, height / 2);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(216, 75, 79, 0.2)';
-    ctx.fill();
+        for (let i = 0; i < history.length; i++) {
+            const x = i * stepX;
+            const y = (height / 2) + sign * (history[i] / 100) * (height / 2);
+            ctx.lineTo(x, y);
+        }
+
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // 塗りつぶし
+        ctx.lineTo(width, height / 2);
+        ctx.lineTo(0, height / 2);
+        ctx.closePath();
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+    }
+
+    // スロットル描画（上半分, --series-throttle）
+    drawPedalSeries(pedalTraceState.throttleHistory, -1, '#1F9E57', 'rgba(31, 158, 87, 0.2)');
+
+    // ブレーキ描画（下半分, --series-brake）
+    drawPedalSeries(pedalTraceState.brakeHistory, 1, '#D84B4F', 'rgba(216, 75, 79, 0.2)');
 
     // センターライン（--axis）
     ctx.beginPath();
