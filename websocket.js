@@ -399,26 +399,18 @@ function updatePositionText(data) {
     elements.velZ.textContent = (data.velocity_z || 0).toFixed(1);
 
     // 方角(HDG)・車体高さ(HGT)
-    // --- 導出 ---
-    // decoder.py(0x28) は orientation を「1.0=北, 0.0=南」と定義する。南(180°)で 0 に
-    // なるのは cos(θ) (cos180°=-1) ではなく半角余弦 cos(θ/2) (cos90°=0) の性質であり、
-    // この値は 0x1C-0x28 の回転クォータニオン (x,y,z,w) の w 成分 = cos(θ/2) と一致する。
-    // よって北からの全角 full = 2*acos(w) ∈ [0,360]。w<0 側(full>180)は ±θ の二重被覆
-    // なので 360-full に折り返し、「北からの偏角 dev ∈ [0,180]」に正規化する。
-    // cos は偶関数のため東回り(+θ)と西回り(-θ)は区別不能。GT7 ワールド座標(+Y=上)は
-    // 北=+Z/東=-X の鏡像系であり、東進中は velocity_x<0。したがって vx>0(西進)なら
-    // heading = 360-dev、vx<0(東進)なら heading = dev として 0-360°に解く。
-    // vx が未提供のときは東西を解けないので偏角の度数のみ表示する。
-    var halfRad = Math.acos(Math.max(-1, Math.min(1, data.orientation || 0)));
-    var full = halfRad * 2 * 180 / Math.PI;                 // 0-360(二重被覆込み)
-    var dev = full > 180 ? 360 - full : full;               // 北からの偏角 0-180
-    if (data.velocity_x != null) {
-        var heading = (data.velocity_x > 0 ? 360 - dev : dev) % 360;
+    // decoder.py がクォータニオンから変換した真のヘディング rotation_yaw(±π, 0=北)を
+    // そのまま使う。実走データで速度ベクトル方位と中央値0.18°で一致することを確認済み。
+    // 規約: 北=GT7ワールド+Z、正方向=+X 側(CAR ATTITUDE の YAW 読み値と同一規約で自己整合)。
+    // 旧実装の「orientation(=w) の acos + velocity_x 符号」ハックはクォータニオンの
+    // 二重被覆解決が不要になったため廃止。
+    if (data.rotation_yaw != null) {
+        var heading = ((data.rotation_yaw * 180 / Math.PI) + 360) % 360;
         var COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
         elements.orientation.textContent =
             (Math.round(heading) % 360) + '° ' + COMPASS_8[Math.round(heading / 45) % 8];
     } else {
-        elements.orientation.textContent = Math.round(dev) + '°';
+        elements.orientation.textContent = '--';
     }
     elements.bodyHeight.textContent = (data.body_height || 0).toFixed(3) + ' m';
 

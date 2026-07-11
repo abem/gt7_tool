@@ -260,10 +260,12 @@ function getDemoGForceData() {
  * @returns {Object} 姿勢データ
  */
 function getDemoOrientation() {
+    // オイラー角(rad)。decoder.py がクォータニオン→オイラー角変換後に送る値と同じ意味。
+    // pitch/roll は実車相当の小角度(±5°/±8°)、yaw は renderDemoFrame が軌跡の進行方位で上書きする。
     return {
-        pitch: Math.sin(testTrajectoryIndex * 0.1) * 0.3,
-        yaw: testTrajectoryIndex * 0.05,
-        roll: Math.cos(testTrajectoryIndex * 0.08) * 0.2
+        pitch: Math.sin(testTrajectoryIndex * 0.1) * 0.09,
+        yaw: 0,
+        roll: Math.cos(testTrajectoryIndex * 0.08) * 0.14
     };
 }
 
@@ -321,6 +323,9 @@ function renderDemoFrame(point, demoInputs) {
     const dz = nextPoint.z - point.z;
     const dNorm = Math.hypot(dx, dz) || 1;
     const speedMs = point.speed / 3.6;
+    // ヨー(世界ヘディング ±π, 0=北) = 軌跡の進行方位。decoder.py のオイラー角変換後と同じ意味で、
+    // HDG 表示や velocity ベクトルと自己整合する。
+    const demoYawHeading = Math.atan2(dx, dz);
 
     // STEER RESPONSE デモ量（後段の上書き呼出でも使用）:
     //   弧が見えるようステア拡大、実/期待比を掃引してアンダー↔中立↔オーバーを一巡表示
@@ -398,14 +403,14 @@ function renderDemoFrame(point, demoInputs) {
 
         // 回転・角速度（angular_velocity_y = 実ヨーレート → STEER RESPONSE のライブ経路が読む）
         rotation_pitch: demoOrientation.pitch,
-        rotation_yaw: demoOrientation.yaw,
+        rotation_yaw: demoYawHeading,
         rotation_roll: demoOrientation.roll,
         angular_velocity_x: 0,
         angular_velocity_y: demoYaw,
         angular_velocity_z: 0,
 
         // 方角（0..1）・車体高さ
-        orientation: ((demoOrientation.yaw / (2 * Math.PI)) % 1 + 1) % 1,
+        orientation: Math.cos(demoYawHeading / 2),   // クォータニオン w 相当 (1=北, 0=南)
         body_height: 0.12 + 0.01 * Math.sin(t * 0.1),
 
         // 舵角（生の demoSteering ラジアン。3D モデル・舵角メーターがライブ経路で読む）

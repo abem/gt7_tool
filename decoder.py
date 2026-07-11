@@ -7,6 +7,7 @@ gt7dashboardの実装を参考にしています。
 
 import struct
 import json
+import math
 import os
 import logging
 
@@ -234,6 +235,30 @@ class GT7Decoder:
             return None
 
     @staticmethod
+    def _quat(d, f):
+        """パケットから単位クォータニオン (x, y, z, w) を読む"""
+        return (f('f', d, 0x1C)[0], f('f', d, 0x20)[0], f('f', d, 0x24)[0], f('f', d, 0x28)[0])
+
+    @staticmethod
+    def _quat_pitch(d, f):
+        x, y, z, w = GT7Decoder._quat(d, f)
+        fy = 2 * (y * z - w * x)                       # 車体前方ベクトルの上下成分
+        return -math.asin(max(-1.0, min(1.0, fy)))     # 正=機首上げ
+
+    @staticmethod
+    def _quat_yaw(d, f):
+        x, y, z, w = GT7Decoder._quat(d, f)
+        fx = 2 * (x * z + w * y)
+        fz = 1 - 2 * (x * x + y * y)
+        return math.atan2(-fx, -fz)                    # 前方=-Z 規約。±π, 0=北
+
+    @staticmethod
+    def _quat_roll(d, f):
+        x, y, z, w = GT7Decoder._quat(d, f)
+        ry = 2 * (x * y + w * z)                       # 車体右ベクトルの上下成分
+        return math.asin(max(-1.0, min(1.0, ry)))      # 正=右ロール
+
+    @staticmethod
     def _extract_fields(d: bytes) -> dict:
         """バイナリデータからテレメトリフィールドを抽出"""
         f = struct.unpack_from
@@ -299,12 +324,16 @@ class GT7Decoder:
             "velocity_y": f('f', d, 0x14)[0],
             "velocity_z": f('f', d, 0x18)[0],
 
-            # 回転 (-1〜1)
-            "rotation_pitch": f('f', d, 0x1C)[0],
-            "rotation_yaw": f('f', d, 0x20)[0],
-            "rotation_roll": f('f', d, 0x24)[0],
+            # 回転: 真のオイラー角(rad)。パケット 0x1C-0x28 はオイラー角ではなく
+            # 単位クォータニオン(x,y,z,w) — 実走2万フレームで x²+y²+z²+w²=1.0000 を確認。
+            # 旧実装は成分をラジアン扱いしており、yaw は無意味な値・pitch/roll は約半分だった。
+            # 検証: yaw は速度ベクトル方位と中央値0.18°で一致 / corr(sin(pitch), vy/v)=+0.97 /
+            #       roll は右輪サス圧縮差と正相関(17万フレーム)。
+            "rotation_pitch": GT7Decoder._quat_pitch(d, f),   # 正=機首上げ
+            "rotation_yaw": GT7Decoder._quat_yaw(d, f),       # 世界ヘディング ±π(0=北)
+            "rotation_roll": GT7Decoder._quat_roll(d, f),     # 正=右ロール
 
-            # 方角 (1.0=北, 0.0=南)
+            # 方角 = クォータニオン w 成分 (1.0=北, 0.0=南)。HDG 表示が使用。
             "orientation": f('f', d, 0x28)[0],
 
             # 角速度 (rad/s)

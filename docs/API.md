@@ -74,7 +74,7 @@ ws.onmessage = (event) => {
     "velocity_y": 0.1,
     "velocity_z": -30.2,
     "rotation_pitch": 0.01,
-    "rotation_yaw": 0.95,
+    "rotation_yaw": 1.62,
     "rotation_roll": -0.02,
     "orientation": 0.75,
     "angular_velocity_x": 0.0,
@@ -166,8 +166,8 @@ ws.onmessage = (event) => {
 | `susp_height` | float[4] | 0xC4-0xD0 | サスペンション高さ [FL,FR,RL,RR] |
 | `position_x/y/z` | float | 0x04-0x0C | ワールド座標 (m) |
 | `velocity_x/y/z` | float | 0x10-0x18 | 速度ベクトル (m/s) |
-| `rotation_pitch/yaw/roll` | float | 0x1C-0x24 | 回転 (-1〜1) |
-| `orientation` | float | 0x28 | 方角 (1.0=北, 0.0=南) |
+| `rotation_pitch/yaw/roll` | float | 0x1C-0x24 | 真のオイラー角 (rad)。パケット生値は単位クォータニオン (x,y,z,w=0x28) で、decoder が変換して送出（pitch 正=機首上げ / yaw=世界ヘディング ±π・0=北 / roll 正=右ロール） |
+| `orientation` | float | 0x28 | クォータニオン w 成分 = cos(θ/2)（1.0=北, 0.0=南）。方角表示には `rotation_yaw` を使用 |
 | `angular_velocity_x/y/z` | float | 0x2C-0x34 | 角速度 (rad/s) |
 | `body_height` | float | 0x38 | 車体高さ |
 | `car_max_speed` | uint16 | 0x8C | 車両最高速度 (km/h) |
