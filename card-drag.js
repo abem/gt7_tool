@@ -7,8 +7,11 @@
  * - ドラッグ開始でカードを body 直下へ「浮かせて」(position:absolute)自由移動する。
  *   列(.left/center/right-panel)は overflow クリップ + contain:content のため。
  *   座標はドキュメント基準なので、ページがスクロールする幅(≤1399px)でも内容に追従する。
- * - 位置は localStorage に保存し次回ロードで復元（画面外はクランプ）。
- * - ヘッダ「↻ 配置」で全リセット / ハンドルのダブルクリックで個別リセット。
+ * - 位置・サイズは localStorage に保存し次回ロードで復元（画面外・過大はクランプ）。
+ * - ブロック右下のグリップ(またはコーナー24px域)のドラッグでリサイズ。グリップは
+ *   body 直下の単一オーバーレイ(#gt7-resize-grip) — カード内注入はスクロール
+ *   コンテナと衝突するため(docs/plan-block-resize-2026-07-11.md §7-6)。
+ * - ヘッダ「↻ 配置」で全リセット / ハンドルのダブルクリックで個別リセット(位置・サイズとも)。
  *
  * 依存なし・プレーンスクリプト。読み込み時に自動初期化。
  */
@@ -125,6 +128,7 @@
                 floatCard(c, r.left + scrollX(), r.top + scrollY(), r.width, r.height);
                 c.el.classList.add('dragging');
                 dragging = true;
+                hideGrip();                                // ドラッグ中はグリップ非表示
             }
             if (!dragging) return;
             // ポインタはビューポート座標。表示内に収まるようクランプしてからスクロール量を足し、
@@ -147,6 +151,7 @@
             if (e.button !== 0) return;
             if (pending || dragging) return;              // 進行中のジェスチャは1本のみ
             if (isInteractive(e.target)) return;          // ボタン等の操作系からは開始しない
+            if (inCorner(e, c.el)) return;                 // コーナー24px域はリサイズが受け持つ
             activeId = e.pointerId;
             pending = true; dragging = false;
             startX = e.clientX; startY = e.clientY;
@@ -162,9 +167,122 @@
         });
     }
 
+    /* ================================================================
+     *  リサイズ（計画: docs/plan-block-resize-2026-07-11.md）
+     * ================================================================ */
+    var GRIP = 20;             // グリップ実寸(px)
+    var CORNER = 24;           // コーナー直接開始の判定域(px、タッチ発見可能性のため)
+    var MAX_W = 1600, MAX_H = 1200;
+    var grip = null;           // 単一オーバーレイ
+    var gripTarget = null;     // グリップが指しているカード record
+    var resizing = null;       // { c, startW, startH, startX, startY, vpTop, vpLeft, activeId }
+
+    // 種別ごとの最小サイズ(§3.2 v2: racing バーは実測 min-content と CSS min-height に整合)
+    function minSize(el) {
+        if (el.classList.contains('racing-top-bar')) return { w: 670, h: 112 };
+        if (el.classList.contains('chart-wrapper')) return { w: 180, h: 110 };
+        return { w: 140, h: 90 };
+    }
+    function findCard(el) {
+        for (var i = 0; i < cards.length; i++) if (cards[i].el === el) return cards[i];
+        return null;
+    }
+    function blockFromEvent(e) {
+        var el = e.target && e.target.closest ? e.target.closest(BLOCK_SEL) : null;
+        return (el && isTopLevelBlock(el)) ? findCard(el) : null;
+    }
+    function inCorner(e, el) {
+        var r = el.getBoundingClientRect();
+        return (r.right - e.clientX) <= CORNER && (r.bottom - e.clientY) <= CORNER &&
+               e.clientX <= r.right && e.clientY <= r.bottom;
+    }
+    function ensureGrip() {
+        if (grip) return grip;
+        grip = document.createElement('div');
+        grip.id = 'gt7-resize-grip';
+        grip.title = 'ドラッグでサイズ変更';
+        grip.addEventListener('pointerdown', function (e) {
+            if (e.button !== 0 || !gripTarget) return;
+            startResize(gripTarget, e);
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        // グリップ上のダブルクリックはリセットに化けない(§7-7)
+        grip.addEventListener('dblclick', function (e) { e.stopPropagation(); });
+        document.body.appendChild(grip);
+        return grip;
+    }
+    function placeGrip(c) {
+        ensureGrip();
+        gripTarget = c;
+        var r = c.el.getBoundingClientRect();
+        grip.style.left = (r.right - GRIP + scrollX()) + 'px';
+        grip.style.top = (r.bottom - GRIP + scrollY()) + 'px';
+        grip.style.display = 'block';
+    }
+    function hideGrip() { if (grip) grip.style.display = 'none'; gripTarget = null; }
+
+    // ホバー中ブロックの右下へグリップを追従(浮遊/グリッド内どちらでも)
+    document.addEventListener('pointerover', function (e) {
+        if (resizing) return;
+        if (grip && (e.target === grip || grip.contains(e.target))) return;
+        var c = blockFromEvent(e);
+        if (c) placeGrip(c);
+        else if (!(e.target && e.target.closest && e.target.closest('#gt7-resize-grip'))) hideGrip();
+    });
+
+    function startResize(c, e) {
+        // グリッド内ブロックはその場の座標・サイズで浮遊してからリサイズ(ドラッグと同じ規約)
+        var r = c.el.getBoundingClientRect();
+        if (!c.el.classList.contains('floating')) {
+            floatCard(c, r.left + scrollX(), r.top + scrollY(), r.width, r.height);
+        }
+        c.el.style.zIndex = String(++zTop);
+        resizing = {
+            c: c, activeId: e.pointerId,
+            startW: r.width, startH: r.height,
+            startX: e.clientX, startY: e.clientY,
+            vpTop: r.top, vpLeft: r.left
+        };
+        document.body.classList.add('gt7-resizing');
+        document.addEventListener('pointermove', onResizeMove, true);
+        document.addEventListener('pointerup', onResizeUp, true);
+        document.addEventListener('pointercancel', onResizeUp, true);
+        window.addEventListener('blur', onResizeUp);
+    }
+    function onResizeMove(e) {
+        var rz = resizing;
+        if (!rz || e.pointerId !== rz.activeId) return;
+        if (e.buttons === 0) { onResizeUp(e); return; }
+        var mn = minSize(rz.c.el);
+        // 最大: ドキュメント右端/下端(スクロール不可時はビューポート)を超えない(§7-5)
+        var maxW = Math.max(mn.w, Math.min(MAX_W, pageW() - rz.vpLeft));
+        var maxH = Math.max(mn.h, Math.min(MAX_H,
+            (pageCanScrollY() ? MAX_H : window.innerHeight - rz.vpTop)));
+        var w = clamp(rz.startW + (e.clientX - rz.startX), mn.w, maxW);
+        var h = clamp(rz.startH + (e.clientY - rz.startY), mn.h, maxH);
+        rz.c.el.style.width = w + 'px';
+        rz.c.el.style.height = h + 'px';
+        placeGrip(rz.c);
+        e.preventDefault();
+    }
+    function onResizeUp(e) {
+        var rz = resizing;
+        if (!rz || (e && e.pointerId != null && e.pointerId !== rz.activeId)) return;
+        document.removeEventListener('pointermove', onResizeMove, true);
+        document.removeEventListener('pointerup', onResizeUp, true);
+        document.removeEventListener('pointercancel', onResizeUp, true);
+        window.removeEventListener('blur', onResizeUp);
+        document.body.classList.remove('gt7-resizing');
+        resizing = null;
+        persist(rz.c);
+        placeGrip(rz.c);
+    }
+
     function resetAll() {
         cards.slice().sort(function (a, b) { return a.orig.index - b.orig.index; }).forEach(unfloat);
         saveStore({});
+        hideGrip();
     }
     // メニュー(menu.js)などから配置リセットを呼べるように公開
     window.gt7ResetLayout = resetAll;
@@ -190,8 +308,13 @@
         cards.forEach(function (c) {
             var s = store[c.id];
             if (!s) return;
+            var mn = minSize(c.el);
             var w = s.width || c.el.getBoundingClientRect().width;
             var h = s.height || c.el.getBoundingClientRect().height;
+            // 保存サイズも復元時にクランプ(広い画面で保存→狭い画面でグリップが画面外に
+            // 出て縮小不能になるのを防ぐ。§7-5)
+            w = clamp(w, mn.w, Math.max(mn.w, Math.min(MAX_W, pageW())));
+            if (!pageCanScrollY()) h = clamp(h, mn.h, Math.max(mn.h, window.innerHeight));
             // ドキュメント基準でクランプ（左は表示幅、上はスクロール可否に応じて）
             var left = clamp(s.left, 0, Math.max(0, pageW() - w));
             var top = clampTop(s.top, h);
@@ -202,10 +325,28 @@
     function onResize() {
         cards.forEach(function (c) {
             if (!c.el.classList.contains('floating')) return;
+            var mn = minSize(c.el);
             var w = c.el.offsetWidth, h = c.el.offsetHeight;
+            // ウィンドウ縮小でブロックが画面より大きく残らないよう再クランプ(§7-5)
+            if (w > pageW()) { w = Math.max(mn.w, pageW()); c.el.style.width = w + 'px'; }
+            if (!pageCanScrollY() && h > window.innerHeight) {
+                h = Math.max(mn.h, window.innerHeight); c.el.style.height = h + 'px';
+            }
             c.el.style.left = clamp(parseFloat(c.el.style.left) || 0, 0, Math.max(0, pageW() - w)) + 'px';
             c.el.style.top = clampTop(parseFloat(c.el.style.top) || 0, h) + 'px';
         });
+    }
+
+    function initCornerResize() {
+        document.addEventListener('pointerdown', function (e) {
+            if (e.button !== 0 || resizing) return;
+            if (grip && (e.target === grip || grip.contains(e.target))) return;  // グリップ自身は専用ハンドラ
+            var c = blockFromEvent(e);
+            if (!c || !inCorner(e, c.el) || isInteractive(e.target)) return;
+            startResize(c, e);
+            e.preventDefault();
+            e.stopPropagation();   // capture 段でカードのドラッグ開始を抑止
+        }, true);
     }
 
     function init() {
@@ -224,6 +365,7 @@
             cards.push(c);
         });
         addResetButton();
+        initCornerResize();
         restoreSaved();
         window.addEventListener('resize', onResize);
     }

@@ -1925,7 +1925,37 @@ body.drive-mode .steer-response-card {
 .draggable-card.floating {
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.60);
     outline: 1px solid rgba(61, 155, 255, 0.55);
+    /* リサイズ対応(plan-block-resize §7-1/2):
+       - 縮小時の内容あふれを遮断しつつ縦スクロールで内容へ到達可能に
+       - CSS の min/max-height が inline height に勝ってリサイズが無効化されるのを防ぐ */
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-height: none;
+    min-height: 0;
 }
+/* 浮遊中は内部ビューの最小高も緩和(縮小時に canvas がカード外へクリップされるのを防ぐ §7-2) */
+.draggable-card.floating #steer-response-view,
+.draggable-card.floating #car-3d-view { min-height: 0; }
+/* DISTANCE ANALYSIS: 浮遊中はチャート高をカード高に追従させる(§7-3。RO が setSize する) */
+.lap-analysis-card.floating .analysis-chart { flex: 1 1 0; min-height: 0; height: auto; }
+
+/* リサイズグリップ: body 直下の単一オーバーレイ(§7-6)。ホバー中ブロックの右下外縁に重ねる */
+#gt7-resize-grip {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    display: none;
+    z-index: 99999;
+    cursor: nwse-resize;
+    /* 右下コーナーの2本線(APEX トーン) */
+    background:
+        linear-gradient(135deg, transparent 0 9px, var(--text-muted) 9px 11px,
+                        transparent 11px 14px, var(--text-muted) 14px 16px, transparent 16px);
+    border-bottom-right-radius: var(--r-md);
+    opacity: 0.85;
+}
+#gt7-resize-grip:hover { opacity: 1; }
+body.gt7-resizing { user-select: none; -webkit-user-select: none; cursor: nwse-resize; }
 .draggable-card.dragging {
     user-select: none;
     cursor: grabbing;

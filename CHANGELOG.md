@@ -7,6 +7,22 @@
 
 ---
 
+## 2026-07-11 — ブロックの拡大縮小（リサイズ）機能
+
+### feat: 各ブロックを右下ドラッグでリサイズ（計画書駆動）
+- **計画**: `docs/plan-block-resize-2026-07-11.md`。調査で「保存スキーマ（`{left,top,width,height}`）・リセット（unfloat）・描画追従（uPlot RO / canvas 自前 RO）は既存機構で足りる」と判明し、対話的なサイズ変更部分だけを新設。
+- **操作**: ブロック右下にホバーでリサイズグリップが出現（隅24px は直接掴める）。ドラッグで幅・高さ変更、グリッド内ブロックは自動浮遊、位置・サイズは localStorage 保存。ダブルクリック／ALIGN で位置・サイズとも初期化。
+- **実装前敵対的レビュー（fable・headless 実測）で 8件 CONFIRMED を設計に反映**:
+  - グリップは**カード内注入をやめ body 直下の単一オーバーレイ**方式に（スクロールコンテナ衝突・position 未確定を回避）。
+  - 縮小時の内容あふれ（16/25 ブロックがクリップ無し、FUEL で 72px はみ出し実測）→ `.floating` に `overflow-y:auto` + `overflow-x:hidden`。
+  - CSS の `min/max-height` が inline height に勝つ問題（lap-history が 500px 指定→198px、steer canvas がクリップ）→ `.floating { max-height:none; min-height:0 }` + 内部ビューの min-height 緩和。
+  - DISTANCE ANALYSIS の uPlot 2本の高さ固定 → `.floating .analysis-chart { flex:1 }`。
+  - racing-top-bar の最小幅を実測 min-content（360→**670px**）・最小高を CSS 整合（**112px**）に修正。
+  - 復元/ウィンドウリサイズ時に width/height もクランプ（広い画面で保存→狭い画面でグリップ画面外・到達不能を防止）。
+- **検証**: headless 8項目合格（グリッド内リサイズ浮遊 / uPlot・canvas 追従 / リロード復元 / ダブルクリック・ALIGN リセット / 最小 140×90 であふれゼロ / グリップ body 直下 / 未捕捉例外0）。
+
+---
+
 ## 2026-07-11 — CAR ATTITUDE の PITCH/YAW/ROLL が誤った値だった問題を修正（ユーザー報告）
 
 ### fix: パケットの回転値はオイラー角ではなく単位クォータニオンだった
