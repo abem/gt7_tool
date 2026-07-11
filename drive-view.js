@@ -110,17 +110,27 @@ function driveViewOnFrame(data) {
     const FUEL_CRIT_LAPS = 3;
     const FUEL_WARN_LAPS = 5;
 
-    // Tier-1: ライブデルタ(ギア隣接・大型)。telemetry-analysis.js の距離基準値を再利用
+    // Tier-1: ライブデルタ(ギア隣接・大型)。telemetry-analysis.js の距離基準値を再利用。
+    // 3状態デルタ契約(#lap-delta と同一規則): 基準ラップ未成立 または |Δ|<0.05s =
+    // クラス無し(中立) / 速い(Δ<=-0.05s)=.faster / 遅い(Δ>=+0.05s)=.slower。表示は '±X.XXs'。
     if (els.delta) {
+        const DELTA_NEUTRAL = 0.05;
         let deltaText = '--';
-        let slower = false;
+        let deltaCls = '';
         if (typeof analysisState !== 'undefined' && analysisState.refLap) {
             const d = analysisState._liveDelta || 0;
-            deltaText = (d >= 0 ? '+' : '') + d.toFixed(2);
-            slower = d > 0.005;  // 表示上 +0.00 になる誤差は「遅い」扱いにしない
+            deltaText = (d >= 0 ? '+' : '') + d.toFixed(2) + 's';
+            if (d <= -DELTA_NEUTRAL) {
+                deltaCls = 'faster';
+            } else if (d >= DELTA_NEUTRAL) {
+                deltaCls = 'slower';
+            }
         }
         els.delta.textContent = deltaText;
-        els.delta.classList.toggle('negative', slower);
+        els.delta.classList.remove('faster', 'slower', 'negative');
+        if (deltaCls) {
+            els.delta.classList.add(deltaCls);
+        }
     }
 
     // Tier-2: ラップ番号 / LAST / BEST
@@ -146,7 +156,10 @@ function driveViewOnFrame(data) {
     // Tier-2: 燃料残周回(色=状態: 3周未満=crit / 5周未満=warn)
     if (els.fuel && data.fuel_laps_remaining !== undefined) {
         const laps = data.fuel_laps_remaining;
-        els.fuel.textContent = laps || '--';
+        // main.py は推定未確定(初回ラップ完了前/給油直後)を fuel_laps_remaining=0 の
+        // センチネルで送る。fuel_per_lap>0 が立つまでは中立 '--'、確定後は 0.0 も数値表示。
+        const fuelKnown = (data.fuel_per_lap || 0) > 0;
+        els.fuel.textContent = fuelKnown ? laps.toFixed(1) : '--';
         els.fuel.classList.toggle('crit', laps > 0 && laps < FUEL_CRIT_LAPS);
         els.fuel.classList.toggle('warn', laps >= FUEL_CRIT_LAPS && laps < FUEL_WARN_LAPS);
     }

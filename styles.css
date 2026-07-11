@@ -33,7 +33,7 @@
     /* --- Ink -------------------------------------------------------------- */
     --text-primary: #F2F5F8;
     --text-secondary: #A6AEBB;
-    --text-muted: #6B7480;
+    --text-muted: #828B99;
     --ink-hero: #FFFFFF;
     --on-accent: #06121F;
 
@@ -150,7 +150,6 @@ body {
 .lap-number-big,
 .lap-time-big,
 .lap-time-value,
-.sector-value,
 .delta-value,
 .lap-hist-time,
 .lap-hist-delta {
@@ -304,6 +303,12 @@ body {
     border-color: color-mix(in srgb, var(--critical) 50%, transparent);
 }
 
+#connection-status.test-mode {
+    color: var(--accent-brand);
+    background: var(--accent-wash);
+    border-color: color-mix(in srgb, var(--accent-brand) 55%, transparent);
+}
+
 /* ============================================================================
  * TIER 1 — Hero band (speed / gear / pedals)
  * ========================================================================== */
@@ -371,8 +376,8 @@ body {
     transition: color var(--t-fast);
 }
 
-.racing-gear-value.low {
-    color: var(--warning);
+.racing-gear-value.shift-now {
+    color: var(--critical);
 }
 
 .racing-gear-value.reverse {
@@ -1243,40 +1248,6 @@ body {
     color: var(--lap-running);
 }
 
-.sector-display {
-    display: flex;
-    justify-content: space-around;
-    margin-bottom: var(--sp-3);
-    padding: var(--sp-3) 0;
-    border-top: 1px solid var(--border-hairline);
-    border-bottom: 1px solid var(--border-hairline);
-}
-
-.sector-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--sp-1);
-}
-
-.sector-label {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    color: var(--text-muted);
-}
-
-.sector-value {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.sector-value.purple { color: var(--session-best); }
-.sector-value.green  { color: var(--good); }
-.sector-value.yellow { color: var(--warning); }
-.sector-value.red    { color: var(--critical); }
-
 .lap-times-row {
     display: flex;
     gap: var(--sp-3);
@@ -1356,10 +1327,14 @@ body {
 .delta-value {
     font-size: 24px;
     font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.delta-value.faster {
     color: var(--delta-faster);
 }
 
-.delta-value.negative {
+.delta-value.slower {
     color: var(--delta-slower);
 }
 
@@ -1413,8 +1388,8 @@ body {
     text-align: right;
 }
 
-.lap-hist-delta.negative { color: var(--delta-faster); }
-.lap-hist-delta.positive { color: var(--delta-slower); }
+.lap-hist-delta.faster { color: var(--delta-faster); }
+.lap-hist-delta.slower { color: var(--delta-slower); }
 
 /* --- Position / telemetry (Tier 3, muted) ------------------------------ */
 .position-card {
@@ -1646,10 +1621,14 @@ body {
     font-weight: 700;
     font-size: clamp(36px, 4.5vw, 64px);
     line-height: 1;
+    color: var(--text-secondary);
+}
+
+.racing-delta-value.faster {
     color: var(--delta-faster);
 }
 
-.racing-delta-value.negative {
+.racing-delta-value.slower {
     color: var(--delta-slower);
 }
 
@@ -1797,7 +1776,7 @@ body.drive-mode .steer-response-card {
 #est-lap-time.tentative { color: var(--text-muted); }
 #est-lap-time.pb        { color: var(--session-best); }
 
-/* --- Live time delta reuses existing .delta-value / .delta-value.negative
+/* --- Live time delta reuses existing .delta-value (.faster/.slower, 無クラス=中立)
        and .delta-bar-negative/.delta-bar-positive. JS drives width + class;
        slower side falls back to var(--delta-slower). No extra rules needed. */
 
@@ -2025,7 +2004,7 @@ body.drive-mode .draggable-card.floating:not(.steer-response-card):not(.racing-t
 
 /* ユーティリティ(整列/全画面) */
 .tb-spacer { flex: 1 1 0; min-width: var(--sp-3); }
-.tb-ico { font-size: 13px; line-height: 1; }
+.tb-ico { font-size: 12px; line-height: 1; }
 .tb-btn.active {                      /* 全画面中の点灯 */
     color: var(--text-primary);
     background: var(--accent-wash);
@@ -2034,7 +2013,7 @@ body.drive-mode .draggable-card.floating:not(.steer-response-card):not(.racing-t
 .tb-btn.tb-flash { background: var(--accent-wash); color: var(--text-primary); }  /* 整列実行の一瞬の応答 */
 
 /* DRIVE モード: タップ標的を拡大(グローブ/タブレット前提) */
-body.drive-mode .tb-ctl { min-height: 34px; }
+body.drive-mode .tb-ctl { min-height: 44px; }
 body.drive-mode .tb-seg-btn { min-height: 30px; }
 
 /* 狭幅: ユーティリティはアイコンのみ(状態を担う SEG/TEST のラベルは絶対に消さない) */

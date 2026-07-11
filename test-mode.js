@@ -4,10 +4,11 @@
  *
  * @module test-mode
  * @depends constants.js (TEST_MODE_CONFIG)
- * @depends ui_components.js (elements, debugLog, updateSteeringGauge)
- * @depends websocket.js (packetCount, getSectorClass)
- * @depends steer-response.js (initSteerResponse, updateSteerResponse)
- * @depends car-3d.js (updateCar3D, initCar3D, car3DState)
+ * @depends ui_components.js (elements, debugLog)
+ * @depends websocket.js (wsState, handleTelemetryMessage)
+ * @depends steer-response.js (initSteerResponse, updateSteerResponse, STEER_RESP)
+ * @depends car-3d.js (initCar3D, car3DState)
+ * @depends lap-manager.js (resetLapState)
  */
 
 /* ================================================================
@@ -19,6 +20,7 @@ let testModeActive = false;
 let testModeInterval = null;
 /** テスト軌跡インデックス */
 let testTrajectoryIndex = 0;
+let demoPrevSpeedMs = null;   // surge(m/s^2) 導出用の前フレーム速度
 
 /* ================================================================
  *  デモ軌跡データ
@@ -128,10 +130,18 @@ function stopTestMode() {
     testModeInterval = null;
     setTestModeUiState(false);
     testTrajectoryIndex = 0;
+    demoPrevSpeedMs = null;
 
     // 再テスト時にクリーンスタートするため解析状態もリセット
     if (typeof resetAnalysis === 'function') {
         resetAnalysis();
+    }
+
+    // ラップ状態もリセット。合成パケットが handleTelemetryMessage 経由で
+    // updateLapState/updateMaxSpeed を駆動するため、デモの偽 BEST/ラップ履歴/最高速が
+    // ライブ復帰後に残留する回帰をここで防ぐ。
+    if (typeof resetLapState === 'function') {
+        resetLapState();
     }
 }
 
@@ -140,23 +150,26 @@ function stopTestMode() {
  * @param {boolean} active - 有効状態
  */
 function setTestModeUiState(active) {
+    // 見た目はインライン style ではなく .test-mode クラスで表現する
+    // （#connection-status.test-mode の CSS 定義はスタイル担当側）。
+    const conn = elements.connectionStatus;
     if (active) {
-        elements.connectionStatus.textContent = TEST_MODE_CONFIG.status.text;
-        elements.connectionStatus.style.background = TEST_MODE_CONFIG.status.background;
-        elements.connectionStatus.style.color = TEST_MODE_CONFIG.status.color;
+        conn.textContent = TEST_MODE_CONFIG.status.text;
+        conn.classList.add('test-mode');
         return;
     }
 
-    // 接続状態に応じた表示に戻す
+    // 接続状態に応じた表示に戻す（className 再代入で test-mode も外れる）
+    conn.classList.remove('test-mode');
     if (wsState.ws && wsState.ws.readyState === WebSocket.OPEN) {
-        elements.connectionStatus.textContent = 'Connected';
-        elements.connectionStatus.className = 'connected';
+        // 段階表示の契約を維持: テレメトリ未処理なら 'Connected (no data)' に戻す
+        // (TEST MODE 中はライブ遮断ガードにより liveDataSeen は昇格しない)
+        conn.textContent = wsState.liveDataSeen ? 'Connected' : 'Connected (no data)';
+        conn.className = 'connected';
     } else {
-        elements.connectionStatus.textContent = 'Disconnected';
-        elements.connectionStatus.className = 'disconnected';
+        conn.textContent = 'Disconnected';
+        conn.className = 'disconnected';
     }
-    elements.connectionStatus.style.background = '';
-    elements.connectionStatus.style.color = '';
 }
 
 /* ================================================================
@@ -270,7 +283,15 @@ function getDemoSteering() {
  * ================================================================ */
 
 /**
- * デモフレームをレンダリング
+ * デモフレームをレンダリング。
+ *
+ * 個別 DOM 書込や update* 直接呼出は行わず、decoder.py のキー名に忠実な
+ * 「完全合成パケット」を1個組み立てて handleTelemetryMessage() を1回呼ぶ。
+ * これにより TEST MODE の描画経路がライブ(WS 受信)と完全に同一化され、
+ * ライブでしか埋まらない項目が TEST MODE で空のままになる問題を根治する。
+ * （TEST MODE の更新間隔 200ms は UI/CHART/MAP/ROTATION の全スロットル閾値より
+ *   長いため、毎フレーム全系統が更新される）
+ *
  * @param {Object} point - 軌跡ポイント
  * @param {Object} demoInputs - デモ入力データ
  */
@@ -278,200 +299,167 @@ function renderDemoFrame(point, demoInputs) {
     const t = testTrajectoryIndex;
     const DEMO_MAX_RPM = 9000;
 
-    // 速度・ギア・RPM表示
-    elements.speed.textContent = Math.round(point.speed);
-    const gearEl = elements.gear;
-    gearEl.textContent = demoInputs.gear;
-    gearEl.classList.remove('reverse', 'low');
-    if (demoInputs.gear <= 2) gearEl.classList.add('low');
-    
-    const rpmPct = (demoInputs.rpm / DEMO_MAX_RPM * 100);
-    // #rpm-bar は現行UIには存在しない。存在時のみ更新(RPMはシフトライト+rpm-textで表現)。
-    if (elements.rpmBar) elements.rpmBar.style.width = rpmPct + '%';
-    elements.rpmText.textContent = Math.round(demoInputs.rpm) + ' RPM';
-    
-    // シフトライト更新
-    if (typeof updateShiftLights === 'function') {
-        updateShiftLights(demoInputs.rpm, DEMO_MAX_RPM);
-    }
-
-    // ペダル表示（トップバー）
-    elements.throttleBar.style.width = demoInputs.throttle + '%';
-    elements.throttleValue.textContent = Math.round(demoInputs.throttle) + '%';
-    elements.brakeBar.style.width = demoInputs.brake + '%';
-    elements.brakeValue.textContent = Math.round(demoInputs.brake) + '%';
-    
-    // ペダル表示（左パネル詳細）
-    if (elements.throttleBarDetail) {
-        elements.throttleBarDetail.style.width = demoInputs.throttle + '%';
-    }
-    if (elements.throttleValueDetail) {
-        elements.throttleValueDetail.textContent = Math.round(demoInputs.throttle) + '%';
-    }
-    if (elements.brakeBarDetail) {
-        elements.brakeBarDetail.style.width = demoInputs.brake + '%';
-    }
-    if (elements.brakeValueDetail) {
-        elements.brakeValueDetail.textContent = Math.round(demoInputs.brake) + '%';
-    }
-    elements.clutchBar.style.width = demoInputs.clutch + '%';
-    elements.clutchValue.textContent = Math.round(demoInputs.clutch) + '%';
-    
-    // ペダルトレース更新
-    if (typeof updatePedalTrace === 'function') {
-        updatePedalTrace(demoInputs.throttle, demoInputs.brake);
-    }
-    
-    // エンジンデータ
-    elements.boost.textContent = Math.round(demoInputs.boost * 100);
-    elements.oilPressure.textContent = demoInputs.oilPressure.toFixed(1);
-
-    // 位置表示
-    elements.posX.textContent = point.x.toFixed(1);
-    elements.posY.textContent = '0.0';
-    elements.posZ.textContent = point.z.toFixed(1);
-
-    // タイヤデータ
+    // ── デモ物理（従来ロジックを温存し、値の詰め替えだけ行う）──
     const tyreData = getDemoTyreData();
-    if (elements.flTemp) elements.flTemp.textContent = Math.round(tyreData.temps[0]);
-    if (elements.frTemp) elements.frTemp.textContent = Math.round(tyreData.temps[1]);
-    if (elements.rlTemp) elements.rlTemp.textContent = Math.round(tyreData.temps[2]);
-    if (elements.rrTemp) elements.rrTemp.textContent = Math.round(tyreData.temps[3]);
-    
-    // タイヤ温度バー更新
-    if (typeof updateTyreTempBar === 'function') {
-        updateTyreTempBar('fl', tyreData.temps[0]);
-        updateTyreTempBar('fr', tyreData.temps[1]);
-        updateTyreTempBar('rl', tyreData.temps[2]);
-        updateTyreTempBar('rr', tyreData.temps[3]);
-    }
-    
-    // サスペンション
-    if (elements.flSusp) elements.flSusp.textContent = Math.round(tyreData.susp[0]);
-    if (elements.frSusp) elements.frSusp.textContent = Math.round(tyreData.susp[1]);
-    if (elements.rlSusp) elements.rlSusp.textContent = Math.round(tyreData.susp[2]);
-    if (elements.rrSusp) elements.rrSusp.textContent = Math.round(tyreData.susp[3]);
-    
-    // 燃料データ
     const fuelData = getDemoFuelData();
-    elements.fuel.textContent = fuelData.current.toFixed(1);
-    elements.fuelCapacity.textContent = fuelData.capacity;
-    elements.fuelPerLap.textContent = fuelData.perLap.toFixed(2);
-    elements.fuelLapsRemaining.textContent = fuelData.lapsRemaining;
-    
-    // 燃料バー更新
-    const fuelBar = document.getElementById('fuel-bar');
-    if (fuelBar) {
-        const pct = (fuelData.current / fuelData.capacity) * 100;
-        fuelBar.style.width = pct + '%';
-        fuelBar.classList.remove('low', 'warning');
-        if (pct < 15) fuelBar.classList.add('low');
-        else if (pct < 30) fuelBar.classList.add('warning');
-    }
-    
-    // G-Forceデータ
     const gforceData = getDemoGForceData();
-    if (elements.bodySway) elements.bodySway.textContent = gforceData.sway.toFixed(3);
-    if (elements.bodyHeave) elements.bodyHeave.textContent = gforceData.heave.toFixed(3);
-    if (elements.bodySurge) elements.bodySurge.textContent = gforceData.surge.toFixed(3);
-    
-    // 重心点(CAR ATTITUDE)へ G を反映
-    if (typeof setCarGForce === 'function') {
-        setCarGForce(gforceData.sway, gforceData.surge);
-    }
-    
-    // セクターデータ（デモ）
-    if (elements.sector1) {
-        const s1 = 20 + Math.sin(t * 0.02) * 2 + Math.random() * 0.5;
-        elements.sector1.textContent = s1.toFixed(3);
-        elements.sector1.className = 'sector-value ' + getSectorClass(s1, 20);
-    }
-    if (elements.sector2) {
-        const s2 = 25 + Math.cos(t * 0.02) * 3 + Math.random() * 0.5;
-        elements.sector2.textContent = s2.toFixed(3);
-        elements.sector2.className = 'sector-value ' + getSectorClass(s2, 25);
-    }
-    if (elements.sector3) {
-        const s3 = 18 + Math.sin(t * 0.03) * 2 + Math.random() * 0.5;
-        elements.sector3.textContent = s3.toFixed(3);
-        elements.sector3.className = 'sector-value ' + getSectorClass(s3, 18);
-    }
-
-    // 3Dモデル更新
     const demoOrientation = getDemoOrientation();
     const demoSteering = getDemoSteering();
-    updateCar3D(
-        demoOrientation.pitch,
-        demoOrientation.yaw,
-        demoOrientation.roll,
-        demoInputs.rpm,
-        demoSteering,
-        tyreData.susp
-    );
 
-    // 舵角メーター更新
-    updateSteeringGauge(demoSteering);
-
-    // STEER RESPONSE 更新（デモ: 弧が見えるようステア拡大、実/期待比を掃引して
-    //   アンダー↔中立↔オーバーを一巡表示。横Gは現実的な値で別途表示）
-    var demoSteerWheel = demoSteering * 6;                          // ステアホイール角相当（表示拡大）
-    var demoV = Math.max(6, point.speed / 3.6);                     // m/s
-    var demoF = 0.8 + 0.5 * Math.sin(t * 0.03);                    // 実/期待比 0.3..1.3
-    var demoYaw = (demoV * demoSteerWheel / STEER_RESP.neutralL) * demoF;
-    var demoLatG = (demoSteering >= 0 ? 1 : -1) * (0.3 + 0.7 * Math.abs(Math.sin(t * 0.03))) * 9.81; // ±0.3..1.0g
-    updateSteerResponse(demoSteerWheel, demoYaw, demoV, demoLatG);
-
-    // メインチャート(速度/RPM/スロットル/ブレーキ + 加速度)給餐。
-    // ライブと同一経路(updateChartState)を使い、TEST MODE でもチャートが描画される。
-    if (typeof updateChartState === 'function') {
-        const surge = gforceData.surge || 0;
-        updateChartState({
-            speed_kmh: point.speed,
-            rpm: demoInputs.rpm,
-            throttle_pct: demoInputs.throttle,
-            brake_pct: demoInputs.brake,
-            accel_g: surge > 0 ? surge : 0,
-            accel_decel: surge < 0 ? -surge : 0
-        });
-    }
-
-    // オフライン検証: 合成ラップ(demoTrajectory 20点=1周)で解析全経路を駆動。
-    // refLap生成/delta/estimated/overlay/peak/notif を PS5 不要で検証可能にする。
+    // 合成ラップ: demoTrajectory 20点 = 1周。周毎に短縮 → PB連発で通知/解析も検証
     const DEMO_LAP_SHORTEN_MS = 40;
     const lapLen = demoTrajectory.length;              // 20
     const stepMs = TEST_MODE_CONFIG.intervalMs;        // 200
-    const lapNum = Math.floor(testTrajectoryIndex / lapLen) + 1;
-    if (typeof analysisOnFrame === 'function') {
-        const posInLap = testTrajectoryIndex % lapLen;
-        const curLapMs = posInLap * stepMs;                // 0..3800
-        const lastLapMs = lapLen * stepMs - lapNum * DEMO_LAP_SHORTEN_MS;   // 周毎に短縮→PB連発で検証
-        analysisOnFrame({
-            lap_count: lapNum, total_laps: 5,
-            current_laptime: curLapMs,
-            last_laptime: lapNum > 1 ? lastLapMs : -1,
-            best_laptime: -1,
-            position_x: point.x, position_y: 0, position_z: point.z,
-            speed_kmh: point.speed, speed_ms: point.speed / 3.6,
-            throttle_pct: demoInputs.throttle, brake_pct: demoInputs.brake,
-            gear: demoInputs.gear,
-            current_fuel: fuelData.current, fuel_capacity: fuelData.capacity,
-            wheel_rps: tyreData.rps, tyre_radius: [0.33, 0.33, 0.34, 0.34],
-            flags: {}
-        });
-    }
+    const lapNum = Math.floor(t / lapLen) + 1;
+    const posInLap = t % lapLen;
+    const lastLapMs = lapLen * stepMs - lapNum * DEMO_LAP_SHORTEN_MS;
 
-    // DRIVE ビュー(有効時のみ内部で更新)。TEST MODE でも走行ビューを検証可能にする
-    if (typeof driveViewOnFrame === 'function') {
-        driveViewOnFrame({
-            lap_count: lapNum, total_laps: 5,
-            last_laptime: lapNum > 1 ? lapLen * stepMs - lapNum * DEMO_LAP_SHORTEN_MS : -1,
-            best_laptime: lapNum > 2 ? lapLen * stepMs - lapNum * DEMO_LAP_SHORTEN_MS : -1,
-            fuel_laps_remaining: Math.max(0, 6 - lapNum),
-            tyre_temp: tyreData.temps
-        });
+    // 速度ベクトル: 軌跡差分の向き × 現在速度（m/s）。
+    // t は呼出元でインクリメント済のため demoTrajectory[t % lapLen] が「次の点」。
+    const nextPoint = demoTrajectory[t % lapLen];
+    const dx = nextPoint.x - point.x;
+    const dz = nextPoint.z - point.z;
+    const dNorm = Math.hypot(dx, dz) || 1;
+    const speedMs = point.speed / 3.6;
+
+    // STEER RESPONSE デモ量（後段の上書き呼出でも使用）:
+    //   弧が見えるようステア拡大、実/期待比を掃引してアンダー↔中立↔オーバーを一巡表示
+    var demoSteerWheel = demoSteering * 6;                          // ステアホイール角相当（表示拡大）
+    var demoV = Math.max(6, speedMs);                               // m/s
+    var demoF = 0.8 + 0.5 * Math.sin(t * 0.03);                    // 実/期待比 0.3..1.3
+    var demoYaw = (demoV * demoSteerWheel / STEER_RESP.neutralL) * demoF;
+    var demoLatG = (demoSteering >= 0 ? 1 : -1) * (0.3 + 0.7 * Math.abs(Math.sin(t * 0.03))) * 9.81; // ±0.3..1.0g
+    // 前後加速度は速度波形の微分から m/s^2 で導出(sway と単位を統一)。
+    // 旧 getDemoGForceData の surge/heave は G スケールで sway(m/s^2)と16倍の不整合があった。
+    var surgeMs2 = 0;
+    if (demoPrevSpeedMs !== null) {
+        surgeMs2 = (speedMs - demoPrevSpeedMs) / (stepMs / 1000);
+        surgeMs2 = Math.max(-10, Math.min(10, surgeMs2));
     }
+    demoPrevSpeedMs = speedMs;
+    const heaveMs2 = (gforceData.heave || 0) * 9.81;
+
+    // ── 完全合成パケット（キー名は decoder.py / main.py 付加フィールドに忠実）──
+    const data = {
+        // 速度
+        speed_ms: speedMs,
+        speed_kmh: point.speed,
+
+        // エンジン
+        rpm: demoInputs.rpm,
+        max_rpm: DEMO_MAX_RPM,
+        rpm_alert_min: 8000,
+
+        // ギア・ペダル（throttle_pct/brake_pct は 0..100）
+        gear: demoInputs.gear,
+        throttle_pct: demoInputs.throttle,
+        brake_pct: demoInputs.brake,
+        throttle_filtered_pct: demoInputs.throttle,
+        brake_filtered_pct: demoInputs.brake,
+
+        // クラッチ（decoder は 0..1。既存デモ値は 0/100(%) のため /100 変換必須）
+        clutch: demoInputs.clutch / 100,
+        clutch_engagement: 1 - demoInputs.clutch / 100,
+        clutch_gearbox_rpm: demoInputs.rpm,
+
+        // ブースト・油圧
+        boost: demoInputs.boost,
+        oil_pressure: demoInputs.oilPressure,
+
+        // 燃料（fuel_per_lap/fuel_laps_remaining は main.py 付加フィールド。
+        //   1周目は 0 を送り、計測前 '--' → 計測開始の立ち上がり挙動もデモする）
+        current_fuel: fuelData.current,
+        fuel_capacity: fuelData.capacity,
+        fuel_per_lap: lapNum > 1 ? fuelData.perLap : 0,
+        fuel_laps_remaining: lapNum > 1 ? fuelData.lapsRemaining : 0,
+
+        // タイヤ [FL, FR, RL, RR]
+        tyre_temp: tyreData.temps,
+        wheel_rps: tyreData.rps,
+        tyre_radius: [0.33, 0.33, 0.34, 0.34],
+
+        // サスペンション高さ（decoder はメートル。既存デモ値は表示単位(mm)のため /1000 必須。
+        //   表示側 updateTyreState が *1000、updateCar3D もライブ同様メートルを受ける）
+        susp_height: tyreData.susp.map(function(v) { return v / 1000; }),
+
+        // 路面法線
+        road_plane_x: 0.02 * Math.sin(t * 0.05),
+        road_plane_y: 0.999,
+        road_plane_z: 0.02 * Math.cos(t * 0.05),
+        road_plane_distance: 0.15 + 0.02 * Math.sin(t * 0.07),
+
+        // 位置・速度ベクトル
+        position_x: point.x,
+        position_y: 0,
+        position_z: point.z,
+        velocity_x: dx / dNorm * speedMs,
+        velocity_y: 0,
+        velocity_z: dz / dNorm * speedMs,
+
+        // 回転・角速度（angular_velocity_y = 実ヨーレート → STEER RESPONSE のライブ経路が読む）
+        rotation_pitch: demoOrientation.pitch,
+        rotation_yaw: demoOrientation.yaw,
+        rotation_roll: demoOrientation.roll,
+        angular_velocity_x: 0,
+        angular_velocity_y: demoYaw,
+        angular_velocity_z: 0,
+
+        // 方角（0..1）・車体高さ
+        orientation: ((demoOrientation.yaw / (2 * Math.PI)) % 1 + 1) % 1,
+        body_height: 0.12 + 0.01 * Math.sin(t * 0.1),
+
+        // 舵角（生の demoSteering ラジアン。3D モデル・舵角メーターがライブ経路で読む）
+        wheel_rotation: demoSteering,
+
+        // 車体加速度（sway = 横G は STEER RESPONSE と整合する demoLatG を使用）
+        body_accel_sway: demoLatG,
+        body_accel_heave: heaveMs2,
+        body_accel_surge: surgeMs2,
+
+        // 加減速 G（main.py 付加フィールド。加速度チャートが読む）
+        accel_g: surgeMs2 > 0 ? surgeMs2 / 9.81 : 0,      // main.py 契約は G 単位
+        accel_decel: surgeMs2 < 0 ? -surgeMs2 / 9.81 : 0,
+
+        // 車種
+        car_id: 1234,
+        package_id: 42,
+
+        // ラップ
+        lap_count: lapNum,
+        total_laps: 5,
+        current_laptime: posInLap * stepMs,               // 0..3800
+        last_laptime: lapNum > 1 ? lastLapMs : -1,
+        best_laptime: lapNum > 2 ? lastLapMs : -1,
+
+        // スタート順位
+        pre_race_position: 3,
+        num_cars_pre_race: 16,
+
+        // ギア比・トランスミッション（transmission_max_speed は m/s、表示側で *3.6）
+        gear_ratios: [3.2, 2.1, 1.6, 1.3, 1.1, 0.9],
+        transmission_max_speed: 78,
+
+        // フラグ
+        flags: {
+            car_on_track: true,
+            in_gear: true,
+            has_turbo: true,
+            rev_limiter: demoInputs.rpm >= DEMO_MAX_RPM * 0.97,
+            tcs_active: demoInputs.throttle > 80 && Math.abs(demoLatG) > 8,
+            asm_active: false,
+            hand_brake: false,
+            lights: false
+        }
+    };
+
+    // ライブと同一の単一入口。UI/解析/DRIVE/3D/チャート/STEER RESPONSE 全系統が
+    // ライブ受信時と同じ経路・同じ変換で更新される。
+    handleTelemetryMessage(data, performance.now());
+
+    // STEER RESPONSE デモ上書き（意図的な直後の再呼出）:
+    // デモ仕様は「舵角×6 の誇張弧」で軌跡を見せること。handleTelemetryMessage 内の
+    // ライブ経路は生の wheel_rotation(±0.3rad 程度)で描くため弧が小さすぎる。
+    // doMap スロットル(100ms) < TEST 間隔(200ms) なので内部呼出は毎フレーム発火し、
+    // この上書きは常に有効（内部呼出→本呼出の順で後勝ち）。
+    updateSteerResponse(demoSteerWheel, demoYaw, demoV, demoLatG);
 }
-
-// getSectorClass は websocket.js のガード付き正準版（best<=0→''、閾値0.1/0.3）を
-// 共有利用する。旧・テストモード専用の重複定義（閾値0.3/0.6・ガード無し）は
-// 読み込み順で実テレメトリ側の呼び出しを上書きシャドウしていたため削除した。

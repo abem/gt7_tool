@@ -25,6 +25,37 @@ const lapState = {
 };
 
 /* ================================================================
+ *  ラップ状態リセット
+ * ================================================================ */
+
+/**
+ * ラップ状態と関連 DOM を初期状態へ戻す。
+ *
+ * TEST MODE 停止時（test-mode.js stopTestMode）に呼ばれ、合成パケットが
+ * 作ったデモの偽 BEST/ラップ履歴/最高速がライブ復帰後に残留する回帰を防ぐ。
+ * ※ R1 で削除された同名関数は「どこからも呼ばれない死んだコード」だったが、
+ *    本実装は stopTestMode から実際に呼ばれる別物である。
+ */
+function resetLapState() {
+    lapState.currentLapNumber = 0;
+    lapState.lastLapNumber = 0;
+    lapState.bestLapTime = Infinity;
+    lapState.bestLapNumber = 0;
+    lapState.lapTimes = [];
+    lapState.maxSpeed = 0;
+
+    if (elements.currentLap) elements.currentLap.textContent = '--/--';
+    if (elements.runningLapTime) elements.runningLapTime.textContent = '--:--.---';
+    if (elements.currentLapTime) elements.currentLapTime.textContent = '--:--.---';
+    if (elements.bestLapTime) elements.bestLapTime.textContent = '--:--.---';
+    if (elements.lapList) elements.lapList.innerHTML = '';
+    if (elements.maxSpeed) elements.maxSpeed.textContent = '--';
+    // デモの pre_race_position (P3/16) はレース開始後のライブでは null 送信のため
+    // 上書きされない。ここで消さないと偽グリッド順位がセッション中残留する。
+    if (elements.racePosition) elements.racePosition.textContent = '--';
+}
+
+/* ================================================================
  *  ラップリスト表示更新
  * ================================================================ */
 
@@ -44,7 +75,7 @@ function updateLapList() {
 
         const delta = lap.time - lapState.bestLapTime;
         const deltaSign = delta > 0 ? '+' : '';
-        const deltaClass = delta < 0 ? 'negative' : 'positive';
+        const deltaClass = delta < 0 ? 'faster' : 'slower';  // styles.css の .lap-hist-delta.faster/.slower と対
 
         item.innerHTML =
             '<span class="lap-hist-num">L' + lap.number + '</span>' +

@@ -2,7 +2,7 @@
  * フラット1段操作ツールバー
  *
  * ヘッダーのタイトル行の下に、ドロップダウンを持たない1段のツールバー
- * (ANALYSIS│DRIVE セグメント / TEST MODE ピル / 整列 / 全画面)を注入する。
+ * (ANALYSIS│DRIVE セグメント / TEST MODE ピル / ALIGN / FULLSCREEN)を注入する。
  * 「状態は常時点灯、操作は1クリック、隠れた状態ゼロ」を方針とし、
  * role="toolbar" + トグルは aria-pressed で表現する(menu 系 ARIA は不使用)。
  *
@@ -71,12 +71,16 @@
     }
 
     // ---- 生成ヘルパ ----
-    function makeCtl(id, extraClass, title) {
+    function makeCtl(id, extraClass, title, ariaLabel) {
         var b = document.createElement('button');
         b.type = 'button';                 // フォーム誤送信予防
         b.id = id;
         b.className = 'tb-ctl ' + extraClass;
         b.title = title;
+        // title 非依存の明示ラベル(タッチ/スクリーンリーダー向け)
+        if (ariaLabel) b.setAttribute('aria-label', ariaLabel);
+        // ロービング tabindex の初期値。setupRoving() が1個だけ 0 に昇格させる
+        b.setAttribute('tabindex', '-1');
         return b;
     }
     function makeSpan(className, text, ariaHidden) {
@@ -94,14 +98,14 @@
         seg.setAttribute('role', 'group');
         seg.setAttribute('aria-label', '表示モード');
 
-        segAnalysis = makeCtl('tb-view-analysis', 'tb-seg-btn', TITLE_ANALYSIS);
+        segAnalysis = makeCtl('tb-view-analysis', 'tb-seg-btn', TITLE_ANALYSIS, 'ANALYSIS');
         segAnalysis.textContent = 'ANALYSIS';
         segAnalysis.addEventListener('click', function () {
             if (isDrive()) proxyClick('view-mode-btn');  // 既に ANALYSIS なら no-op(冪等な「選択」)
             syncView();                                  // Observer 不発時の保険
         });
 
-        segDrive = makeCtl('tb-view-drive', 'tb-seg-btn', TITLE_DRIVE);
+        segDrive = makeCtl('tb-view-drive', 'tb-seg-btn', TITLE_DRIVE, 'DRIVE');
         segDrive.textContent = 'DRIVE';
         segDrive.addEventListener('click', function () {
             if (!isDrive()) proxyClick('view-mode-btn');
@@ -114,7 +118,7 @@
     }
 
     function buildTest() {
-        testBtn = makeCtl('tb-test', 'tb-test', TITLE_TEST_OFF);
+        testBtn = makeCtl('tb-test', 'tb-test', TITLE_TEST_OFF, 'TEST MODE');
         testBtn.appendChild(makeSpan('tb-dot', '', true));
         // ラベルは状態で変えない(幅ジャンプ防止)。状態はドット+背景で表現。
         testBtn.appendChild(makeSpan('tb-label', 'TEST MODE', false));
@@ -129,9 +133,9 @@
     }
 
     function buildLayout() {
-        var btn = makeCtl('tb-layout', 'tb-btn', TITLE_LAYOUT);
+        var btn = makeCtl('tb-layout', 'tb-btn', TITLE_LAYOUT, 'ALIGN');
         btn.appendChild(makeSpan('tb-ico', '⊞', true));
-        btn.appendChild(makeSpan('tb-label', '整列', false));
+        btn.appendChild(makeSpan('tb-label', 'ALIGN', false));
         btn.addEventListener('click', function () {
             if (typeof window.gt7ResetLayout === 'function') window.gt7ResetLayout();
             else proxyClick('layout-reset-btn');
@@ -143,9 +147,9 @@
     }
 
     function buildFullscreen() {
-        fsBtn = makeCtl('tb-fullscreen', 'tb-btn', TITLE_FS_OFF);
+        fsBtn = makeCtl('tb-fullscreen', 'tb-btn', TITLE_FS_OFF, 'FULLSCREEN');
         fsBtn.appendChild(makeSpan('tb-ico', '⛶', true));
-        fsBtn.appendChild(makeSpan('tb-label', '全画面', false));
+        fsBtn.appendChild(makeSpan('tb-label', 'FULLSCREEN', false));
         fsBtn.addEventListener('click', function () {
             if (fsPending) return;    // 多重要求の抑止
             // 状態は必ず fullscreenchange イベントから読む(楽観的更新をしない=
@@ -163,6 +167,53 @@
             }
         });
         return fsBtn;
+    }
+
+    // ---- ロービング tabindex(role="toolbar" の APG 契約) ----
+    // ツールバー全体で Tab ストップは常に1個。バー内の移動は ArrowLeft/ArrowRight
+    // (端で循環)と Home/End。クリック/フォーカスされたボタンが新たな Tab 位置になる。
+    function tbButtons(nav) {
+        return Array.prototype.slice.call(nav.querySelectorAll('button.tb-ctl'));
+    }
+    function setRovingCurrent(nav, target) {
+        var btns = tbButtons(nav);
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].setAttribute('tabindex', btns[i] === target ? '0' : '-1');
+        }
+    }
+    function setupRoving(nav) {
+        var btns = tbButtons(nav);
+        if (!btns.length) return;
+        setRovingCurrent(nav, btns[0]);
+
+        nav.addEventListener('keydown', function (e) {
+            var key = e.key;
+            if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Home' && key !== 'End') return;
+            var list = tbButtons(nav);    // 毎回再取得(将来のボタン増減に追随)
+            if (!list.length) return;
+            var idx = list.indexOf(document.activeElement);
+            var next;
+            if (key === 'Home') next = 0;
+            else if (key === 'End') next = list.length - 1;
+            else if (idx === -1) next = 0;    // バー内だが非ボタンにフォーカスがある場合の回復
+            else if (key === 'ArrowRight') next = (idx + 1) % list.length;
+            else next = (idx - 1 + list.length) % list.length;
+            e.preventDefault();    // 矢印キーでのページスクロールを抑止
+            setRovingCurrent(nav, list[next]);
+            list[next].focus();
+        });
+
+        // フォーカス到達で追随(Tab 進入・.focus() 呼び出しを含む)
+        nav.addEventListener('focusin', function (e) {
+            var t = e.target;
+            if (t && t.classList && t.classList.contains('tb-ctl')) setRovingCurrent(nav, t);
+        });
+        // クリックでも追随(Safari 等はクリックでボタンに focus を与えないため focusin と併設)
+        nav.addEventListener('click', function (e) {
+            var t = e.target;
+            while (t && t !== nav && !(t.classList && t.classList.contains('tb-ctl'))) t = t.parentNode;
+            if (t && t !== nav) setRovingCurrent(nav, t);
+        });
     }
 
     // ---- 初期化 ----
@@ -198,6 +249,9 @@
             }
 
             header.appendChild(nav);
+
+            // ロービング tabindex(生成済みボタンが確定した後に一度だけ配線)
+            setupRoving(nav);
 
             // イベント駆動同期: プロキシの class 変化を Observer 1個で監視。
             // app.js 起動時の localStorage 復元(drive-view.js applyViewMode)や

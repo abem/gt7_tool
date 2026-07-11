@@ -28,6 +28,8 @@ const wsState = {
     latestMessage: null,
     /** 処理スケジュール済みフラグ */
     processingScheduled: false,
+    /** 接続後に最初のテレメトリを処理済みか（接続ピルの段階表示用） */
+    liveDataSeen: false,
     /** 前回UI更新時刻 */
     lastUiTs: 0,
     /** 前回チャート更新時刻 */
@@ -116,19 +118,16 @@ function updateVehicleState(data) {
     const gear = data.gear || 0;
     const gearEl = elements.gear;
     gearEl.textContent = gear === 0 ? 'R' : gear;
-    
-    // ギアに応じた色変更
-    gearEl.classList.remove('reverse', 'low');
-    if (gear === 0) {
-        gearEl.classList.add('reverse');
-    } else if (gear <= 2) {
-        gearEl.classList.add('low');
-    }
-    
-    // RPM
+
+    // RPM（shift-now 判定に使うため先に算出）
     const rpm = Math.round(data.rpm || 0);
     const maxRpm = data.max_rpm || 9000;
     const rpmPct = Math.min((rpm / maxRpm) * 100, 100);
+
+    // ギア色: R=reverse(現状維持) / レブ96%以上=shift-now（旧 'low' クラスは廃止）
+    const SHIFT_NOW_RPM_PCT = 96;
+    gearEl.classList.toggle('reverse', gear === 0);
+    gearEl.classList.toggle('shift-now', rpmPct >= SHIFT_NOW_RPM_PCT);
     // #rpm-bar は現行UIには存在しない(RPMはシフトライト+rpm-textで表現)。存在時のみ更新。
     if (elements.rpmBar) {
         elements.rpmBar.style.width = rpmPct + '%';
@@ -269,16 +268,24 @@ function updateFuelState(data) {
     }
     if (data.fuel_laps_remaining !== undefined) {
         const lapsRemaining = data.fuel_laps_remaining;
-        elements.fuelLapsRemaining.textContent = lapsRemaining || '--';
-        
-        // 残り周回数に応じた色変更
-        if (elements.fuelLapsRemaining.style) {
-            if (lapsRemaining < FUEL_LAPS_CRITICAL) {
-                elements.fuelLapsRemaining.style.color = COLORS.accentRed;
-            } else if (lapsRemaining < FUEL_LAPS_WARN) {
-                elements.fuelLapsRemaining.style.color = COLORS.accentYellow;
-            } else {
-                elements.fuelLapsRemaining.style.color = COLORS.accentCyan;
+
+        if (!(data.fuel_per_lap > 0)) {
+            // fuel_per_lap 未確定の間は推定不能 → 中立表示（立ち上がりの「赤い --」を防ぐ）
+            elements.fuelLapsRemaining.textContent = '--';
+            if (elements.fuelLapsRemaining.style) {
+                elements.fuelLapsRemaining.style.color = '';
+            }
+        } else {
+            // 確定後は 0.0 を含む数値表示 + 残り周回数に応じた色変更
+            elements.fuelLapsRemaining.textContent = (lapsRemaining || 0).toFixed(1);
+            if (elements.fuelLapsRemaining.style) {
+                if (lapsRemaining < FUEL_LAPS_CRITICAL) {
+                    elements.fuelLapsRemaining.style.color = COLORS.accentRed;
+                } else if (lapsRemaining < FUEL_LAPS_WARN) {
+                    elements.fuelLapsRemaining.style.color = COLORS.accentYellow;
+                } else {
+                    elements.fuelLapsRemaining.style.color = COLORS.accentCyan;
+                }
             }
         }
     }
@@ -377,45 +384,6 @@ function updateTyreState(data) {
 }
 
 /**
- * セクタータイムの色を決定（実テレメトリ／テストモード共通の正準版）
- * @param {number} current - 現在のセクタータイム
- * @param {number} best - ベストセクタータイム（<=0/未設定なら '' を返す）
- * @returns {string} CSSクラス名（'purple'|'green'|'yellow'|'red'|''）
- */
-function getSectorClass(current, best) {
-    const SECTOR_GREEN_THRESH = 0.1;
-    const SECTOR_YELLOW_THRESH = 0.3;
-    if (!best || best <= 0) return '';
-    const diff = current - best;
-    if (diff < 0) return 'purple';  // 新ベスト
-    if (diff < SECTOR_GREEN_THRESH) return 'green';  // ベストに近い
-    if (diff < SECTOR_YELLOW_THRESH) return 'yellow'; // 普通
-    return 'red';  // 遅い
-}
-
-/**
- * セクター表示を更新
- * @param {Object} data - テレメトリデータ
- */
-function updateSectors(data) {
-    if (data.sector_1 !== undefined && elements.sector1) {
-        elements.sector1.textContent = data.sector_1.toFixed(3);
-        elements.sector1.className = 'sector-value ' + 
-            getSectorClass(data.sector_1, data.best_sector_1);
-    }
-    if (data.sector_2 !== undefined && elements.sector2) {
-        elements.sector2.textContent = data.sector_2.toFixed(3);
-        elements.sector2.className = 'sector-value ' + 
-            getSectorClass(data.sector_2, data.best_sector_2);
-    }
-    if (data.sector_3 !== undefined && elements.sector3) {
-        elements.sector3.textContent = data.sector_3.toFixed(3);
-        elements.sector3.className = 'sector-value ' + 
-            getSectorClass(data.sector_3, data.best_sector_3);
-    }
-}
-
-/**
  * 位置情報の表示を更新
  * @param {Object} data - テレメトリデータ
  */
@@ -430,9 +398,29 @@ function updatePositionText(data) {
     elements.velY.textContent = (data.velocity_y || 0).toFixed(1);
     elements.velZ.textContent = (data.velocity_z || 0).toFixed(1);
 
-    // 方角・車体高さ
-    elements.orientation.textContent = (data.orientation || 0).toFixed(3);
-    elements.bodyHeight.textContent = (data.body_height || 0).toFixed(3);
+    // 方角(HDG)・車体高さ(HGT)
+    // --- 導出 ---
+    // decoder.py(0x28) は orientation を「1.0=北, 0.0=南」と定義する。南(180°)で 0 に
+    // なるのは cos(θ) (cos180°=-1) ではなく半角余弦 cos(θ/2) (cos90°=0) の性質であり、
+    // この値は 0x1C-0x28 の回転クォータニオン (x,y,z,w) の w 成分 = cos(θ/2) と一致する。
+    // よって北からの全角 full = 2*acos(w) ∈ [0,360]。w<0 側(full>180)は ±θ の二重被覆
+    // なので 360-full に折り返し、「北からの偏角 dev ∈ [0,180]」に正規化する。
+    // cos は偶関数のため東回り(+θ)と西回り(-θ)は区別不能。GT7 ワールド座標(+Y=上)は
+    // 北=+Z/東=-X の鏡像系であり、東進中は velocity_x<0。したがって vx>0(西進)なら
+    // heading = 360-dev、vx<0(東進)なら heading = dev として 0-360°に解く。
+    // vx が未提供のときは東西を解けないので偏角の度数のみ表示する。
+    var halfRad = Math.acos(Math.max(-1, Math.min(1, data.orientation || 0)));
+    var full = halfRad * 2 * 180 / Math.PI;                 // 0-360(二重被覆込み)
+    var dev = full > 180 ? 360 - full : full;               // 北からの偏角 0-180
+    if (data.velocity_x != null) {
+        var heading = (data.velocity_x > 0 ? 360 - dev : dev) % 360;
+        var COMPASS_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        elements.orientation.textContent =
+            (Math.round(heading) % 360) + '° ' + COMPASS_8[Math.round(heading / 45) % 8];
+    } else {
+        elements.orientation.textContent = Math.round(dev) + '°';
+    }
+    elements.bodyHeight.textContent = (data.body_height || 0).toFixed(3) + ' m';
 
     // 現在のラップ経過時間
     if (data.current_laptime !== undefined && data.current_laptime > 0) {
@@ -512,7 +500,6 @@ function handleTelemetryMessage(data, nowTs) {
         updateFuelState(data);
         updateTyreState(data);
         updatePositionText(data);
-        updateSectors(data);
         wsState.lastUiTs = now;
     }
 
@@ -574,8 +561,13 @@ function connectWebSocket() {
 
     wsState.ws.onopen = function() {
         console.log('Connected to GT7 Bridge');
-        elements.connectionStatus.textContent = 'Connected';
-        elements.connectionStatus.className = 'connected';
+        // 段階表示: open 直後は「接続のみ」。最初のテレメトリ処理時に 'Connected' へ昇格する。
+        wsState.liveDataSeen = false;
+        // TEST MODE 中は接続ピルへ書き込まない（TEST MODE 表示を上書きしないため）
+        if (!(typeof testModeActive !== 'undefined' && testModeActive)) {
+            elements.connectionStatus.textContent = 'Connected (no data)';
+            elements.connectionStatus.className = 'connected';
+        }
         wsState.reconnectDelay = WEBSOCKET_CONFIG.reconnectDelayInitial;
         initCharts();
         initSteerResponse();
@@ -583,13 +575,18 @@ function connectWebSocket() {
     };
 
     wsState.ws.onerror = function(error) {
+        // 接続ピルへは書かない（onclose が後続で表示を担う。TEST MODE 表示も保護される）
         console.error('WebSocket Error:', error);
     };
 
     wsState.ws.onclose = function() {
         console.log('Disconnected');
-        elements.connectionStatus.textContent = 'Reconnecting...';
-        elements.connectionStatus.className = 'disconnected';
+        wsState.liveDataSeen = false;
+        // TEST MODE 中は接続ピルへ書き込まない（再接続自体は継続する）
+        if (!(typeof testModeActive !== 'undefined' && testModeActive)) {
+            elements.connectionStatus.textContent = 'Reconnecting...';
+            elements.connectionStatus.className = 'disconnected';
+        }
         scheduleReconnect();
     };
 
@@ -616,6 +613,13 @@ function scheduleTelemetryProcessing() {
  * @param {number} now - 現在のタイムスタンプ
  */
 function processTelemetryFrame(now) {
+    // TEST MODE 中はライブ取り込みをここで遮断する（60Hz ライブと 5Hz デモの DOM 奪い合い防止）。
+    // ガードは WS 取り込み側のみ: handleTelemetryMessage には入れない（TEST MODE が直接呼ぶ契約）。
+    if (typeof testModeActive !== 'undefined' && testModeActive) {
+        wsState.processingScheduled = false;
+        return;
+    }
+
     const PARSE_ERROR_WARN = 5;
     const PARSE_ERROR_RECONNECT = 20;
     wsState.processingScheduled = false;
@@ -630,6 +634,14 @@ function processTelemetryFrame(now) {
     try {
         const data = JSON.parse(raw);
         wsState.parseErrorCount = 0;  // 成功時はリセット
+        // 接続ピルの段階表示: 最初のテレメトリ処理時に一度だけ 'Connected' へ昇格
+        if (!wsState.liveDataSeen) {
+            wsState.liveDataSeen = true;
+            if (elements.connectionStatus) {
+                elements.connectionStatus.textContent = 'Connected';
+                elements.connectionStatus.className = 'connected';
+            }
+        }
         handleTelemetryMessage(data, now);
     } catch (e) {
         wsState.parseErrorCount++;

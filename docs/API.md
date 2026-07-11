@@ -193,9 +193,9 @@ ws.onmessage = (event) => {
 | フィールド | 型 | オフセット | 説明 |
 |-----------|------|-----------|------|
 | `wheel_rotation` | float | 0x128 | ステアリング回転角 (rad) |
-| `body_accel_sway` | float | 0x130 | 横方向加速度 (横G) |
-| `body_accel_heave` | float | 0x134 | 上下方向加速度 |
-| `body_accel_surge` | float | 0x138 | 前後方向加速度 (縦G) |
+| `body_accel_sway` | float | 0x130 | 横方向加速度 (m/s²) |
+| `body_accel_heave` | float | 0x134 | 上下方向加速度 (m/s²) |
+| `body_accel_surge` | float | 0x138 | 前後方向加速度 (m/s²) |
 
 #### 拡張データ (Packet ~: 344 bytes, ハートビート `~`)
 
@@ -238,6 +238,7 @@ ws.onmessage = (event) => {
 
 #### 注意事項
 
+- **セクタータイム**: GT7のテレメトリパケットにセクター情報（S1/S2/S3）は含まれない。ラップタイムは `best_laptime` / `last_laptime` / `current_laptime` のみで、セクタータイムは取得不可（ダッシュボードでも非対応）。
 - **タイヤ空気圧**: GT7のテレメトリパケットにタイヤ空気圧データは存在しない。オフセット0x94は路面法線ベクトル。
 - **レース順位**: パケットにリアルタイムのレース順位は含まれない。0x84はレース前のスタート順位のみで、レース開始後はnull(JSON)になる。
 - **水温・油温**: 常に固定値（水温≈85, 油温≈110）のため表示から除外。
@@ -405,4 +406,4 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
 
 ---
 
-**最終更新**: 2026-07-10
+**最終更新**: 2026-07-11

@@ -28,6 +28,7 @@ const STEP = 10;               // 距離グリッド[m]
 const DISCONTINUITY_M = 120;   // 1フレーム弦長がこれ超=瞬間移動として距離加算スキップ
                                //  (demoTrajectoryの点間50-94mを通し、pit/respawnテレポート200m+を除外)
 const MAX_DELTA_S = 1.5;       // デルタバー飽和[s]
+const DELTA_NEUTRAL_S = 0.05;  // ライブデルタ中立帯[s](|Δ|<この値=クラス無し/中立)
 const ZONE_THRESH = 5;         // 入力ゾーン閾値[%]
 const SMOOTH_W = 5;            // ピーク検出平滑窓
 const MIN_PROM = 15;           // ピーク顕著性[km/h]
@@ -181,7 +182,24 @@ function ensureAnalysisInit() {
         initAnalysisCharts();
     }
 
+    // 通知フィードの top をヘッダー実高に追随させる(初期化時 + resize 時)
+    positionEngineerFeed();
+    window.addEventListener('resize', positionEngineerFeed);
+
     analysisState.initialized = true;
+}
+
+/**
+ * 通知フィード(.engineer-feed)の top をヘッダー実高 + 8px に合わせる。
+ * ヘッダーまたはフィードが無ければ何もしない。resize でも再計算される。
+ */
+function positionEngineerFeed() {
+    const feed = analysisState.els.feed;
+    const header = document.querySelector('.header');
+    if (!feed || !header) {
+        return;
+    }
+    feed.style.top = (header.getBoundingClientRect().bottom + 8) + 'px';
 }
 
 /* ================================================================
@@ -489,10 +507,16 @@ function updateLiveDelta(data) {
 
     if (els.lapDelta) {
         els.lapDelta.textContent = (liveDelta >= 0 ? '+' : '') + liveDelta.toFixed(2) + 's';
-        // 既存CSS: .delta-value=緑(基準/速い), .delta-value.negative=赤(遅い)。
-        // 意味的に「遅い(liveDelta>0)=赤」となるよう negative クラスは遅い時のみ付与する
-        // (既存の速度デルタ契約=悪化時に .negative=赤 と同義。トークン再利用で発光なし)。
-        els.lapDelta.className = 'delta-value' + (liveDelta > 0 ? ' negative' : '');
+        // 3状態デルタ契約: |Δ|<0.05s または基準ラップ未成立=クラス無し(中立) /
+        // 速い(Δ<=-0.05s)=.faster / 遅い(Δ>=+0.05s)=.slower。
+        // (基準未成立時は関数冒頭の clearDeltaUI が 'delta-value' 素のまま=中立にする)
+        let deltaCls = '';
+        if (liveDelta <= -DELTA_NEUTRAL_S) {
+            deltaCls = ' faster';
+        } else if (liveDelta >= DELTA_NEUTRAL_S) {
+            deltaCls = ' slower';
+        }
+        els.lapDelta.className = 'delta-value' + deltaCls;
     }
 
     const n = Math.max(-1, Math.min(1, liveDelta / MAX_DELTA_S));
