@@ -55,12 +55,13 @@
         return !(blocked(getComputedStyle(document.body).overflowY) ||
                  blocked(getComputedStyle(document.documentElement).overflowY));
     }
-    // top をクランプ。スクロール可ならページ全高まで、不可ならビューポート内に収める
-    // （＝レイアウト切替でブロックが画面外に取り残されて掴めなくなるのを防ぐ）。
+    // top をクランプ。スクロール可なら残りはスクロールで到達できるので上端 40px だけ残す。
+    // スクロール不可(デスクトップ)ではカード全体＝下端のリサイズグリップまで画面内に残す
+    // （水平の pageW()-w クランプと対称。レイアウト切替でグリップが画面外に取り残されて
+    //   掴めなくなる垂直側の穴を塞ぐ。呼び出し側は事前に h を innerHeight 以下へクランプ済み）。
     function clampTop(top, h) {
-        var visible = Math.min(h, 40);
-        var bound = pageCanScrollY() ? Math.max(0, pageBottom() - visible)
-                                     : Math.max(0, window.innerHeight - visible);
+        var bound = pageCanScrollY() ? Math.max(0, pageBottom() - Math.min(h, 40))
+                                     : Math.max(0, window.innerHeight - h);
         return clamp(top, 0, bound);
     }
     // ドラッグを開始しない要素（本物の操作系のみ）。canvas は当ダッシュボードでは
@@ -232,6 +233,10 @@
     });
 
     function startResize(c, e) {
+        // 対象が非表示(DRIVE モードで display:none 化したカード等)ならリサイズしない。
+        // getClientRects()==空 なら描画されておらず、getBoundingClientRect は 0 を返すため
+        // そのまま進むと {left:0,top:0,width:0,height:0} を保存してしまう(§7 レビュー指摘)。
+        if (c.el.getClientRects().length === 0) { hideGrip(); return; }
         // グリッド内ブロックはその場の座標・サイズで浮遊してからリサイズ(ドラッグと同じ規約)
         var r = c.el.getBoundingClientRect();
         if (!c.el.classList.contains('floating')) {

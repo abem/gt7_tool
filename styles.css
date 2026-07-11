@@ -1947,6 +1947,9 @@ body.drive-mode .steer-response-card {
     display: none;
     z-index: 99999;
     cursor: nwse-resize;
+    /* タッチ端末でグリップを掴んだドラッグがブラウザのパン/スクロールに奪われないよう
+       ジェスチャ開始前から既定動作を抑止(ドラッグ用 .card-drag-handle と同じ流儀。§7-7) */
+    touch-action: none;
     /* 右下コーナーの2本線(APEX トーン) */
     background:
         linear-gradient(135deg, transparent 0 9px, var(--text-muted) 9px 11px,
@@ -1955,7 +1958,7 @@ body.drive-mode .steer-response-card {
     opacity: 0.85;
 }
 #gt7-resize-grip:hover { opacity: 1; }
-body.gt7-resizing { user-select: none; -webkit-user-select: none; cursor: nwse-resize; }
+body.gt7-resizing { user-select: none; -webkit-user-select: none; touch-action: none; cursor: nwse-resize; }
 .draggable-card.dragging {
     user-select: none;
     cursor: grabbing;
