@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/uplot.min.css">
     <link rel="stylesheet" href="/review.css">
+    <link rel="stylesheet" href="/replay.css">
 </head>
 <body>
     <div class="dashboard">
@@ -25,6 +26,22 @@
                 <div id="connection-status" class="disconnected" role="status" aria-live="polite">Disconnected</div>
             </div>
             <!-- 操作ツールバー(フラット1段)は menu.js が .header に追加する -->
+        </div>
+
+        <!-- ============================================================
+             全カード再生バー (#133/#134): body.replay-mode 時のみ表示(replay.css)。
+             再生ロジックは replay-mode.js。ライブ受信・記録は再生中も継続する。
+             ============================================================ -->
+        <div id="replay-bar" role="toolbar" aria-label="再生操作">
+            <span id="replay-title">--</span>
+            <button id="replay-btn-play" type="button" aria-label="再生">▶</button>
+            <button id="replay-btn-step-b" type="button" aria-label="1フレーム戻る" title="1フレーム戻る">⏮</button>
+            <button id="replay-btn-step-f" type="button" aria-label="1フレーム進む" title="1フレーム進む">⏭</button>
+            <select id="replay-speed" aria-label="再生速度"></select>
+            <select id="replay-segment" aria-label="再生区間" style="display:none"></select>
+            <input id="replay-scrubber" type="range" min="0" max="100" value="0" step="1" aria-label="再生位置">
+            <span id="replay-time">--</span>
+            <button id="replay-btn-exit" type="button" aria-label="再生を終了" title="再生を終了しライブ表示へ戻る">✕ EXIT</button>
         </div>
 
         <!-- ============================================================
@@ -586,6 +603,7 @@
     <script src="/telemetry-analysis.js"></script>
     <script src="/drive-view.js"></script>
     <script src="/review-view.js"></script>
+    <script src="/replay-mode.js"></script>
     <script src="/websocket.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>

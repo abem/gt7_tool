@@ -611,9 +611,11 @@ function scheduleTelemetryProcessing() {
  * @param {number} now - 現在のタイムスタンプ
  */
 function processTelemetryFrame(now) {
-    // TEST MODE 中はライブ取り込みをここで遮断する（60Hz ライブと 5Hz デモの DOM 奪い合い防止）。
-    // ガードは WS 取り込み側のみ: handleTelemetryMessage には入れない（TEST MODE が直接呼ぶ契約）。
-    if (typeof testModeActive !== 'undefined' && testModeActive) {
+    // TEST MODE / 再生モード中はライブ取り込みをここで遮断する（DOM 奪い合い防止）。
+    // ガードは WS 取り込み側のみ: handleTelemetryMessage には入れない（TEST MODE・再生が直接呼ぶ契約）。
+    // 再生(replay-mode.js)中も WS 接続・受信・サーバ側記録は継続する＝表示のみ排他（詳細計画書§5.1）。
+    if ((typeof testModeActive !== 'undefined' && testModeActive) ||
+        (typeof replayActive !== 'undefined' && replayActive)) {
         wsState.processingScheduled = false;
         return;
     }

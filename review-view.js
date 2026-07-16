@@ -362,6 +362,21 @@ function reviewBuildLapItem(lap) {
     item.appendChild(label);
     item.appendChild(meta);
 
+    // 全カード再生の入口(#133/#134 采決裁#2)。行クリック(A/B選択)とは分離。
+    // replay-mode.js 不在環境ではボタンを出さない(既存の縮退作法)
+    if (typeof replayStart === 'function') {
+        const play = document.createElement('button');
+        play.type = 'button';
+        play.className = 'review-lap-play';
+        play.textContent = '▶';
+        play.title = 'このラップを全カードで再生';
+        play.addEventListener('click', function(e) {
+            e.stopPropagation();
+            replayStart(lap.file);
+        });
+        item.appendChild(play);
+    }
+
     item.addEventListener('click', function() {
         reviewToggleSelect(lap.file);
     });
