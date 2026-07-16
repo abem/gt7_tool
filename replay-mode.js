@@ -294,6 +294,11 @@ function replayMaybeUpgrade(file, seq) {
             replaySetBuffer(body.samples);
             replayState.rateLabel = label;
             replayState.playIdx = replayIdxForTime(playheadKeep);
+            // #135 修正案1-B: 差替後はチャート窓を新バッファで再構築し、
+            // 10Hz点と60/30Hz点が同一チャート内に混在する時間スケール不整合を解消する
+            const cur = Math.max(0, Math.min(replayState.frames.length - 1,
+                                             replayState.playIdx));
+            replayRebuildChartWindow(cur, replayLapStartFor(cur));
             replayUpdateBar();
         })
         .catch(function() {
@@ -484,6 +489,92 @@ function replayIdxForDist(m) {
 }
 
 /**
+ * 指定フレームが属するラップの先頭 index を返す。
+ * @param {number} idx
+ * @returns {number}
+ */
+function replayLapStartFor(idx) {
+    const frames = replayState.frames;
+    const lap = frames[idx].lap_count;
+    let lapStart = idx;
+    while (lapStart > 0 && frames[lapStart - 1].lap_count === lap) {
+        lapStart--;
+    }
+    return lapStart;
+}
+
+/**
+ * ストリップチャート窓の再構築(#135 修正案1-A/1-B)。
+ * リング配列(timeData/speedData等)全1200点を対象フレーム列から直接構築し、
+ * 各チャートへ setData を1回だけ発行する。旧方式(updateChartState を最大1200回
+ * 同期呼出し)は (a)窓に満たない先頭に直前の内容(ライブ/デモの残骸)が残存して
+ * 新旧データが混在表示される (b)uPlot 全再描画×1200回の同期バーストで実機が
+ * 数秒フリーズし得る、の2因子で「グラフが壊れる」原因だった(調査レポート§1)。
+ * 窓に満たない先頭は 0 で明示的にクリアする。加速度チャートも同様に
+ * 配列を直接構築して描画1回にまとめる。
+ * @param {number} idx - 窓の右端となるフレーム index
+ * @param {number} windowStart - 窓の左端の下限(通常はラップ先頭)
+ */
+function replayRebuildChartWindow(idx, windowStart) {
+    // チャート未初期化環境(データ源未起動)では何もしない
+    if (typeof timeData === 'undefined' || typeof updateChartState !== 'function') {
+        return;
+    }
+    const frames = replayState.frames;
+    const N = REPLAY_CHART_WINDOW;   // = CHART_POINTS(1200)
+    const from = Math.max(windowStart, idx - N + 1);
+    const count = idx - from + 1;
+    const pad = N - count;
+
+    for (let k = 0; k < N; k++) {
+        // x は従来と同じ「連番の継続」(uPlot のスケールは窓に追随する。実測済み)
+        timeData[k] = timeCounter + k;
+        if (k < pad) {
+            speedData[k] = 0;
+            rpmData[k] = 0;
+            throttleData[k] = 0;
+            brakeData[k] = 0;
+        } else {
+            const f = frames[from + (k - pad)];
+            speedData[k] = Math.round(f.speed_kmh || 0);
+            rpmData[k] = Math.round(f.rpm || 0);
+            throttleData[k] = Math.round(f.throttle_pct || 0);
+            brakeData[k] = Math.round(f.brake_pct || 0);
+        }
+    }
+    timeCounter += N;
+
+    if (typeof speedChart !== 'undefined' && speedChart) {
+        speedChart.setData([timeData, speedData]);
+    }
+    if (typeof rpmChart !== 'undefined' && rpmChart) {
+        rpmChart.setData([timeData, rpmData]);
+    }
+    if (typeof throttleChart !== 'undefined' && throttleChart) {
+        throttleChart.setData([timeData, throttleData]);
+    }
+    if (typeof brakeChart !== 'undefined' && brakeChart) {
+        brakeChart.setData([timeData, brakeData]);
+    }
+
+    // 加速度チャート: 配列を直接構築し drawAccelChart() 1回(旧方式は毎push描画)
+    if (typeof accelData !== 'undefined' && Array.isArray(accelData.accelG)) {
+        accelData.accelG.length = 0;
+        accelData.accelDecel.length = 0;
+        const maxPts = (typeof ACCEL_CHART_CONFIG !== 'undefined' &&
+                        ACCEL_CHART_CONFIG.maxPoints) || 100;
+        const aFrom = Math.max(from, idx - maxPts + 1);
+        for (let j = aFrom; j <= idx; j++) {
+            accelData.accelG.push(frames[j].accel_g || 0);
+            accelData.accelDecel.push(frames[j].accel_decel || 0);
+        }
+        if (typeof drawAccelChart === 'function') {
+            drawAccelChart();
+        }
+    }
+}
+
+/**
  * シーク実行(§4.3): ①集約スタット再計算 ②チャート窓の再構築 ③現在フレーム供給。
  * @param {number} idx - シーク先フレーム index
  */
@@ -501,11 +592,7 @@ function replaySeek(idx) {
     if (typeof resetAnalysis === 'function') {
         resetAnalysis();
     }
-    const lap = replayState.frames[idx].lap_count;
-    let lapStart = idx;
-    while (lapStart > 0 && replayState.frames[lapStart - 1].lap_count === lap) {
-        lapStart--;
-    }
+    const lapStart = replayLapStartFor(idx);
     let maxSpeed = 0;
     for (let j = lapStart; j <= idx; j++) {
         const s = replayState.frames[j].speed_kmh || 0;
@@ -517,13 +604,8 @@ function replaySeek(idx) {
         updateMaxSpeed(Math.round(maxSpeed));
     }
 
-    // ②ストリップチャート窓: シーク先から遡って窓分を再供給(updateChartState 直接)
-    if (typeof updateChartState === 'function') {
-        const from = Math.max(lapStart, idx - REPLAY_CHART_WINDOW);
-        for (let j = from; j <= idx; j++) {
-            updateChartState(replayState.frames[j]);
-        }
-    }
+    // ②ストリップチャート窓: リング全点を直接構築し setData 1回(#135 1-A)
+    replayRebuildChartWindow(idx, lapStart);
 
     // ③位置確定・現在フレームの即時反映
     replayState.playIdx = idx;

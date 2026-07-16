@@ -107,9 +107,23 @@
         seg.setAttribute('role', 'group');
         seg.setAttribute('aria-label', '表示モード');
 
+        // 再生モード解除の共通処理(#135 症状2修正)。再生中に ANALYSIS を押しても
+        // 「REVIEW でも DRIVE でもない」ため no-op となり、class 変化も無いので
+        // replay 側 Observer も発火せず、再生が止まらなかった。ビュー切替ボタンは
+        // まず再生を確実に終了してから本来の切替を行う。復帰先は押されたビュー
+        // (=ライブ)なので REVIEW への自動復帰は抑止する。
+        function stopReplayIfActive() {
+            if (typeof replayActive !== 'undefined' && replayActive &&
+                typeof replayStop === 'function') {
+                if (typeof replayState !== 'undefined') replayState.fromReview = false;
+                replayStop();
+            }
+        }
+
         segAnalysis = makeCtl('tb-view-analysis', 'tb-seg-btn', TITLE_ANALYSIS, 'ANALYSIS');
         segAnalysis.textContent = 'ANALYSIS';
         segAnalysis.addEventListener('click', function () {
+            stopReplayIfActive();                        // #135: 再生中クリックのno-op解消
             if (isReview()) proxyClick('review-mode-btn'); // REVIEW を先に降ろす(排他)
             if (isDrive()) proxyClick('view-mode-btn');  // 既に ANALYSIS なら no-op(冪等な「選択」)
             syncView();                                  // Observer 不発時の保険
@@ -118,6 +132,7 @@
         segDrive = makeCtl('tb-view-drive', 'tb-seg-btn', TITLE_DRIVE, 'DRIVE');
         segDrive.textContent = 'DRIVE';
         segDrive.addEventListener('click', function () {
+            stopReplayIfActive();                        // #135: 同上
             if (isReview()) proxyClick('review-mode-btn');
             if (!isDrive()) proxyClick('view-mode-btn');
             syncView();
