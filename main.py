@@ -95,6 +95,10 @@ def ensure_log_dir():
 
 
 def save_lap_to_file(lap_data, lap_num):
+    # 記録ON/OFF(P1 B案 #124): config.json の recording_enabled (既定 true=従来どおり)。
+    # 入口の1分岐のみで、受信・復号・WS配信(ライブ表示)には影響しない。
+    if not CONFIG.get("recording_enabled", True):
+        return
     timestamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
     car_id = lap_data[0].get("car_id", 0) if lap_data else 0
     filename = f"{LOG_DIR}/{timestamp}_CAR-{car_id}_Lap-{lap_num}.json"

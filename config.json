@@ -5,5 +5,12 @@
     "http_port": 8080,
     "heartbeat_interval": 10,
     "ssl_cert": "ssl/server-cert.pem",
-    "ssl_key": "ssl/server-key.pem"
+    "ssl_key": "ssl/server-key.pem",
+    "recording_enabled": true,
+    "data_retention": {
+        "enabled": false,
+        "max_total_gb": 20,
+        "max_age_days": 180,
+        "trash_days": 14
+    }
 }
