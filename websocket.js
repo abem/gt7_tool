@@ -414,9 +414,15 @@ function updatePositionText(data) {
     }
     elements.bodyHeight.textContent = (data.body_height || 0).toFixed(3) + ' m';
 
-    // 現在のラップ経過時間
-    if (data.current_laptime !== undefined && data.current_laptime > 0) {
-        elements.runningLapTime.textContent = formatLapTime(data.current_laptime);
+    // 現在のラップ経過時間(#128是正)
+    // data.current_laptime(0x80)は実際にはゲーム内時刻の進行でありラップ経過時間では
+    // ない(#127診断)。telemetry-analysis.js のラップ内クロック(ラップ開始=lap_count
+    // 変化検知からの受信実時刻クランプ累積)を表示する。クロック未成立(メニュー・
+    // レース前=lap_count<1)の間は既定表示 '--:--.---' のまま。
+    if (typeof analysisState !== 'undefined' &&
+        analysisState.lastLapNumber >= 1 && analysisState.lapClockS > 0) {
+        elements.runningLapTime.textContent =
+            formatLapTime(Math.round(analysisState.lapClockS * 1000));
     }
 
     // スタート順位

@@ -11,8 +11,8 @@ COPY config.json ./
 COPY course_database.json* ./
 COPY index.html ./
 COPY styles.css ./
-COPY ui_components.js charts.js steer-response.js websocket.js test-mode.js app.js car-3d.js constants.js lap-manager.js telemetry-analysis.js drive-view.js card-drag.js menu.js ./
-COPY uplot.min.js uplot.min.css ./
+COPY ui_components.js charts.js steer-response.js websocket.js test-mode.js app.js car-3d.js constants.js lap-manager.js telemetry-analysis.js drive-view.js card-drag.js menu.js review-view.js ./
+COPY uplot.min.js uplot.min.css review.css ./
 COPY ssl ./ssl
 
 ENV PYTHONUNBUFFERED=1
