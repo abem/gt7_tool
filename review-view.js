@@ -33,8 +33,11 @@ const REVIEW_DISCONTINUITY_M = 120;
 // サンプル間の受信時刻差がこれ以上は記録中断(メニュー等)として時間加算スキップ
 // (main.py LAP_DURATION_GAP_S と同じ値・同じ意味)
 const REVIEW_TIME_GAP_S = 2.0;
-// 一覧の取得上限(一覧はファイル名メタのみで軽量)
-const REVIEW_LIST_LIMIT = 500;
+// 一覧取得の1ページ件数(APIの limit 上限)。全件をページングで逐次取得する。
+// 旧実装の固定上限500件は、本番1,085件で最古期(v1世代)が一覧・日付フィルタ・
+// BEST基準のいずれからも到達不能になる不具合だった(査の実機検証 #125 で検出)。
+// 現本番全件で約163KB、B案ローテーション上限(20GB≒約3,100件)でも軽量。
+const REVIEW_LIST_PAGE = 1000;
 // 詳細取得の間引き(60Hz→約10Hz)
 const REVIEW_FETCH_EVERY = 6;
 
@@ -179,22 +182,54 @@ function initReviewView() {
  * ================================================================ */
 
 /**
- * /api/laps から一覧を取得して描画する。
+ * /api/laps から全件を offset ページングで逐次取得して描画する。
+ * 取得中もページごとに進捗をステータス表示する。ページ間で新規記録により
+ * 重複が生じ得るため file 名でデデュープする。
  */
 function reviewLoadList() {
     const els = ensureReviewEls();
     if (els.listStatus) {
         els.listStatus.textContent = '一覧を読込中…';
     }
-    fetch('/api/laps?limit=' + REVIEW_LIST_LIMIT)
-        .then(function(res) {
-            if (!res.ok) {
-                throw new Error('HTTP ' + res.status);
-            }
-            return res.json();
-        })
-        .then(function(body) {
-            reviewState.laps = body.laps || [];
+
+    const collected = [];
+    const seen = {};
+
+    const fetchPage = function(offset) {
+        return fetch('/api/laps?limit=' + REVIEW_LIST_PAGE + '&offset=' + offset)
+            .then(function(res) {
+                if (!res.ok) {
+                    throw new Error('HTTP ' + res.status);
+                }
+                return res.json();
+            })
+            .then(function(body) {
+                const page = body.laps || [];
+                page.forEach(function(lap) {
+                    if (!seen[lap.file]) {
+                        seen[lap.file] = true;
+                        collected.push(lap);
+                    }
+                });
+                if (els.listStatus) {
+                    els.listStatus.textContent =
+                        '一覧を読込中… ' + collected.length + '/' + body.total;
+                }
+                // 全件到達(または空ページ=これ以上ない)まで次ページへ
+                if (collected.length < body.total && page.length > 0) {
+                    return fetchPage(offset + page.length);
+                }
+                return body.total;
+            });
+    };
+
+    fetchPage(0)
+        .then(function(total) {
+            // recorded_at 降順を全件で保証(ページ間の追記ずれ対策)
+            collected.sort(function(a, b) {
+                return a.recorded_at < b.recorded_at ? 1 : -1;
+            });
+            reviewState.laps = collected;
             reviewState.lapsByFile = {};
             reviewState.laps.forEach(function(lap) {
                 reviewState.lapsByFile[lap.file] = lap;
@@ -203,7 +238,9 @@ function reviewLoadList() {
             reviewRenderList();
             if (els.listStatus) {
                 els.listStatus.textContent =
-                    body.total + '件中 ' + reviewState.laps.length + '件を表示';
+                    '全' + reviewState.laps.length + '件を表示' +
+                    (reviewState.laps.length !== total
+                        ? '(取得時点の総数: ' + total + ')' : '');
             }
         })
         .catch(function(err) {

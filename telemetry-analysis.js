@@ -38,6 +38,9 @@ const CHART_CADENCE_MS = 100;  // 解析チャート再描画スロットル(10f
 const WHEEL_SPEED_K = 2 * Math.PI; // ホイール回転数→周速の厳密換算(1回転=2πr)。|rps|*radius*K [m/s]。
                                    // 任意係数ではない: 変更すると updateGrip の slip 比(1.0=グリップ)の物理的意味が崩れる。
 const PROM_WINDOW = 8;         // ピーク顕著性評価窓(±8サンプル=±80m)
+const LAP_CLOCK_GAP_S = 2.0;   // ラップ内クロック: サンプル間dtがこれ以上は記録中断として
+                               // 加算しない(review-view.js REVIEW_TIME_GAP_S / main.py
+                               // LAP_DURATION_GAP_S と同じ値・同じ意味。#128是正)
 
 /* ================================================================
  *  状態(単一オブジェクト)
@@ -46,7 +49,15 @@ const analysisState = {
     initialized: false,          // lazy-init(DOMキャッシュ+ボタン配線+initAnalysisCharts)済フラグ
     lastLapNumber: 0,
     lastX: null, lastZ: null,    // 直前位置(距離弦長用)
-    prevLaptime: 0,              // 距離の速度積分フォールバック用
+    // ラップ内経過クロック[s](#128是正)。current_laptime(0x80)は実際には
+    // ゲーム内時刻進行でありラップ経過時間ではない(#127診断で確定)ため、
+    // 受信 timestamp のクランプ付き累積で自前計時する(P1-3 REVIEW実証方式)。
+    // TEST MODE合成フレームは timestamp を持たないため current_laptime 差分に
+    // フォールバックする(デモは正しいラップ内msを合成する。test-mode.js:435)。
+    lapClockS: 0,                // 現在ラップの経過秒
+    _clockPrevTsMs: null,        // 直前サンプルの受信時刻[ms](ライブ経路)
+    _clockPrevCltMs: null,       // 直前サンプルの current_laptime[ms](TEST MODE経路)
+    _lastDtS: 0,                 // 当フレームで加算したdt[s](距離の速度積分フォールバック用)
     lastChartTs: 0,
     _liveDelta: 0,               // 直近ライブデルタ[s](推定ラップが再利用)
     curLap: { samples: [], cumDist: 0 },
@@ -122,7 +133,10 @@ function resetAnalysis() {
     analysisState.lastLapNumber = 0;
     analysisState.lastX = null;
     analysisState.lastZ = null;
-    analysisState.prevLaptime = 0;
+    analysisState.lapClockS = 0;
+    analysisState._clockPrevTsMs = null;
+    analysisState._clockPrevCltMs = null;
+    analysisState._lastDtS = 0;
     analysisState.lastChartTs = 0;
     analysisState._liveDelta = 0;
     analysisState.curLap = { samples: [], cumDist: 0 };
@@ -233,18 +247,31 @@ function analysisOnFrame(data) {
         analysisState.curLap = { samples: [], cumDist: 0 };
         analysisState.lastX = null;
         analysisState.lastZ = null;
-        analysisState.prevLaptime = 0;
+        analysisState.lapClockS = 0;   // 新ラップの計時を0から開始(#128)
+    } else if (lap >= 1 && analysisState.lastLapNumber < 1) {
+        // (c') レース開始(lap_count 0/-1 → 1以上)。完了ラップは無いが、
+        // ラップ計時と距離・サンプルはここが起点(#128)。メニュー/グリッド滞在中に
+        // 進んだクロック・距離を最初のラップへ持ち越さない。
+        analysisState.curLap = { samples: [], cumDist: 0 };
+        analysisState.lastX = null;
+        analysisState.lastZ = null;
+        analysisState.lapClockS = 0;
     }
     analysisState.lastLapNumber = lap;
+
+    // (c2) ラップ内クロック更新(#128: 時間軸の唯一のソース)
+    updateLapClock(data);
 
     // (d) 距離索引更新
     updateDistanceIndex(data);
 
-    // (e) サンプル収集(計測中のみ)
-    if ((data.current_laptime || 0) > 0) {
+    // (e) サンプル収集(計測中のみ。lap_count>=1 = コース上でラップ進行中。
+    //     旧ゲート current_laptime>0 は 0x80 がゲーム内時刻のため実走行で常時true
+    //     となり判定になっていなかった(#127診断)。TEST MODE も lap_count>=1)
+    if ((data.lap_count || 0) >= 1) {
         analysisState.curLap.samples.push({
             dist: analysisState.curLap.cumDist,
-            t: (data.current_laptime || 0) / 1000,
+            t: analysisState.lapClockS,
             speed: data.speed_kmh || 0,
             throttle: data.throttle_pct || 0,
             brake: data.brake_pct || 0,
@@ -272,6 +299,41 @@ function analysisOnFrame(data) {
 }
 
 /**
+ * ラップ内経過クロックを更新する(#128是正)。
+ * dt のソースは受信 timestamp(ライブ経路。main.py:258 が必ず付与)を優先し、
+ * timestamp が無いフレーム(TEST MODE合成)のみ current_laptime 差分に
+ * フォールバックする(デモは正しいラップ内msを合成する)。
+ * dt >= LAP_CLOCK_GAP_S は記録中断(タブ非活性・メニュー等)、paused フレームは
+ * ゲーム内一時停止として、いずれも加算しない(真のラップタイマーの挙動)。
+ * @param {Object} data - テレメトリデータ(ライブ or 合成)
+ */
+function updateLapClock(data) {
+    let dt = 0;
+    if (data.timestamp) {
+        const ts = Date.parse(data.timestamp);
+        if (!isNaN(ts)) {
+            if (analysisState._clockPrevTsMs != null) {
+                dt = (ts - analysisState._clockPrevTsMs) / 1000;
+            }
+            analysisState._clockPrevTsMs = ts;
+        }
+    } else if (data.current_laptime != null) {
+        if (analysisState._clockPrevCltMs != null) {
+            dt = (data.current_laptime - analysisState._clockPrevCltMs) / 1000;
+        }
+        analysisState._clockPrevCltMs = data.current_laptime;
+    }
+
+    const paused = !!(data.flags && data.flags.paused);
+    if (dt > 0 && dt < LAP_CLOCK_GAP_S && !paused) {
+        analysisState.lapClockS += dt;
+        analysisState._lastDtS = dt;
+    } else {
+        analysisState._lastDtS = 0;
+    }
+}
+
+/**
  * 距離索引を更新する。
  * position が有れば弦長積算、無ければ速度積分でフォールバック。
  * DISCONTINUITY_M 超の弦長(pit/respawn/warp)と paused フレームは加算スキップ。
@@ -292,13 +354,13 @@ function updateDistanceIndex(data) {
         analysisState.lastX = data.position_x;
         analysisState.lastZ = data.position_z;
     } else {
-        // フォールバック速度積分(dt は current_laptime 差分。performance.now は不使用)
-        const dt = ((data.current_laptime || 0) - analysisState.prevLaptime) / 1000;
-        if (dt > 0 && dt < 2) {
+        // フォールバック速度積分(dt はラップ内クロックが当フレームで加算した実dt。
+        // 旧実装の current_laptime 差分は 0x80=ゲーム内時刻のため誤り。#128是正)
+        const dt = analysisState._lastDtS;
+        if (dt > 0) {
             analysisState.curLap.cumDist += (data.speed_ms || 0) * dt;
         }
     }
-    analysisState.prevLaptime = data.current_laptime || 0;
 }
 
 /* ================================================================
@@ -502,7 +564,8 @@ function updateLiveDelta(data) {
     if (curDist > rl.totalDist) {
         curDist = rl.totalDist;
     }
-    const liveDelta = ((data.current_laptime || 0) / 1000) - refTimeAtDist(curDist);
+    // 現在時刻はラップ内クロック(#128是正。旧 current_laptime はゲーム内時刻で誤り)
+    const liveDelta = analysisState.lapClockS - refTimeAtDist(curDist);
     analysisState._liveDelta = liveDelta;
 
     if (els.lapDelta) {
