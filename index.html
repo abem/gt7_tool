@@ -603,7 +603,11 @@
     <script src="/telemetry-analysis.js"></script>
     <script src="/drive-view.js"></script>
     <script src="/review-view.js"></script>
-    <script src="/replay-mode.js"></script>
+    <!-- 応急停止(2026-07-16): 全カード再生で実運用不具合(グラフ破損・EXIT後の画面復元失敗)が
+         発生したため一時無効化。review-view.js は typeof replayStart === 'function' で
+         縮退するため、このスクリプトを止めるだけでREVIEW一覧の再生ボタンが出なくなる
+         (ロジック本体には触れない最小の応急措置)。原因究明・是正後に復元する。 -->
+    <!-- <script src="/replay-mode.js"></script> -->
     <script src="/websocket.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>
