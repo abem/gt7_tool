@@ -20,6 +20,10 @@ body.review-mode .dashboard > *:not(.header):not(#review-root) {
 
 body.review-mode #review-root {
     display: grid;
+    /* #136修正: 親 .dashboard は grid-template-areas の3カラムグリッドであり、
+       grid-area 未指定の本要素は自動配置で第1カラム(≦272px)に閉じ込められて
+       いた(901px以上の全幅でレイアウト崩壊)。全カラムをスパンさせる。 */
+    grid-column: 1 / -1;
     grid-template-columns: 300px 1fr;
     gap: 12px;
     padding: 12px;

@@ -16,6 +16,10 @@
 
 body.replay-mode #replay-bar {
     display: flex;
+    /* #136修正(査の精度指摘): 本要素も .dashboard グリッドの grid-area 未指定子で
+       第1カラムに閉じ込められていた(position:sticky は grid flow に残るため
+       #135検証時点で軽症発現済み。flexのため操作は可能だった)。全カラムをスパンさせる。 */
+    grid-column: 1 / -1;
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
