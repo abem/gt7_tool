@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import ssl
 import logging
 import aiohttp
@@ -361,6 +362,209 @@ async def static_handler(request):
     return web.FileResponse(filepath, headers={'Cache-Control': 'no-cache'})
 
 
+# ================================================================
+#  過去ラップ読み出しAPI (P1-3 A案)
+#
+#  ライブ配信(/ws)とは完全に分離した読み取り専用エンドポイント。
+#  gt7data/ への書込・削除は一切行わない。仕様は
+#  docs/P1詳細計画書_セッションレビューと保存ポリシー_20260716.md §2.1。
+# ================================================================
+
+# save_lap_to_file の命名形式に完全一致するファイルのみをAPIの対象にする
+# (許可リスト方式: パス区切り・別拡張子・BU等の変則名は正規表現の時点で排除)
+LAP_FILE_RE = re.compile(
+    r'^(\d{4})-(\d{2})-(\d{2})_(\d{2})_(\d{2})_(\d{2})_CAR-(\d+)_Lap-(\d+)\.json$'
+)
+
+# 詳細APIの既定射影: REVIEWビューの距離基準比較に必要な最小フィールド集合
+DEFAULT_LAP_FIELDS = (
+    "timestamp", "current_laptime", "speed_kmh", "throttle_pct", "brake_pct",
+    "position_x", "position_z", "gear", "lap_count", "last_laptime"
+)
+
+API_LAPS_LIMIT_DEFAULT = 200
+API_LAPS_LIMIT_MAX = 1000
+API_LAPS_EVERY_DEFAULT = 6   # 60Hz記録を約10Hzへ間引き
+API_LAPS_EVERY_MAX = 60
+
+
+def _parse_lap_filename(name):
+    """ラップファイル名をメタデータへ解釈する。形式不一致は None。"""
+    m = LAP_FILE_RE.match(name)
+    if not m:
+        return None
+    y, mo, d, h, mi, s, car, lap = m.groups()
+    return {
+        "file": name,
+        "recorded_at": f"{y}-{mo}-{d}T{h}:{mi}:{s}",
+        "car_id": int(car),
+        "lap_number": int(lap),
+    }
+
+
+def _int_query(request, name, default, lo, hi):
+    """整数クエリを検証つきで取得する。範囲外・非整数は ValueError。"""
+    raw = request.query.get(name)
+    if raw is None or raw == "":
+        return default
+    value = int(raw)  # 非整数は ValueError をそのまま上げる
+    if value < lo or value > hi:
+        raise ValueError(f"{name} out of range [{lo},{hi}]: {value}")
+    return value
+
+
+def _scan_lap_files(date_filter, car_id_filter):
+    """gt7data/ を走査しメタデータ一覧を返す(内容は読まない。to_thread で実行)。"""
+    entries = []
+    try:
+        with os.scandir(LOG_DIR) as it:
+            for entry in it:
+                if not entry.is_file():
+                    continue
+                meta = _parse_lap_filename(entry.name)
+                if meta is None:
+                    continue
+                if date_filter and not entry.name.startswith(date_filter):
+                    continue
+                if car_id_filter is not None and meta["car_id"] != car_id_filter:
+                    continue
+                meta["size_bytes"] = entry.stat().st_size
+                entries.append(meta)
+    except FileNotFoundError:
+        # gt7data/ 未作成は初回起動直後の正常状態 → 空一覧
+        return []
+    entries.sort(key=lambda m: m["recorded_at"], reverse=True)
+    return entries
+
+
+async def api_laps_list_handler(request):
+    """GET /api/laps — 過去ラップの一覧(ファイル名メタのみ・軽量)。"""
+    try:
+        limit = _int_query(request, "limit", API_LAPS_LIMIT_DEFAULT, 1, API_LAPS_LIMIT_MAX)
+        offset = _int_query(request, "offset", 0, 0, 10**9)
+        car_id = _int_query(request, "car_id", None, 0, 10**9) if request.query.get("car_id") else None
+        date_filter = request.query.get("date")
+        if date_filter and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_filter):
+            raise ValueError(f"invalid date: {date_filter}")
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+    entries = await asyncio.to_thread(_scan_lap_files, date_filter, car_id)
+    return web.json_response(
+        {"total": len(entries), "laps": entries[offset:offset + limit]},
+        headers={'Cache-Control': 'no-cache'}
+    )
+
+
+def _load_lap_file(path, fields, every):
+    """ラップJSONを読み、間引き+射影した samples(JSON文字列) と件数を返す。
+
+    to_thread で実行する。大型ファイル(実測最大84MB)では json の parse も
+    dumps もイベントループを塞ぎ得るため、直列化までこの関数内で済ませる。
+    """
+    with open(path, 'r') as f:
+        data = json.load(f)
+    if not isinstance(data, list):
+        raise ValueError("lap file is not a sample array")
+    samples = [
+        {k: s[k] for k in fields if k in s}
+        for s in data[::every]
+        if isinstance(s, dict)
+    ]
+    first = data[0] if data and isinstance(data[0], dict) else {}
+    duration_ms = _lap_duration_approx_ms(data)
+    return json.dumps(samples), len(samples), len(data), first, duration_ms
+
+
+# 受信時刻差がこれ以上のサンプル間は「記録の中断」(メニュー放置・一時停止等)と
+# みなし、所要時間の近似に算入しない。実測: 2026-07-15ファイルに83,926sの単一
+# ギャップがあり、単純な先頭↔最終差(84,195s)は無意味、クランプ後(268.9s)は
+# サンプル数/60Hz(270s)と一致。
+LAP_DURATION_GAP_S = 2.0
+
+
+def _lap_duration_approx_ms(data):
+    """ラップ所要時間の近似(ms)を受信 timestamp のクランプ付き差分合計で求める。
+
+    注意: decoder.py が current_laptime に格納する値(パケット 0x80)は実際には
+    「ゲーム内時刻の進行 ms」でありラップ経過時間ではない(実データで機械確認:
+    全サンプル定数 or 日時起点の単調増加。2026-07-16 計承認の是正案(a))。
+    そのため v1/v2 共通で受信時刻 dt(< LAP_DURATION_GAP_S)の合計を使う。
+    ラップ確定値(次ラップの last_laptime)ではない点は「approx」の名で明示する。
+    _load_lap_file と同じワーカースレッド内で呼ぶこと(全サンプル走査のため)。
+    """
+    total_s = 0.0
+    prev = None
+    for s in data:
+        if not isinstance(s, dict):
+            continue
+        raw = s.get("timestamp")
+        if not raw:
+            continue
+        try:
+            t = datetime.fromisoformat(raw)
+        except ValueError:
+            continue
+        if prev is not None:
+            dt = (t - prev).total_seconds()
+            if 0 < dt < LAP_DURATION_GAP_S:
+                total_s += dt
+        prev = t
+    return round(total_s * 1000) if total_s > 0 else None
+
+
+async def api_lap_detail_handler(request):
+    """GET /api/laps/{file} — 単一ラップの取得(fields射影+every間引き)。"""
+    name = request.match_info["file"]
+    meta = _parse_lap_filename(name)
+    if meta is None:
+        return web.json_response({"error": "not found"}, status=404)
+    filepath = os.path.join(LOG_DIR, name)
+    if not os.path.isfile(filepath):
+        return web.json_response({"error": "not found"}, status=404)
+
+    try:
+        every = _int_query(request, "every", API_LAPS_EVERY_DEFAULT, 1, API_LAPS_EVERY_MAX)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    fields_raw = request.query.get("fields")
+    if fields_raw:
+        # 未知フィールド名はエラーにせず単に無視される(前方互換: 射影で自然に落ちる)
+        fields = tuple(f.strip() for f in fields_raw.split(',') if f.strip())
+    else:
+        fields = DEFAULT_LAP_FIELDS
+
+    try:
+        samples_json, samples_returned, samples_total, first, duration_ms = await asyncio.to_thread(
+            _load_lap_file, filepath, fields, every
+        )
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
+        logger.error(f"Corrupt lap file {name}: {e}")
+        return web.json_response({"error": "corrupt file"}, status=500)
+
+    # スキーマ世代: 2026-07系(v2)は lap_count を持つ。2026-02系(v1)は持たない。
+    schema = "v2" if "lap_count" in first else "v1"
+    course = None
+    course_raw = first.get("course")
+    if isinstance(course_raw, dict):
+        course = {k: course_raw.get(k) for k in ("id", "name_ja", "name_en")}
+
+    meta.update({
+        "samples_total": samples_total,
+        "samples_returned": samples_returned,
+        "every": every,
+        "schema": schema,
+        "course": course,
+        "laptime_ms_approx": duration_ms,
+    })
+    # samples は to_thread 内で直列化済み。meta だけここで dumps して結合する
+    body = '{"meta": ' + json.dumps(meta) + ', "samples": ' + samples_json + '}'
+    return web.Response(
+        text=body, content_type='application/json',
+        headers={'Cache-Control': 'no-cache'}
+    )
+
+
 @web.middleware
 async def logging_middleware(request, handler):
     start_time = datetime.now()
@@ -466,6 +670,9 @@ def main():
     ws_scheme = "wss" if ssl_context else "ws"
 
     app = web.Application(middlewares=[logging_middleware])
+    # 読み出しAPIはワイルドカード静的ルート(/{filename})より前に登録する
+    app.router.add_get('/api/laps', api_laps_list_handler)
+    app.router.add_get('/api/laps/{file}', api_lap_detail_handler)
     app.router.add_get('/', index_handler)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/{filename:.*}', static_handler)

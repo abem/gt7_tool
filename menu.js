@@ -25,6 +25,7 @@
     // ---- title 文言(動的なものは sync 内で書換) ----
     var TITLE_ANALYSIS = '解析用の全パネル表示';
     var TITLE_DRIVE = '走行用の最小表示(ギア・シフトライト・デルタ・燃料)';
+    var TITLE_REVIEW = '過去ラップのレビュー(一覧・距離基準比較)';
     var TITLE_TEST_OFF = 'デモデータで動作確認(実走データではありません)';
     var TITLE_TEST_ON = 'テスト走行を停止';
     var TITLE_LAYOUT = '全ブロックを初期配置に整列（サイズもリセット） / ドラッグで移動、右下をドラッグでサイズ変更、ダブルクリックで個別リセット';
@@ -36,12 +37,14 @@
 
     // ---- 状態参照(すべてプロキシが唯一のソース) ----
     function isDrive() { var b = byId('view-mode-btn'); return !!(b && b.classList.contains('active')); }
+    function isReview() { var b = byId('review-mode-btn'); return !!(b && b.classList.contains('active')); }
     function isTest() { var b = byId('test-mode-btn'); return !!(b && b.classList.contains('active')); }
     function isFullscreen() { return !!document.fullscreenElement; }
 
     // 生成したコントロール(プロキシ欠如時は null のまま=非生成)
     var segAnalysis = null;
     var segDrive = null;
+    var segReview = null;
     var testBtn = null;
     var fsBtn = null;
     var fsPending = false;    // 全画面の多重要求抑止フラグ
@@ -49,11 +52,17 @@
     // ---- 状態同期(全 sync は null ガード・冪等) ----
     function syncView() {
         if (!segAnalysis || !segDrive) return;
-        var drive = isDrive();
+        var review = isReview();
+        var drive = !review && isDrive();
+        var analysis = !review && !drive;
         segDrive.classList.toggle('active', drive);
         segDrive.setAttribute('aria-pressed', String(drive));
-        segAnalysis.classList.toggle('active', !drive);
-        segAnalysis.setAttribute('aria-pressed', String(!drive));
+        segAnalysis.classList.toggle('active', analysis);
+        segAnalysis.setAttribute('aria-pressed', String(analysis));
+        if (segReview) {
+            segReview.classList.toggle('active', review);
+            segReview.setAttribute('aria-pressed', String(review));
+        }
     }
     function syncTest() {
         if (!testBtn) return;
@@ -101,6 +110,7 @@
         segAnalysis = makeCtl('tb-view-analysis', 'tb-seg-btn', TITLE_ANALYSIS, 'ANALYSIS');
         segAnalysis.textContent = 'ANALYSIS';
         segAnalysis.addEventListener('click', function () {
+            if (isReview()) proxyClick('review-mode-btn'); // REVIEW を先に降ろす(排他)
             if (isDrive()) proxyClick('view-mode-btn');  // 既に ANALYSIS なら no-op(冪等な「選択」)
             syncView();                                  // Observer 不発時の保険
         });
@@ -108,12 +118,25 @@
         segDrive = makeCtl('tb-view-drive', 'tb-seg-btn', TITLE_DRIVE, 'DRIVE');
         segDrive.textContent = 'DRIVE';
         segDrive.addEventListener('click', function () {
+            if (isReview()) proxyClick('review-mode-btn');
             if (!isDrive()) proxyClick('view-mode-btn');
             syncView();
         });
 
         seg.appendChild(segAnalysis);
         seg.appendChild(segDrive);
+
+        // REVIEW はプロキシがある場合のみ生成(コントロール単位で縮退する既存方針)
+        if (byId('review-mode-btn')) {
+            segReview = makeCtl('tb-view-review', 'tb-seg-btn', TITLE_REVIEW, 'REVIEW');
+            segReview.textContent = 'REVIEW';
+            segReview.addEventListener('click', function () {
+                // DRIVE 解除は review-view.js の applyReviewMode(ON) 側が行う
+                if (!isReview()) proxyClick('review-mode-btn');
+                syncView();
+            });
+            seg.appendChild(segReview);
+        }
         return seg;
     }
 
@@ -259,13 +282,15 @@
             var mo = new MutationObserver(function (muts) {
                 for (var i = 0; i < muts.length; i++) {
                     var id = muts[i].target && muts[i].target.id;
-                    if (id === 'view-mode-btn') syncView();
+                    if (id === 'view-mode-btn' || id === 'review-mode-btn') syncView();
                     else if (id === 'test-mode-btn') syncTest();
                 }
             });
             var viewProxy = byId('view-mode-btn');
+            var reviewProxy = byId('review-mode-btn');
             var testProxy = byId('test-mode-btn');
             if (viewProxy) mo.observe(viewProxy, { attributes: true, attributeFilter: ['class'] });
+            if (reviewProxy) mo.observe(reviewProxy, { attributes: true, attributeFilter: ['class'] });
             if (testProxy) mo.observe(testProxy, { attributes: true, attributeFilter: ['class'] });
 
             document.addEventListener('fullscreenchange', function () {
@@ -280,13 +305,13 @@
 
             // ビルド成功後にのみ個別ボタンをツールバーへ一元化(=非表示)。
             // 失敗時はここに来ず、元のボタンがフォールバックとして残る。
-            ['test-mode-btn', 'view-mode-btn', 'layout-reset-btn'].forEach(function (id) {
+            ['test-mode-btn', 'view-mode-btn', 'review-mode-btn', 'layout-reset-btn'].forEach(function (id) {
                 var el = byId(id); if (el) el.style.display = 'none';
             });
         } catch (e) {
             // ビルド途中の例外: 注入済み nav を撤去し、元ボタンは可視のまま残す
             if (nav) nav.remove();
-            segAnalysis = segDrive = testBtn = fsBtn = null;
+            segAnalysis = segDrive = segReview = testBtn = fsBtn = null;
         }
     }
 
