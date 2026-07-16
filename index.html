@@ -7,6 +7,7 @@
     <title>GT7 Telemetry Dashboard</title>
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/uplot.min.css">
+    <link rel="stylesheet" href="/review.css">
 </head>
 <body>
     <div class="dashboard">
@@ -18,10 +19,52 @@
                 <button id="test-mode-btn" class="test-mode-btn">TEST MODE</button>
                 <button id="view-mode-btn" class="test-mode-btn view-mode-btn" aria-pressed="false"
                         title="走行用の最小表示(DRIVE)と解析用の全表示(ANALYSIS)を切り替え">ANALYSIS</button>
+                <!-- REVIEW ビューの隠しプロキシ(review-view.js が配線、menu.js のツールバーが .click() で駆動) -->
+                <button id="review-mode-btn" class="test-mode-btn review-mode-btn" aria-pressed="false"
+                        title="過去ラップのレビュー表示(REVIEW)を切り替え">REVIEW</button>
                 <div id="connection-status" class="disconnected" role="status" aria-live="polite">Disconnected</div>
             </div>
             <!-- 操作ツールバー(フラット1段)は menu.js が .header に追加する -->
         </div>
+
+        <!-- ============================================================
+             REVIEW ビュー (P1-3 A案): 過去ラップの一覧・距離基準比較。
+             body.review-mode 時のみ表示(review.css)。ライブ表示とは完全独立で、
+             websocket.js / telemetry-analysis.js のライブ経路には一切フックしない。
+             ============================================================ -->
+        <section id="review-root" aria-label="過去ラップレビュー">
+            <aside id="review-sidebar">
+                <div id="review-sidebar-head">
+                    <select id="review-filter-date" aria-label="記録日で絞り込み">
+                        <option value="">全日付</option>
+                    </select>
+                    <button id="review-btn-best" type="button"
+                            title="表示中の一覧からタイム最小のラップを基準(B)に設定">BEST基準</button>
+                </div>
+                <div id="review-list-status">読込待機</div>
+                <div id="review-lap-list" role="listbox" aria-label="過去ラップ一覧"></div>
+            </aside>
+            <div id="review-main">
+                <div id="review-summary">
+                    <span class="review-sum-item" id="review-sum-a">A: 未選択</span>
+                    <span class="review-sum-item" id="review-sum-b">B: 未選択</span>
+                    <span class="review-sum-item" id="review-sum-delta">Δ: --</span>
+                    <span class="review-sum-item" id="review-sum-course">コース: --</span>
+                </div>
+                <div class="review-chart-block">
+                    <div class="review-chart-title">SPEED vs DISTANCE (A/B)</div>
+                    <div id="review-speed-chart" class="review-chart"></div>
+                </div>
+                <div class="review-chart-block">
+                    <div class="review-chart-title">TIME DELTA (A−B)</div>
+                    <div id="review-delta-chart" class="review-chart"></div>
+                </div>
+                <div class="review-chart-block">
+                    <div class="review-chart-title">THROTTLE / BRAKE (A/B)</div>
+                    <div id="review-inputs-chart" class="review-chart"></div>
+                </div>
+            </div>
+        </section>
 
         <!-- Race engineer notifications (transient toasts, fixed top-right) -->
         <div id="race-engineer-feed" class="engineer-feed" aria-live="polite"></div>
@@ -542,6 +585,7 @@
     <script src="/lap-manager.js"></script>
     <script src="/telemetry-analysis.js"></script>
     <script src="/drive-view.js"></script>
+    <script src="/review-view.js"></script>
     <script src="/websocket.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>
