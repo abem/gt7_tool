@@ -8,7 +8,7 @@
     "ssl_key": "ssl/server-key.pem",
     "recording_enabled": true,
     "data_retention": {
-        "enabled": false,
+        "enabled": true,
         "max_total_gb": 20,
         "max_age_days": 180,
         "trash_days": 14
