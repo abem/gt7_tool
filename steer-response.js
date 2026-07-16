@@ -76,8 +76,11 @@ function updateSteerResponse(steerRad, yawRadS, speedMs, latG) {
     // 低速側(≈キネマティック領域)の緩い旋回で車固有の中立(幾何)ゲインを自動較正する。
     //  - 低〜中速に限定＝スリップが小さく幾何ゲインに近い（高速のアンダーステア分を基準に混ぜない）。
     //  - TEST MODE の合成データでは較正しない（実走基準を汚さないため）。
+    //  - 再生モード(replay-mode.js)の過去データでも較正しない: neutralL は「今接続中の車」の
+    //    永続較正値であり、別セッション・別車種の記録で汚染すると再生後も残存するため（#134査指摘）。
     var C = STEER_RESP;
-    var inTest = (typeof testModeActive !== 'undefined') && testModeActive;
+    var inTest = ((typeof testModeActive !== 'undefined') && testModeActive) ||
+                 ((typeof replayActive !== 'undefined') && replayActive);
     if (!inTest && C.calibAlpha > 0 &&
         s.speed > C.calibSpeedMin && s.speed < C.calibSpeedMax &&
         Math.abs(s.steer) > 0.06 && Math.abs(s.yaw) > 0.02 && s.steer * s.yaw > 0 &&

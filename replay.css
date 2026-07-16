@@ -1,0 +1,100 @@
+/**
+ * GT7 Telemetry Dashboard - 全カード再生モード専用スタイル (#133/#134)
+ *
+ * styles.css には追記しない(新規ファイル隔離)。カラーは styles.css の
+ * デザイントークンを参照する。
+ * 表示制御の契約:
+ *   - 既定: #replay-bar を隠す
+ *   - body.replay-mode: バーを表示。全カードはライブと同一の ANALYSIS
+ *     レイアウトのまま再生フレームで駆動される(カード側 CSS 変更なし)
+ *   - 再生中はレースエンジニア通知(一過性トースト)を抑止(采決裁#4。CSSのみで完結)
+ */
+
+#replay-bar {
+    display: none;
+}
+
+body.replay-mode #replay-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-strong);
+    position: sticky;
+    top: 0;
+    z-index: 900;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* 再生中は一過性トーストを抑止(発火しても非表示・4秒で自動撤去される) */
+body.replay-mode .engineer-feed {
+    display: none;
+}
+
+#replay-title {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 34%;
+    color: var(--text-primary);
+}
+
+#replay-bar button {
+    background: var(--surface-3);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+}
+
+#replay-bar button:hover {
+    background: var(--surface-4);
+}
+
+#replay-btn-exit {
+    margin-left: auto;
+    color: var(--accent-brand);
+}
+
+#replay-speed,
+#replay-segment {
+    background: var(--surface-3);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+
+#replay-scrubber {
+    flex: 1;
+    min-width: 120px;
+    accent-color: var(--accent-brand);
+}
+
+#replay-time {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* REVIEW 一覧の再生ボタン(R-4。review-view.js が行に注入する) */
+.review-lap-play {
+    background: var(--surface-3);
+    color: var(--accent-brand);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 0 6px;
+    cursor: pointer;
+    line-height: 1.5;
+}
+
+.review-lap-play:hover {
+    background: var(--surface-4);
+}
