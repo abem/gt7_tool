@@ -7,6 +7,17 @@
 
 ---
 
+## 2026-07-16 — gt7data 保存ポリシー（P1 B案）
+
+### feat: 期間・容量上限ローテーションの基盤を追加（既定無効・実削除なし）
+- **背景**: `gt7data/` の無制限成長（実測7.4GB、現ペースで約3.4ヶ月でディスク空きを使い切る計算）。P1詳細計画書§3の設計に基づく実装。**本リリース時点では `enabled: false` のまま**（実データへの適用は采承認後の別工程）。
+- **`scripts/gt7data_rotate.py`（新規）**: dry-run既定・設定ゲート（`enabled:false` では `--apply` 拒否、上書きフラグなし）・trash方式2段階削除（`gt7data_trash/日付/` へ rename → `trash_days` 経過後に物理削除）・保護リスト（`gt7data/.rotate_keep`）・50%セーフティ・全件ログ（`scripts/logs/`）・命名完全一致のみ対象（変則名不触）。
+- **`config.json`**: `data_retention`（enabled/max_total_gb/max_age_days/trash_days。既定 false/20/180/14）と `recording_enabled`（既定 true）を追加。
+- **`main.py`**: `save_lap_to_file` 入口に記録ON/OFFの1分岐のみ追加（受信・復号・WS配信は不変）。
+- **検証**: gt7data実体コピーのテスト用ディレクトリでT1〜T8の機械検証（dry-run突合=独立検算一致・無変更確認・拒否exit2・年齢/容量選定・セーフティ中断exit3・rename実在・保護/変則名不触・冪等・trash purge）。実データ `gt7data/` には一切触れていない（件数不変を確認）。
+
+---
+
 ## 2026-07-16 — セッションレビュー機能（P1-3 A案）
 
 ### feat: 過去ラップの読み出しAPIと REVIEW ビューを新設
