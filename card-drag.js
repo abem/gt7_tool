@@ -185,6 +185,9 @@
         // STRATEGY は自然高約39pxの1行ミニバー。一律90pxだと復元時に高さが強制拡大され
         // clampTop の許容域が縮み、下端付近の保存位置が上へ押し戻される(#148差し戻し)。
         if (el.classList.contains('race-metrics-strategy-card')) return { w: 140, h: 32 };
+        // 再生バーも同種の1行ツールバー(自然高39px実測、#155)。同じ理由で専用下限。
+        // 幅下限480pxは操作群(ボタン3+速度+時刻+EXIT)+スクラバー最小幅の実用限界。
+        if (el.classList.contains('replay-bar-card')) return { w: 480, h: 32 };
         return { w: 140, h: 90 };
     }
     function findCard(el) {

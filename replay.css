@@ -20,6 +20,12 @@ body.replay-mode #replay-bar {
        第1カラムに閉じ込められていた(position:sticky は grid flow に残るため
        #135検証時点で軽症発現済み。flexのため操作は可能だった)。全カラムをスパンさせる。 */
     grid-column: 1 / -1;
+    /* #155: 全幅ではツールバーとして過大なため縮小。グリッド行は全カラムスパンのまま
+       要素幅のみ絞って中央寄せ(=#136の配置意図を保ったまま見た目を縮小)。
+       ドラッグ浮遊時は card-drag が inline の position:absolute + width を与えるため
+       この宣言はグリッド内(未ドラッグ時)の既定表示にのみ効く。 */
+    width: min(100%, 880px);
+    margin-inline: auto;
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
@@ -44,6 +50,13 @@ body.replay-mode .engineer-feed {
     text-overflow: ellipsis;
     max-width: 34%;
     color: var(--text-primary);
+    /* #155: card-title 併記(card-dragのタイトル規約)による全体スタイル
+       (uppercase/字間/下マージン/縮小フォント)を打ち消し、従来表示を維持する */
+    text-transform: none;
+    letter-spacing: normal;
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
 }
 
 #replay-bar button {
