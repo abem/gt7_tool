@@ -35,7 +35,10 @@ const REPLAY_FIELDS = (
     'road_plane_y,road_plane_z,rotation_pitch,rotation_roll,rotation_yaw,' +
     'rpm,rpm_alert_min,speed_kmh,speed_ms,susp_height,throttle_filtered_pct,' +
     'throttle_pct,timestamp,total_laps,transmission_max_speed,tyre_radius,' +
-    'tyre_temp,velocity_x,velocity_y,velocity_z,wheel_rotation,wheel_rps'
+    'tyre_temp,velocity_x,velocity_y,velocity_z,wheel_rotation,wheel_rps,' +
+    // P3 M-6(#147): race-metrics.js が回生/トルク配分表示で消費(冒頭コメントの
+    // 「カード追加時の追随手順」による追加。ペイロード影響は+2フィールドで軽微)
+    'energy_recovery,torque_vector'
 );
 
 // 多段フォールバック閾値(生 size_bytes 基準。射影係数0.89の実測に基づく。§3.2)

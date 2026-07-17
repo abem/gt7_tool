@@ -36,8 +36,10 @@ const RM_TOP_CORNERS = 5;                // コーナー別得失の表示数
 const RM_REPLAY_HL_MS = 250;             // 再生G-Gの現在位置更新周期
 // 補助取得(案a): 必要最小フィールドのみ射影(位置は距離軸整合用)
 // P2(#146): サスヒストグラム用に susp_height を追加(承認済み方式の同一枠内)
+// P3(#147): 滑らかさスコア用に throttle_pct を追加(同上)
 const RM_AUX_FIELDS = 'timestamp,position_x,position_z,body_accel_sway,' +
-                      'accel_g,accel_decel,wheel_rotation,brake_pct,susp_height';
+                      'accel_g,accel_decel,wheel_rotation,brake_pct,susp_height,' +
+                      'throttle_pct';
 const RM_AUX_EVERY = 6;
 
 /* ---- P2(#146) 定数 ---- */
@@ -47,6 +49,16 @@ const RM_STRATEGY_TICK_MS = 1000;         // M-4 ライブポーリング周期(
 const RM_DEG_LAPS = 5;                    // デグ回帰に使う直近ラップ数
 const RM_DEG_OUTLIER_FRAC = 0.08;         // 中央値±8%超を外れ値(ピット/ミス周)として除外
 
+/* ---- P3(#147) 定数 ---- */
+// M-5 滑らかさ raw 指標の重み(低いほど滑らか)。各成分は無次元化してから合成:
+//   スロットル一階差分std[%/サンプル] / 舵角修正頻度[反転回数/km] / 舵角一階差分std[rad]
+const RM_SMOOTH_W_THR = 1.0;
+const RM_SMOOTH_W_REV = 0.5;
+const RM_SMOOTH_W_STEER = 40.0;           // radスケールを%スケールへ揃える係数
+const RM_SMOOTH_STEER_DEADBAND = 0.01;    // 反転判定のデッドバンド[rad](ノイズ除外)
+const RM_SMOOTH_POOL_BEST = 3;            // 較正基準に使うタイム上位ラップ数(采決裁の近似)
+const RM_SMOOTH_SCORE_MAX = 150;          // スコア上限クランプ
+
 /* ================================================================
  *  状態(rm 接頭辞のみに書込)
  * ================================================================ */
@@ -55,7 +67,10 @@ const rmState = {
     auxCache: {},        // file -> {samples} 補助取得キャッシュ
     reviewToken: 0,      // 比較世代(古い応答破棄)
     replayHlTimer: null, // 再生G-Gの現在位置タイマ
-    replayGGBase: null   // 再生G-Gの事前描画(offscreen canvas)
+    replayGGBase: null,  // 再生G-Gの事前描画(offscreen canvas)
+    smoothPool: {},      // P3 M-5: file -> {raw, laptime} 較正プール
+    replayEtSupport: null, // P3 M-6: 現バッファの回生/トルク対応判定
+    strategyLast: null   // P2 M-4: 直近パース値(検証用)
 };
 
 function rmEnsureEls() {
@@ -73,7 +88,9 @@ function rmEnsureEls() {
         suspReview: document.getElementById('rm-susp-review'),
         suspReplay: document.getElementById('rm-susp-replay'),
         degValue: document.getElementById('rm-deg-value'),
-        pitValue: document.getElementById('rm-pit-value')
+        pitValue: document.getElementById('rm-pit-value'),
+        energyBox: document.getElementById('rm-energy-box'),
+        smoothReplay: document.getElementById('rm-smooth-replay')
     };
     return rmState.els;
 }
@@ -173,6 +190,18 @@ function rmOnReplayBuffer() {
         rmDrawSuspHisto(els.suspReplay, rmSuspSeries(frames), null);
     }
 
+    // P3 M-6: 回生/トルク配分の対応判定(全編0.0ならN/A表示)
+    rmState.replayEtSupport = rmEnergyTorqueSupport(frames);
+    rmUpdateEnergyTorque(frames[0] || null);
+
+    // P3 M-5: 再生ラップの滑らかさミニ表示(基準未形成時は較正中)
+    if (els.smoothReplay) {
+        const sm = rmSmoothRaw(frames);
+        const score = sm ? rmSmoothScore(sm.raw) : null;
+        els.smoothReplay.textContent = '滑らかさ ' +
+            (sm ? (score != null ? score : '較正中(raw ' + sm.raw.toFixed(1) + ')') : '—');
+    }
+
     const g = rmSetupCanvas(els.ggReplay);
     rmDrawGGBase(g);
     const drawn = rmDrawGGScatter(g, frames, 'rgba(61, 155, 255, 0.55)');
@@ -218,6 +247,8 @@ function rmReplayHighlightTick() {
         ctx.arc(x, y, 5, 0, Math.PI * 2);
         ctx.stroke();
     }
+    // P3 M-6: 再生位置のフレームで回生/トルク表示を更新
+    rmUpdateEnergyTorque(replayState.frames[i]);
 }
 
 /* ================================================================
@@ -578,6 +609,174 @@ function rmStrategyTick() {
     rmState.strategyLast = { deg: deg, fuelLaps: fuelLaps, lap: lap };
 }
 
+/* ================================================================
+ *  P3 M-5: スロットル/ステア滑らかさスコア(#147)
+ *
+ *  raw指標(低いほど滑らか) = w1×std(Δthrottle) + w2×舵角反転/km + w3×std(Δsteer)
+ *  較正(采決裁の近似・計承認済み): セッション中に補助取得したラップ群のうち
+ *  タイム上位≤3本の raw 中央値を 100 基準とし score = 100×基準/raw。
+ *  ※永続ベスト履歴インフラが無い現状の現実的近似(完了報告で明示し査読確認)。
+ * ================================================================ */
+
+/**
+ * 補助サンプル列(10Hz)から滑らかさ raw 指標を算出。
+ * @returns {{raw:number, thrStd:number, revPerKm:number, steerStd:number}|null}
+ */
+function rmSmoothRaw(samples) {
+    if (!samples || samples.length < 30) {
+        return null;
+    }
+    const dThr = [];
+    const dSteer = [];
+    let reversals = 0;
+    let lastDir = 0;
+    let dist = 0;
+    let lastX = null;
+    let lastZ = null;
+    let prevThr = null;
+    let prevSteer = null;
+    let hasSteer = false;
+
+    samples.forEach(function(s) {
+        if (s.position_x != null && s.position_z != null) {
+            if (lastX !== null) {
+                const seg = Math.hypot(s.position_x - lastX, s.position_z - lastZ);
+                if (seg <= 120) dist += seg;
+            }
+            lastX = s.position_x;
+            lastZ = s.position_z;
+        }
+        if (s.throttle_pct != null) {
+            if (prevThr !== null) dThr.push(s.throttle_pct - prevThr);
+            prevThr = s.throttle_pct;
+        }
+        if (s.wheel_rotation != null) {
+            hasSteer = true;
+            if (prevSteer !== null) {
+                const d = s.wheel_rotation - prevSteer;
+                dSteer.push(d);
+                if (Math.abs(d) > RM_SMOOTH_STEER_DEADBAND) {
+                    const dir = d > 0 ? 1 : -1;
+                    if (lastDir !== 0 && dir !== lastDir) reversals++;
+                    lastDir = dir;
+                }
+            }
+            prevSteer = s.wheel_rotation;
+        }
+    });
+    if (!dThr.length || !hasSteer || dist < 100) {
+        return null;   // v1(舵角なし)や極短データは対象外
+    }
+    const std = function(arr) {
+        const m = arr.reduce(function(x, y) { return x + y; }, 0) / arr.length;
+        let v = 0;
+        arr.forEach(function(x) { v += (x - m) * (x - m); });
+        return Math.sqrt(v / arr.length);
+    };
+    const thrStd = std(dThr);
+    const steerStd = std(dSteer);
+    const revPerKm = reversals / (dist / 1000);
+    const raw = RM_SMOOTH_W_THR * thrStd + RM_SMOOTH_W_REV * revPerKm +
+                RM_SMOOTH_W_STEER * steerStd;
+    return { raw: raw, thrStd: thrStd, revPerKm: revPerKm, steerStd: steerStd };
+}
+
+/** ラップの raw 指標を較正プールへ登録(laptimeはREVIEWメタの近似値)。 */
+function rmSmoothPoolAdd(file, raw, laptimeMs) {
+    if (raw != null && laptimeMs > 0) {
+        rmState.smoothPool[file] = { raw: raw, laptime: laptimeMs };
+    }
+}
+
+/** 較正基準(タイム上位≤3本のraw中央値)。プール空なら null。 */
+function rmSmoothBaseline() {
+    const entries = Object.keys(rmState.smoothPool).map(function(f) {
+        return rmState.smoothPool[f];
+    });
+    if (!entries.length) {
+        return null;
+    }
+    entries.sort(function(p, q) { return p.laptime - q.laptime; });
+    const best = entries.slice(0, RM_SMOOTH_POOL_BEST)
+                        .map(function(e) { return e.raw; })
+                        .sort(function(x, y) { return x - y; });
+    return best[Math.floor(best.length / 2)];
+}
+
+/** score = 100×基準/raw (0〜150クランプ)。基準未形成は null。 */
+function rmSmoothScore(raw) {
+    const base = rmSmoothBaseline();
+    if (base == null || raw == null || raw <= 0) {
+        return null;
+    }
+    return Math.max(0, Math.min(RM_SMOOTH_SCORE_MAX, Math.round(100 * base / raw)));
+}
+
+/** REVIEWサマリへ注入した表示スパンを更新(A/B)。 */
+function rmSmoothUpdateReviewSpans(scoreA, scoreB) {
+    const fmt = function(v) { return v == null ? '較正中' : String(v); };
+    const elA = document.getElementById('rm-smooth-a');
+    const elB = document.getElementById('rm-smooth-b');
+    if (elA) elA.textContent = '滑らかさA: ' + fmt(scoreA);
+    if (elB) elB.textContent = '滑らかさB: ' + fmt(scoreB);
+}
+
+/* ================================================================
+ *  P3 M-6: energy_recovery / torque_vector 表示(#147)
+ *  再生位置連動(rmReplayHighlightTick から毎周期更新)。
+ *  非対応車種(全編0.0)は N/A を正直表示(誇張しない。#142制約)。
+ * ================================================================ */
+
+/** バッファ全体でフィールドが「意味を持つ」か(非ゼロが存在するか)を判定。 */
+function rmEnergyTorqueSupport(frames) {
+    let energy = false;
+    let torque = false;
+    for (let i = 0; i < frames.length; i += 10) {
+        const f = frames[i];
+        if (!energy && f.energy_recovery) energy = true;
+        if (!torque && Array.isArray(f.torque_vector) &&
+            f.torque_vector.some(function(v) { return v; })) torque = true;
+        if (energy && torque) break;
+    }
+    return { energy: energy, torque: torque };
+}
+
+/** 再生位置のフレームで energy/torque 表示を更新。 */
+function rmUpdateEnergyTorque(frame) {
+    const els = rmEnsureEls();
+    if (!els.energyBox || !frame) {
+        return;
+    }
+    const sup = rmState.replayEtSupport || { energy: false, torque: false };
+    if (!sup.energy && !sup.torque) {
+        els.energyBox.innerHTML =
+            '<div class="rm-note">N/A: この車種は回生/トルク配分データ非対応(全編0.0)</div>';
+        return;
+    }
+    let html = '';
+    if (sup.energy) {
+        html += '<div class="rm-et-row">回生 <b>' +
+                ((frame.energy_recovery || 0).toFixed(1)) + '</b></div>';
+    } else {
+        html += '<div class="rm-et-row rm-note">回生: N/A(この車種は0.0)</div>';
+    }
+    if (sup.torque) {
+        const tv = frame.torque_vector || [0, 0, 0, 0];
+        const maxAbs = Math.max(1, Math.max.apply(null, tv.map(Math.abs)));
+        html += '<div class="rm-et-torque">';
+        for (let w = 0; w < 4; w++) {
+            const pct = Math.round(Math.abs(tv[w] || 0) / maxAbs * 100);
+            html += '<div class="rm-et-wheel"><span>' + RM_WHEELS[w] + '</span>' +
+                '<div class="rm-et-bar"><div style="width:' + pct + '%"></div></div>' +
+                '<span>' + (tv[w] || 0).toFixed(2) + '</span></div>';
+        }
+        html += '</div>';
+    } else {
+        html += '<div class="rm-et-row rm-note">トルク配分: N/A(この車種は0.0)</div>';
+    }
+    els.energyBox.innerHTML = html;
+}
+
 /** REVIEW比較の確定データからカードを更新する(フック唯一の入口)。 */
 function rmOnReviewCompare(a, b) {
     const els = rmEnsureEls();
@@ -617,6 +816,14 @@ function rmOnReviewCompare(a, b) {
                 auxA ? rmSuspSeries(auxA.samples) : null,
                 auxB ? rmSuspSeries(auxB.samples) : null);
         }
+
+        // --- P3 M-5: 滑らかさスコア(較正プール登録→相対スコア) ---
+        const smA = auxA ? rmSmoothRaw(auxA.samples) : null;
+        const smB = auxB ? rmSmoothRaw(auxB.samples) : null;
+        if (smA && a && a.meta) rmSmoothPoolAdd(fileA, smA.raw, a.meta.laptime_ms_approx);
+        if (smB && b && b.meta) rmSmoothPoolAdd(fileB, smB.raw, b.meta.laptime_ms_approx);
+        rmSmoothUpdateReviewSpans(smA ? rmSmoothScore(smA.raw) : null,
+                                  smB ? rmSmoothScore(smB.raw) : null);
 
         // --- M-2: フェーズ別デルタ+コーナー別+トレイル(A/B両方が必要) ---
         if (!(a && a.res && b && b.res)) {
@@ -673,6 +880,29 @@ function initRaceMetrics() {
     const els = rmEnsureEls();
     if (els.degValue && els.pitValue) {
         setInterval(rmStrategyTick, RM_STRATEGY_TICK_MS);
+    }
+
+    // P3 M-5(#147): 滑らかさスコアの表示先を注入する
+    //  - REVIEWサマリ帯へ A/B の2スパン(既存JS無改変のDOM注入。menu.jsのツールバー注入と同じ流儀)
+    //  - 再生バーの EXIT 直前へミニ表示1スパン
+    const summary = document.getElementById('review-summary');
+    if (summary && !document.getElementById('rm-smooth-a')) {
+        ['rm-smooth-a', 'rm-smooth-b'].forEach(function(id) {
+            const span = document.createElement('span');
+            span.className = 'review-sum-item';
+            span.id = id;
+            span.textContent = (id === 'rm-smooth-a' ? '滑らかさA: --' : '滑らかさB: --');
+            summary.appendChild(span);
+        });
+    }
+    const bar = document.getElementById('replay-bar');
+    const exitBtn = document.getElementById('replay-btn-exit');
+    if (bar && exitBtn && !document.getElementById('rm-smooth-replay')) {
+        const span = document.createElement('span');
+        span.id = 'rm-smooth-replay';
+        span.textContent = '滑らかさ --';
+        bar.insertBefore(span, exitBtn);
+        rmState.els = null;   // elsキャッシュ再構築(注入した要素を拾う)
     }
 }
 
