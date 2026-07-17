@@ -90,6 +90,11 @@
                             <canvas id="rm-gg-review"></canvas>
                         </div>
                         <div>
+                            <!-- P2 M-3 (#146): サスペンション変位ヒストグラム -->
+                            <div class="rm-title">SUSP HISTOGRAM (A=青 / B=緑)</div>
+                            <canvas id="rm-susp-review"></canvas>
+                        </div>
+                        <div>
                             <div id="rm-phase-table"></div>
                             <div id="rm-corner-list"></div>
                         </div>
@@ -609,8 +614,26 @@
         <!-- 実レース由来メトリクス P1 (#145): 再生モード時のみ表示の下部追加行。
              grid-column明示は race-metrics.css(#136教訓) -->
         <div id="rm-replay-card">
-            <div class="chart-title">G-G DIAGRAM (REPLAY)</div>
-            <canvas id="rm-gg-replay"></canvas>
+            <div id="rm-replay-grid">
+                <div>
+                    <div class="chart-title">G-G DIAGRAM (REPLAY)</div>
+                    <canvas id="rm-gg-replay"></canvas>
+                </div>
+                <div>
+                    <!-- P2 M-3 (#146): 再生ラップのサスヒストグラム -->
+                    <div class="chart-title">SUSP HISTOGRAM (REPLAY)</div>
+                    <canvas id="rm-susp-replay"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- P2 M-4 (#146): タイヤデグ率+ピットウィンドウ(ライブ戦略ミニカード)。
+             race-metrics.js の1Hzポーリング(DOM表示値読取)が更新する。
+             下部追加行・grid-column明示は race-metrics.css -->
+        <div id="rm-strategy-card">
+            <span class="rm-title">STRATEGY</span>
+            <span class="rm-strategy-item">DEG <b id="rm-deg-value">--</b></span>
+            <span class="rm-strategy-item">PIT <b id="rm-pit-value">--</b></span>
         </div>
     </div>
 
