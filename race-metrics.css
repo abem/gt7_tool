@@ -141,3 +141,41 @@ body.replay-mode #rm-replay-card {
 body.drive-mode #rm-strategy-card {
     display: none;
 }
+
+/* ---- P3 (#147): energy/torque・滑らかさ ---- */
+
+#rm-energy-box {
+    min-width: 220px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.rm-et-row b { color: var(--text-primary); margin-left: 6px; }
+
+.rm-et-wheel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.rm-et-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--surface-3);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.rm-et-bar > div {
+    height: 100%;
+    background: var(--accent-brand);
+}
+
+#rm-smooth-replay {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
