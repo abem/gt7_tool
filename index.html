@@ -82,8 +82,8 @@
                     <div id="review-inputs-chart" class="review-chart"></div>
                 </div>
                 <!-- 実レース由来メトリクス P1 (#145): 下部追加行(既存ブロックの差し替えなし) -->
-                <div id="rm-review-card">
-                    <div class="review-chart-title">RACE METRICS (A/B)</div>
+                <div id="rm-review-card" class="card race-metrics-review-card">
+                    <div class="card-title review-chart-title">RACE METRICS (A/B)</div>
                     <div id="rm-review-grid">
                         <div>
                             <div class="rm-title">G-G DIAGRAM (A=青 / B=緑)</div>
@@ -613,7 +613,7 @@
 
         <!-- 実レース由来メトリクス P1 (#145): 再生モード時のみ表示の下部追加行。
              grid-column明示は race-metrics.css(#136教訓) -->
-        <div id="rm-replay-card">
+        <div id="rm-replay-card" class="card race-metrics-replay-card">
             <div id="rm-replay-grid">
                 <div>
                     <div class="chart-title">G-G DIAGRAM (REPLAY)</div>
@@ -635,8 +635,8 @@
         <!-- P2 M-4 (#146): タイヤデグ率+ピットウィンドウ(ライブ戦略ミニカード)。
              race-metrics.js の1Hzポーリング(DOM表示値読取)が更新する。
              下部追加行・grid-column明示は race-metrics.css -->
-        <div id="rm-strategy-card">
-            <span class="rm-title">STRATEGY</span>
+        <div id="rm-strategy-card" class="card race-metrics-strategy-card">
+            <span class="card-title rm-title">STRATEGY</span>
             <span class="rm-strategy-item">DEG <b id="rm-deg-value">--</b></span>
             <span class="rm-strategy-item">PIT <b id="rm-pit-value">--</b></span>
         </div>
