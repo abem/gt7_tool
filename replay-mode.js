@@ -266,6 +266,8 @@ function replaySetBuffer(frames) {
     replayState.segments = idx.segments;
     replayRenderSegments();
     replayUpdateBar();
+    // 実レース由来メトリクス P1 (#145): バッファ確定を race-metrics.js へ(唯一のフック)
+    if (typeof rmOnReplayBuffer === 'function') rmOnReplayBuffer();
 }
 
 /**

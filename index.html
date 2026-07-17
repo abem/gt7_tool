@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/uplot.min.css">
     <link rel="stylesheet" href="/review.css">
     <link rel="stylesheet" href="/replay.css">
+    <link rel="stylesheet" href="/race-metrics.css">
 </head>
 <body>
     <div class="dashboard">
@@ -79,6 +80,20 @@
                 <div class="review-chart-block">
                     <div class="review-chart-title">THROTTLE / BRAKE (A/B)</div>
                     <div id="review-inputs-chart" class="review-chart"></div>
+                </div>
+                <!-- 実レース由来メトリクス P1 (#145): 下部追加行(既存ブロックの差し替えなし) -->
+                <div id="rm-review-card">
+                    <div class="review-chart-title">RACE METRICS (A/B)</div>
+                    <div id="rm-review-grid">
+                        <div>
+                            <div class="rm-title">G-G DIAGRAM (A=青 / B=緑)</div>
+                            <canvas id="rm-gg-review"></canvas>
+                        </div>
+                        <div>
+                            <div id="rm-phase-table"></div>
+                            <div id="rm-corner-list"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -590,6 +605,13 @@
                 </div>
             </div>
         </div>
+
+        <!-- 実レース由来メトリクス P1 (#145): 再生モード時のみ表示の下部追加行。
+             grid-column明示は race-metrics.css(#136教訓) -->
+        <div id="rm-replay-card">
+            <div class="chart-title">G-G DIAGRAM (REPLAY)</div>
+            <canvas id="rm-gg-replay"></canvas>
+        </div>
     </div>
 
     <!-- Three.js 廃止: CAR ATTITUDE は car-3d.js の Canvas2D 実装（WebGL不要）に置換 -->
@@ -604,6 +626,7 @@
     <script src="/drive-view.js"></script>
     <script src="/review-view.js"></script>
     <script src="/replay-mode.js"></script>
+    <script src="/race-metrics.js"></script>
     <script src="/websocket.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>

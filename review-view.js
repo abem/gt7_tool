@@ -754,6 +754,8 @@ function reviewUpdateComparison() {
         }
 
         reviewRenderCharts(a, b);
+        // 実レース由来メトリクス P1 (#145): 比較確定データを race-metrics.js へ(唯一のフック)
+        if (typeof rmOnReviewCompare === 'function') rmOnReviewCompare(a, b);
     }).catch(function(err) {
         if (token !== reviewState._compareToken) {
             return;
