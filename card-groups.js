@@ -35,7 +35,28 @@
         } catch (e) { return {}; }   // 不正値は全表示へフォールバック
     }
     function cgSave(m) {
-        try { localStorage.setItem(CG_STORE_KEY, JSON.stringify(m)); } catch (e) {}
+        try {
+            localStorage.setItem(CG_STORE_KEY, JSON.stringify(m));
+        } catch (e) {
+            // #153: 保存失敗の握りつぶしをやめ、実害時のみ非侵襲トーストで知らせる
+            // (表示切替自体は cgApply が済ませているため画面は反映済み。
+            //  リロードで元に戻る、という事実をユーザーが知れることが目的)
+            cgWarnSaveFailed();
+        }
+    }
+
+    var cgWarnShown = false;   // セッション中は初回のみ(連打での多重表示防止)
+    function cgWarnSaveFailed() {
+        if (cgWarnShown) return;
+        cgWarnShown = true;
+        var el = document.createElement('div');
+        el.id = 'cg-save-warn';
+        el.setAttribute('role', 'alert');
+        el.textContent = 'カード表示設定を保存できませんでした(ブラウザのストレージ設定を確認)。表示は反映されていますが、リロードすると元に戻ります。';
+        document.body.appendChild(el);
+        setTimeout(function () {
+            if (el.parentNode) el.parentNode.removeChild(el);
+        }, 5000);
     }
     function cgVisible(state, gid) { return state[gid] !== false; }  // 欠落=表示
 
@@ -104,6 +125,14 @@
             cgSave(state);
             cgApply(state);
             cgSyncChecks();
+            // #153: 押下効果を確実に視認させる — パネルを閉じて復帰したカード群を見せ、
+            // CARDSボタンを一瞬フラッシュ(menu.jsのtb-flashと同じ発想の独自クラス)
+            cgClosePanel();
+            var btn = document.getElementById('cg-toolbar-btn');
+            if (btn) {
+                btn.classList.add('cg-flash');
+                setTimeout(function () { btn.classList.remove('cg-flash'); }, 250);
+            }
         });
         cgPanel.appendChild(showAll);
         document.body.appendChild(cgPanel);
@@ -160,13 +189,27 @@
         return true;
     }
 
+    function cgClosePanel() {
+        if (!cgPanel) return;
+        cgPanel.classList.remove('cg-open');
+        var btn = document.getElementById('cg-toolbar-btn');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+
     // パネル外クリックで閉じる
     document.addEventListener('pointerdown', function (e) {
         if (!cgPanel || !cgPanel.classList.contains('cg-open')) return;
         var btn = document.getElementById('cg-toolbar-btn');
         if (cgPanel.contains(e.target) || (btn && btn.contains(e.target))) return;
-        cgPanel.classList.remove('cg-open');
-        if (btn) btn.setAttribute('aria-expanded', 'false');
+        cgClosePanel();
+    });
+
+    // #153: タブ間同期 — 他タブでの変更(同一オリジンのstorageイベント)を反映する。
+    // e.key===null は clear() のケース。標準機構のみでポーリングは行わない。
+    window.addEventListener('storage', function (e) {
+        if (e.key !== null && e.key !== CG_STORE_KEY) return;
+        cgApply(cgLoad());
+        cgSyncChecks();
     });
 
     function cgInit() {
