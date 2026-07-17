@@ -1968,6 +1968,10 @@ body.gt7-resizing { user-select: none; -webkit-user-select: none; touch-action: 
 .layout-reset-btn { white-space: nowrap; }
 /* DRIVE モードでは浮かせたカードも隠す（STEER RESPONSE と上部レーシングバーは走行中も残す） */
 body.drive-mode .draggable-card.floating:not(.steer-response-card):not(.racing-top-bar) { display: none; }
+/* REVIEW モードも同様(#157)。浮遊カードは body 直下へ再親化され祖先の表示制御から
+   外れるため、REVIEW では一律隠す。除外は REVIEW が本来の生息地である
+   RACE METRICS レビューカードのみ(他カードは非浮遊時も REVIEW で隠れるのが正)。 */
+body.review-mode .draggable-card.floating:not(.race-metrics-review-card) { display: none; }
 
 /* --- 操作ツールバー(フラット1段 / menu.js) --- */
 .app-toolbar {
