@@ -107,6 +107,11 @@ body.replay-mode #rm-replay-card {
     border: 1px solid var(--border-hairline);
     border-radius: 8px;
     padding: 8px 10px;
+    /* #165: #rm-replay-grid(下記、nowrap既定)の子要素合計幅がこのブロック要素の
+       自動最小幅としてグリッドトラックへ伝播し、800px以下のビューポートで
+       .dashboard側の横スクロールを引き起こす(#162の#replay-barと同型の問題)。
+       min-width:0でこのフロアを解除する(.dashboardのグリッド定義自体は変更しない)。 */
+    min-width: 0;
 }
 
 /* ---- P2 (#146): サスヒストグラム・戦略カード ---- */
@@ -119,6 +124,10 @@ body.replay-mode #rm-replay-card {
 #rm-replay-grid {
     display: flex;
     gap: 24px;
+    /* #165: 既定nowrapでは固定260px canvas×2+min-width:220pxのenergy boxが
+       一列合計~790pxを要求し続ける。flex-wrapで折返しを許容し、上記の
+       #rm-replay-card min-width:0と合わせて実レイアウトを800px幅に収める。 */
+    flex-wrap: wrap;
 }
 
 #rm-susp-replay {
