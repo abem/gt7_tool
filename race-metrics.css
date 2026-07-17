@@ -10,6 +10,17 @@
 
 /* ---- REVIEW側: RACE METRICS カード ---- */
 
+/* #157: 表示制御を祖先(#review-root)依存からid直接ルールへ(rm-replay-cardと同型)。
+   浮遊化(body直下へ再親化)後もREVIEW以外のモードで確実に隠れるようにする。
+   非浮遊時のREVIEW内表示は従来と同じ display:block(flex列の子)。 */
+#rm-review-card {
+    display: none;
+}
+
+body.review-mode #rm-review-card {
+    display: block;
+}
+
 #rm-review-card {
     background: var(--surface-1);
     border: 1px solid var(--border-hairline);
@@ -139,6 +150,14 @@ body.replay-mode #rm-replay-card {
 }
 
 body.drive-mode #rm-strategy-card {
+    display: none;
+}
+
+/* #157: REVIEW でも id 直接ルールで隠す。docked 時は review.css の構造ルール
+   (.dashboard > *:not(...)) が隠すが、浮遊(body直下へ再親化)後は構造ルールが
+   外れ、かつ #rm-strategy-card{display:flex} の id 特異性が REVIEW 版汎用ルール
+   (クラスのみ)に勝って漏出するため(実測)。drive-mode と同型の明示ルールで是正。 */
+body.review-mode #rm-strategy-card {
     display: none;
 }
 
