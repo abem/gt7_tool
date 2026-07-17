@@ -36,6 +36,13 @@ body.replay-mode #replay-bar {
     z-index: 900;
     font-size: 12px;
     color: var(--text-secondary);
+    /* #162: グリッドアイテムの既定min-width:autoは内包する一列フレックス内容の
+       最小コンテンツ幅(セグメント選択表示時など約1000px超)をトラックの下限に
+       強制し、950px以下のビューポートで.dashboard側の横スクロールを引き起こす。
+       min-width:0でこのフロアを解除し、内部要素側はflex-wrapで折り返し可能にする
+       (.dashboardのグリッド定義自体・card-drag.jsのコア関数は変更しない)。 */
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 /* 再生中は一過性トーストを抑止(発火しても非表示・4秒で自動撤去される) */
