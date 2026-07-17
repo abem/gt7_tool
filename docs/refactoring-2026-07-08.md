@@ -156,7 +156,7 @@ async def telemetry_background_task():
 
 | 亜種 | サイズ | 移動前の状態 |
 |------|--------|------|
-| `gt7_tool_dev` | 3.0G | ほぼ `gt7data/`。`.git` は worktree ポインタ（`gitdir: /home/abem/docker/gt7_tool/.git/worktrees/gt7_tool_dev`） |
+| `gt7_tool_dev` | 3.0G | ほぼ `gt7data/`。`.git` は worktree ポインタ（`gitdir: /home/<user>/docker/gt7_tool/.git/worktrees/gt7_tool_dev`） |
 | `gt7_tool_car_attitude2` | 3.6G | 同上 |
 | `gt7dashboard` | 439M | 非git、`docker-compose.yml` + `gt7data/` のみ |
 
@@ -166,7 +166,7 @@ async def telemetry_background_task():
 >
 > 初版のコミットメッセージ・ドキュメントでは「2亜種の `.git` は孤立した worktree ポインタのみで**親消失済み**」と記載していたが、これは**誤り**だった。実際は:
 >
-> - **親リポジトリ `/home/abem/docker/gt7_tool` は現存**する（branch: `feature/dev2026-06-14`）
+> - **親リポジトリ `/home/<user>/docker/gt7_tool` は現存**する（branch: `feature/dev2026-06-14`）
 > - ただし `git worktree list` には表示されず、`.git/worktrees/` メタデータが存在しない（prune 済みか初期から未設定）
 > - そのため archive/ 側から `git status` すら実行できない状態（`not a git repository`）
 >
@@ -323,7 +323,7 @@ $ pytest tests/ -v
 **コード修正の妥当性は単体テストで確認したが、実機でのテレメトリ復号成功は未確認である。マージ前に必ず以下を実施すること。**
 
 ```bash
-cd /home/abem/Projects/gt7/gt7_tool
+cd /home/<user>/Projects/gt7/gt7_tool
 
 # 問題なければ main へマージ
 git merge feature/backend-stabilization-2026-07-08
@@ -356,7 +356,7 @@ docker logs -f gt7_tool-gt7_tool-1
 
 | 指摘 | 初版の記載 | 実際 | 訂正 |
 |------|------------|------|------|
-| 親worktreeの存在 | 「親消失済み」 | `/home/abem/docker/gt7_tool` が現存 | ドキュメント訂正 |
+| 親worktreeの存在 | 「親消失済み」 | `/home/<user>/docker/gt7_tool` が現存 | ドキュメント訂正 |
 | 未コミット変更 | 言及なし | 9ファイル約1300行のAPEX Broadcast中間状態 | スナップショット保存後に破棄 |
 | ハートビート二重制御 | `send_heartbeat` 内と `_heartbeat_loop` 内の二重 | — | `send_heartbeat` を無条件化し一元化 |
 | scripts/ のgit追跡 | 「集約」とだけ記載 | 26ファイルは `.gitignore` 対応で非追跡 | ドキュメントに明記 |

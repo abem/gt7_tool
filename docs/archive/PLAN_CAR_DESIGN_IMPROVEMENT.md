@@ -1,5 +1,7 @@
 # 3D車両モデル デザイン改善計画書
 
+> ※本計画は旧 Three.js 3D モデル時代の検討記録。現行実装は Canvas2D 方式（README / docs/architecture.md 参照）。
+
 ---
 
 ## 1. 現状の問題点
