@@ -1,5 +1,7 @@
 # CAR ATTITUDE マウス操作対応 計画書
 
+> ※本計画は旧 Three.js 3D モデル時代の検討記録。現行実装は Canvas2D 方式（README / docs/architecture.md 参照）で、本書が前提とする3D回転操作・OrbitControls等は現在使用していない。
+
 ## 現状の問題
 
 - 3D車両モデルがテレメトリデータの `rotation_yaw` に応じて自動回転する

@@ -164,7 +164,7 @@ obs = |δsw| · v / |ω|
 | ヨーレート | \|yaw\| > 0.02 rad/s | ゼロ割り・微小ヨーのノイズを回避 |
 | 符号一致 | steer × yaw > 0 | 逆位相（スピン/カウンター）のサンプルを除外 |
 | 横G | \|latG\| < 0.5g（0.5 × 9.81 m/s²） | 線形（低横G）領域に限定。タイヤ飽和域のゲインを学習しない |
-| TEST MODE 除外 | `testModeActive` が真なら不採用 | 合成デモデータで実走基準を汚さないため |
+| TEST MODE / 再生モード除外 | `testModeActive` または `replayActive` が真なら不採用 | 合成デモデータ・過去ラップの再生データで「今接続中の車」の実走基準を汚さないため（`replayActive` 除外は #134 査指摘反映） |
 
 ### 更新式
 
@@ -192,6 +192,7 @@ neutralL ← neutralL + (obs − neutralL) × calibAlpha    （calibAlpha = 0.00
 PS5 (GT7 UDP) → telemetry.py（受信）/ decoder.py（復号）
     → WebSocket 配信 → websocket.js（実走）
                         test-mode.js（デモ・合成データ）
+                        replay-mode.js（過去ラップ再生。websocket.js と同一入口 handleTelemetryMessage 経由）
     → updateSteerResponse(wheel_rotation, angular_velocity_y, speed_ms, body_accel_sway)
     → computeSteerMetrics()   … 曲率・バランス比の算出
     → renderSteerResponse()   … requestAnimationFrame ループで Canvas2D 描画

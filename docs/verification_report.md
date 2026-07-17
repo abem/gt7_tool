@@ -17,6 +17,8 @@
 | integration_test_plan.md | 統合テスト計画 | 中 |
 | investigation_summary.md | 調査・統合サマリー | 中 |
 
+> ※ 本レポートは2026-02-11時点のスナップショットです。`COURSE_SPEC.md`・`LOG.md`は現在のリポジトリには存在しません（`TROUBLESHOOTING.md`は`docs/archive/`へ移動済み）。
+
 ---
 
 ## 2. 内容チェック（情報の正確性・誤字脱字）

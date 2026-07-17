@@ -1,6 +1,8 @@
 # 3D車両モデル演出強化計画書
 ## 振動・ピッチ・ロールを派手に動かす実装
 
+> ※本計画は旧 Three.js 3D モデル時代の検討記録。現行実装は Canvas2D 方式（README / docs/architecture.md 参照）で、本書が前提とする`EXAGGERATION_CONFIG`等の演出パラメータは現在使用していない。
+
 ---
 
 ## 1. 目的
