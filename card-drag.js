@@ -182,6 +182,9 @@
     function minSize(el) {
         if (el.classList.contains('racing-top-bar')) return { w: 670, h: 112 };
         if (el.classList.contains('chart-wrapper')) return { w: 180, h: 110 };
+        // STRATEGY は自然高約39pxの1行ミニバー。一律90pxだと復元時に高さが強制拡大され
+        // clampTop の許容域が縮み、下端付近の保存位置が上へ押し戻される(#148差し戻し)。
+        if (el.classList.contains('race-metrics-strategy-card')) return { w: 140, h: 32 };
         return { w: 140, h: 90 };
     }
     function findCard(el) {
@@ -356,10 +359,21 @@
 
     function init() {
         var all = Array.prototype.slice.call(document.querySelectorAll(BLOCK_SEL)).filter(isTopLevelBlock);
+        // 保存キー: id属性があればidそのもの(DOM順序に依存せず、カード追加・削除で不変)。
+        // id無しはslug+同一slug内の出現順連番へフォールバック(#150。全体連番だと
+        // 無関係なカードの挿入でも全キーがずれ、レイアウトが一斉リセットされるため)。
+        var slugSeq = {};
         all.forEach(function (el, idx) {
             var titleEl = ownTitle(el);
             var handle = el;                               // カード全体をハンドルに（どこでも掴める）
-            var key = slug(titleEl ? titleEl.textContent : (el.className || 'card')) + '#' + idx;
+            var key;
+            if (el.id) {
+                key = el.id;
+            } else {
+                var s = slug(titleEl ? titleEl.textContent : (el.className || 'card'));
+                slugSeq[s] = (slugSeq[s] || 0) + 1;
+                key = s + '#' + (slugSeq[s] - 1);
+            }
             var c = {
                 el: el, handle: handle, id: key,
                 orig: { parent: el.parentElement, index: Array.prototype.indexOf.call(el.parentElement.children, el) }
