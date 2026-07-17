@@ -35,9 +35,17 @@ const RM_TRAIL_STEER_NORM_RAD = 0.5;     // トレイル重なりの舵角正規
 const RM_TOP_CORNERS = 5;                // コーナー別得失の表示数
 const RM_REPLAY_HL_MS = 250;             // 再生G-Gの現在位置更新周期
 // 補助取得(案a): 必要最小フィールドのみ射影(位置は距離軸整合用)
+// P2(#146): サスヒストグラム用に susp_height を追加(承認済み方式の同一枠内)
 const RM_AUX_FIELDS = 'timestamp,position_x,position_z,body_accel_sway,' +
-                      'accel_g,accel_decel,wheel_rotation,brake_pct';
+                      'accel_g,accel_decel,wheel_rotation,brake_pct,susp_height';
 const RM_AUX_EVERY = 6;
+
+/* ---- P2(#146) 定数 ---- */
+const RM_HISTO_BINS = 20;                 // サス変位ヒストグラムのビン数
+const RM_WHEELS = ['FL', 'FR', 'RL', 'RR'];
+const RM_STRATEGY_TICK_MS = 1000;         // M-4 ライブポーリング周期(1Hz)
+const RM_DEG_LAPS = 5;                    // デグ回帰に使う直近ラップ数
+const RM_DEG_OUTLIER_FRAC = 0.08;         // 中央値±8%超を外れ値(ピット/ミス周)として除外
 
 /* ================================================================
  *  状態(rm 接頭辞のみに書込)
@@ -61,7 +69,11 @@ function rmEnsureEls() {
         cornerList: document.getElementById('rm-corner-list'),
         trailBox: document.getElementById('rm-trail-box'),
         replayCard: document.getElementById('rm-replay-card'),
-        ggReplay: document.getElementById('rm-gg-replay')
+        ggReplay: document.getElementById('rm-gg-replay'),
+        suspReview: document.getElementById('rm-susp-review'),
+        suspReplay: document.getElementById('rm-susp-replay'),
+        degValue: document.getElementById('rm-deg-value'),
+        pitValue: document.getElementById('rm-pit-value')
     };
     return rmState.els;
 }
@@ -155,6 +167,12 @@ function rmOnReplayBuffer() {
         return;
     }
     const frames = replayState.frames || [];
+
+    // P2 M-3: 再生ラップのサスヒストグラム(単一系列)
+    if (els.suspReplay) {
+        rmDrawSuspHisto(els.suspReplay, rmSuspSeries(frames), null);
+    }
+
     const g = rmSetupCanvas(els.ggReplay);
     rmDrawGGBase(g);
     const drawn = rmDrawGGScatter(g, frames, 'rgba(61, 155, 255, 0.55)');
@@ -365,6 +383,201 @@ function rmFmtTrail(v) {
     return (v == null) ? '—' : (v * 100).toFixed(0) + '%';
 }
 
+/* ================================================================
+ *  P2 M-3: サスペンション変位ヒストグラム(#146)
+ * ================================================================ */
+
+/**
+ * サンプル列から4輪の susp_height[mm] 値列を取り出す。
+ * @returns {Array<number[]>|null} [FL[],FR[],RL[],RR[]]。データ欠落時 null
+ */
+function rmSuspSeries(samples) {
+    const out = [[], [], [], []];
+    let found = false;
+    (samples || []).forEach(function(s) {
+        const sh = s && s.susp_height;
+        if (Array.isArray(sh) && sh.length >= 4) {
+            found = true;
+            for (let w = 0; w < 4; w++) {
+                out[w].push((sh[w] || 0) * 1000);   // m → mm
+            }
+        }
+    });
+    return found ? out : null;
+}
+
+/**
+ * 4輪ヒストグラムを1キャンバスに2×2で描く。seriesB があれば半透明重畳(A青/B緑)。
+ * ビン範囲は A/B 全データの min/max から共通に決める(重畳の比較性確保)。
+ */
+function rmDrawSuspHisto(canvas, seriesA, seriesB) {
+    const g = rmSetupCanvas(canvas);
+    const ctx = g.ctx;
+    ctx.clearRect(0, 0, g.w, g.h);
+    ctx.fillStyle = '#1B1F26';
+    ctx.fillRect(0, 0, g.w, g.h);
+
+    if (!seriesA && !seriesB) {
+        ctx.fillStyle = '#828B99';
+        ctx.font = '12px sans-serif';
+        ctx.fillText('N/A: サスペンションデータなし', 12, 24);
+        return null;
+    }
+    // 共通レンジ
+    let lo = Infinity;
+    let hi = -Infinity;
+    [seriesA, seriesB].forEach(function(sr) {
+        if (!sr) return;
+        sr.forEach(function(vals) {
+            vals.forEach(function(v) {
+                if (v < lo) lo = v;
+                if (v > hi) hi = v;
+            });
+        });
+    });
+    if (!(hi > lo)) {
+        hi = lo + 1;
+    }
+    const binW = (hi - lo) / RM_HISTO_BINS;
+    const cellW = g.w / 2;
+    const cellH = g.h / 2;
+
+    const histoOf = function(vals) {
+        const bins = new Array(RM_HISTO_BINS).fill(0);
+        vals.forEach(function(v) {
+            let k = Math.floor((v - lo) / binW);
+            if (k >= RM_HISTO_BINS) k = RM_HISTO_BINS - 1;
+            if (k < 0) k = 0;
+            bins[k]++;
+        });
+        return bins;
+    };
+
+    const counts = { a: [], b: [] };  // 独立検算用(度数合計)
+    for (let w = 0; w < 4; w++) {
+        const ox = (w % 2) * cellW;
+        const oy = Math.floor(w / 2) * cellH;
+        ctx.strokeStyle = '#2C313A';
+        ctx.strokeRect(ox + 2, oy + 2, cellW - 4, cellH - 4);
+        ctx.fillStyle = '#828B99';
+        ctx.font = '10px sans-serif';
+        ctx.fillText(RM_WHEELS[w], ox + 6, oy + 13);
+
+        const drawBins = function(bins, color) {
+            const maxC = Math.max.apply(null, bins) || 1;
+            const bw = (cellW - 12) / RM_HISTO_BINS;
+            ctx.fillStyle = color;
+            for (let k = 0; k < RM_HISTO_BINS; k++) {
+                const h = (bins[k] / maxC) * (cellH - 24);
+                ctx.fillRect(ox + 6 + k * bw, oy + cellH - 6 - h, Math.max(1, bw - 1), h);
+            }
+        };
+        if (seriesB) {
+            const binsB = histoOf(seriesB[w]);
+            counts.b.push(binsB.reduce(function(x, y) { return x + y; }, 0));
+            drawBins(binsB, 'rgba(31, 158, 87, 0.45)');
+        }
+        if (seriesA) {
+            const binsA = histoOf(seriesA[w]);
+            counts.a.push(binsA.reduce(function(x, y) { return x + y; }, 0));
+            drawBins(binsA, 'rgba(61, 155, 255, 0.55)');
+        }
+    }
+    return counts;   // {a:[4輪の度数合計], b:[...]} — 検証時にサンプル数と照合
+}
+
+/* ================================================================
+ *  P2 M-4: タイヤデグ率 + ピットウィンドウ(ライブ1Hzポーリング。#146)
+ *
+ *  実装方式(#143是正版・計承認済み): ライブ経路JSは完全無改変。
+ *   - ラップタイム履歴: 永続グローバル lapState.lapTimes を読み取り専用参照
+ *   - 燃料系/残周回: 既存カードの DOM 表示値を厳格パース(失敗時は '--' 縮退)
+ * ================================================================ */
+
+/** 厳格パース: 期待形式に一致しない場合 null(黙って誤値を使わない)。 */
+function rmParseFloatStrict(text) {
+    return (typeof text === 'string' && /^\d+(\.\d+)?$/.test(text.trim()))
+        ? parseFloat(text) : null;
+}
+
+/** "#current-lap" の "3/10" 形式を {cur,total} に。'--'系は null。 */
+function rmParseLapText(text) {
+    const m = (typeof text === 'string') && text.trim().match(/^(\d+)\/(\d+)$/);
+    return m ? { cur: parseInt(m[1], 10), total: parseInt(m[2], 10) } : null;
+}
+
+/**
+ * デグ率[s/lap]: 直近 RM_DEG_LAPS の確定ラップから、中央値±8%超の外れ値
+ * (ピットイン/ミス周)を除外し、線形回帰の勾配を返す。データ不足は null。
+ */
+function rmDegRate(lapTimes) {
+    if (!Array.isArray(lapTimes) || lapTimes.length < 3) {
+        return null;
+    }
+    const recent = lapTimes.slice(-RM_DEG_LAPS);
+    const times = recent.map(function(l) { return l.time; });
+    const sorted = times.slice().sort(function(a, b) { return a - b; });
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const pts = [];
+    recent.forEach(function(l) {
+        if (Math.abs(l.time - median) <= median * RM_DEG_OUTLIER_FRAC) {
+            pts.push({ x: l.number, y: l.time / 1000 });
+        }
+    });
+    if (pts.length < 3) {
+        return null;
+    }
+    let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    pts.forEach(function(p) {
+        sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y;
+    });
+    const n = pts.length;
+    const denom = n * sxx - sx * sx;
+    if (!denom) {
+        return null;
+    }
+    return (n * sxy - sx * sy) / denom;   // [s/lap]
+}
+
+/** M-4 の1Hz更新本体。 */
+function rmStrategyTick() {
+    const els = rmEnsureEls();
+    if (!els.degValue || !els.pitValue) {
+        return;
+    }
+    // デグ率(lapState は読み取り専用参照)
+    let degText = '--';
+    let deg = null;
+    if (typeof lapState !== 'undefined' && Array.isArray(lapState.lapTimes)) {
+        deg = rmDegRate(lapState.lapTimes);
+        if (deg != null) {
+            degText = (deg >= 0 ? '+' : '') + deg.toFixed(2) + ' s/lap';
+        }
+    }
+    els.degValue.textContent = degText;
+
+    // ピットウィンドウ(既存カードDOM表示値の厳格パース)
+    let pitText = '--';
+    const fuelLapsEl = document.getElementById('fuel-laps-remaining');
+    const curLapEl = document.getElementById('current-lap');
+    const fuelLaps = fuelLapsEl ? rmParseFloatStrict(fuelLapsEl.textContent) : null;
+    const lap = curLapEl ? rmParseLapText(curLapEl.textContent) : null;
+    if (fuelLaps != null && lap && lap.total > 0) {
+        const lapsLeft = lap.total - lap.cur;
+        if (fuelLaps >= lapsLeft) {
+            pitText = '燃料十分(残り' + lapsLeft + '周)';
+        } else {
+            pitText = 'L' + (lap.cur + Math.floor(fuelLaps)) + 'までにピット';
+        }
+    } else if (fuelLaps != null) {
+        pitText = '燃料残 約' + fuelLaps.toFixed(1) + '周';
+    }
+    els.pitValue.textContent = pitText;
+
+    // 検証用に最終パース値を保持(rm接頭辞の自前状態のみに書込)
+    rmState.strategyLast = { deg: deg, fuelLaps: fuelLaps, lap: lap };
+}
+
 /** REVIEW比較の確定データからカードを更新する(フック唯一の入口)。 */
 function rmOnReviewCompare(a, b) {
     const els = rmEnsureEls();
@@ -396,6 +609,13 @@ function rmOnReviewCompare(a, b) {
                 g.ctx.font = '12px sans-serif';
                 g.ctx.fillText('N/A: 加速度データなし(旧形式等)', 12, 24);
             }
+        }
+
+        // --- P2 M-3: サスヒストグラム(A/B半透明重畳) ---
+        if (els.suspReview) {
+            rmDrawSuspHisto(els.suspReview,
+                auxA ? rmSuspSeries(auxA.samples) : null,
+                auxB ? rmSuspSeries(auxB.samples) : null);
         }
 
         // --- M-2: フェーズ別デルタ+コーナー別+トレイル(A/B両方が必要) ---
@@ -443,4 +663,21 @@ function rmOnReviewCompare(a, b) {
             els.cornerList.innerHTML = html;
         }
     });
+}
+
+/* ================================================================
+ *  自己初期化(P2 M-4: ライブ1Hzポーリング開始)
+ *  フレーム経路には一切フックしない。DOM/永続グローバルの読み取りのみ。
+ * ================================================================ */
+function initRaceMetrics() {
+    const els = rmEnsureEls();
+    if (els.degValue && els.pitValue) {
+        setInterval(rmStrategyTick, RM_STRATEGY_TICK_MS);
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initRaceMetrics);
+} else {
+    initRaceMetrics();
 }
