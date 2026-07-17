@@ -82,3 +82,8 @@ investigation_summary.md
 
 # SSL certificates (self-signed, generated locally - never commit private keys)
 ssl/
+
+# 作業用バックアップ・作業記録一式(#152: 実IP/実ホスト名を含む内部作業成果物が
+# 誤ってgit add -A等で公開リポジトリへ混入するのを防止するため除外)
+backup/
+WORK_*/
