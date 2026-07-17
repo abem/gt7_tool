@@ -1,0 +1,86 @@
+/* ============================================================
+ * card-groups.css — カード表示グループ管理 (#151)
+ * 依拠: docs/カード表示グループ管理計画書_20260717.md §3
+ * ============================================================ */
+
+/* グループ非表示は全モードで勝つ(采決裁: body.replay-mode 等のモード別
+   display 指定より常に優先させるため !important を用いる唯一の箇所) */
+.cg-hidden {
+    display: none !important;
+}
+
+/* チャート容器は固定高のため、G1全非表示時は容器ごと畳む(card-groups.jsが付与) */
+.charts-container.cg-empty {
+    display: none !important;
+}
+
+/* ---- 切替パネル(body直下の浮遊。 .dashboard グリッドの自動配置に
+        影響を与えないため body 直下に置く=#136教訓) ---- */
+#cg-panel {
+    position: fixed;
+    z-index: 4000;              /* 浮遊カード(zTop加算)や再生バーより手前 */
+    min-width: 220px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-md);
+    box-shadow: var(--elev-2, 0 6px 24px rgba(0, 0, 0, 0.45));
+    padding: 10px 12px;
+    display: none;
+}
+
+#cg-panel.cg-open {
+    display: block;
+}
+
+.cg-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    margin-bottom: 8px;
+}
+
+.cg-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.cg-row:hover {
+    color: var(--text-primary, #fff);
+}
+
+.cg-row input[type="checkbox"] {
+    accent-color: var(--accent, #4da3ff);
+    cursor: pointer;
+}
+
+.cg-count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.cg-show-all {
+    margin-top: 8px;
+    width: 100%;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 5px 0;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-sm, 4px);
+    cursor: pointer;
+}
+
+.cg-show-all:hover {
+    color: var(--text-primary, #fff);
+    border-color: var(--accent, #4da3ff);
+}

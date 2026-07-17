@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/review.css">
     <link rel="stylesheet" href="/replay.css">
     <link rel="stylesheet" href="/race-metrics.css">
+    <link rel="stylesheet" href="/card-groups.css">
 </head>
 <body>
     <div class="dashboard">
@@ -157,7 +158,7 @@
 
         <!-- Left Panel -->
         <div class="left-panel">
-            <div class="card pedals-detail-card">
+            <div class="card pedals-detail-card" data-cardgroup="g2">
                 <div class="card-title">PEDALS</div>
                 <div class="pedal-row">
                     <span class="pedal-label">THR</span>
@@ -184,7 +185,7 @@
                 </div>
             </div>
 
-            <div class="card fuel-card">
+            <div class="card fuel-card" data-cardgroup="g3">
                 <div class="card-title">FUEL</div>
                 <div class="fuel-bar-container">
                     <div class="fuel-bar-bg">
@@ -212,7 +213,7 @@
 
             <!-- G-FORCE カード廃止: 加速度は BODY ACCEL カードと ACCEL (G) チャートに集約 -->
 
-            <div class="card fuel-boost-grid">
+            <div class="card fuel-boost-grid" data-cardgroup="g3">
                 <div class="fuel-boost-item">
                     <div class="fuel-boost-value boost" id="boost">--</div>
                     <div class="fuel-boost-label">BOOST (%)</div>
@@ -223,24 +224,24 @@
                 </div>
             </div>
 
-            <div class="card stat-card">
+            <div class="card stat-card" data-cardgroup="g5">
                 <div class="stat-value" id="max-speed">--</div>
                 <div class="stat-label">MAX SPEED (km/h)</div>
             </div>
 
-            <div class="card stat-card">
+            <div class="card stat-card" data-cardgroup="g5">
                 <div class="stat-value" id="trans-max-speed">--</div>
                 <div class="stat-label">TRANS MAX (km/h)</div>
             </div>
 
-            <div class="card gear-ratios-card">
+            <div class="card gear-ratios-card" data-cardgroup="g2">
                 <div class="card-title">GEAR RATIOS</div>
                 <div class="gear-ratios-grid" id="gear-ratios">
                     <span class="gear-ratio-placeholder">Waiting for data...</span>
                 </div>
             </div>
 
-            <div class="card clutch-detail-card">
+            <div class="card clutch-detail-card" data-cardgroup="g2">
                 <div class="card-title">CLUTCH DETAIL</div>
                 <div class="position-row">
                     <span class="position-label">ENG</span>
@@ -287,26 +288,26 @@
             </div>
 
             <div class="charts-container">
-                <div class="chart-wrapper">
+                <div class="chart-wrapper" data-cardgroup="g1">
                     <div class="chart-title">SPEED</div>
                     <div id="speed-chart" class="chart"></div>
                 </div>
-                <div class="chart-wrapper">
+                <div class="chart-wrapper" data-cardgroup="g1">
                     <div class="chart-title">RPM</div>
                     <div id="rpm-chart" class="chart"></div>
                 </div>
-                <div class="chart-wrapper">
+                <div class="chart-wrapper" data-cardgroup="g1">
                     <div class="chart-title">THROTTLE</div>
                     <div id="throttle-chart" class="chart"></div>
                 </div>
-                <div class="chart-wrapper">
+                <div class="chart-wrapper" data-cardgroup="g1">
                     <div class="chart-title">BRAKE</div>
                     <div id="brake-chart" class="chart"></div>
                 </div>
             </div>
 
             <div class="center-split">
-            <div class="card car-3d-card">
+            <div class="card car-3d-card" data-cardgroup="g4">
                 <div class="card-title">CAR ATTITUDE</div>
                 <div class="car-3d-container">
                     <div id="car-3d-view"></div>
@@ -333,7 +334,7 @@
                 </div>
             </div>
 
-            <div class="card steer-response-card">
+            <div class="card steer-response-card" data-cardgroup="g4">
                 <div class="card-title">STEER RESPONSE</div>
                 <div class="steer-response-container">
                     <div id="steer-response-view"></div>
@@ -341,7 +342,7 @@
             </div>
             </div>
 
-            <div class="card tyres-card">
+            <div class="card tyres-card" data-cardgroup="g4">
                 <div class="card-title">TYRES</div>
                 <div class="tyres-visual-grid">
                     <div class="tyre-visual-item">
@@ -479,12 +480,12 @@
 
         <!-- Right Panel -->
         <div class="right-panel">
-            <div class="card race-info-card">
+            <div class="card race-info-card" data-cardgroup="g5">
                 <div class="race-position" id="race-position">--</div>
                 <div class="race-position-label">START POS</div>
             </div>
 
-            <div class="card lap-times-card">
+            <div class="card lap-times-card" data-cardgroup="g5">
                 <div class="lap-main-display">
                     <div class="lap-number-big" id="current-lap">--/--</div>
                     <div class="lap-time-big lap-time-running" id="running-lap-time">--:--.---</div>
@@ -505,7 +506,7 @@
                 </div>
             </div>
 
-            <div class="card delta-card">
+            <div class="card delta-card" data-cardgroup="g5">
                 <div class="delta-label">DELTA VS BEST</div>
                 <div class="delta-bar-container">
                     <div class="delta-bar-negative" id="delta-bar-negative"></div>
@@ -515,7 +516,7 @@
                 <div class="delta-value" id="lap-delta">--</div>
             </div>
 
-            <div class="card lap-analysis-card">
+            <div class="card lap-analysis-card" data-cardgroup="g5">
                 <div class="chart-title">
                     <span>DISTANCE ANALYSIS</span>
                     <span id="grip-status" class="grip-status">GRIP OK</span>
@@ -528,7 +529,7 @@
                 <div id="time-delta-chart" class="analysis-chart"></div>
             </div>
 
-            <div class="card lap-history-card">
+            <div class="card lap-history-card" data-cardgroup="g5">
                 <div class="card-title lap-history-title">
                     <span>LAP HISTORY</span>
                     <span id="consistency-stat" class="consistency-stat">&sigma; --</span>
@@ -536,7 +537,7 @@
                 <div id="lap-list" class="lap-history-list"></div>
             </div>
 
-            <div class="card position-card compact">
+            <div class="card position-card compact" data-cardgroup="g5">
                 <div class="card-title">POSITION</div>
                 <div class="position-grid">
                     <div class="position-item">
@@ -575,17 +576,17 @@
             </div>
 
             <div class="stats-grid">
-                <div class="card stat-card">
+                <div class="card stat-card" data-cardgroup="g6">
                     <div class="stat-value" id="car-id">--</div>
                     <div class="stat-label">CAR ID</div>
                 </div>
-                <div class="card stat-card">
+                <div class="card stat-card" data-cardgroup="g6">
                     <div class="stat-value" id="pkg-id">--</div>
                     <div class="stat-label">PKG ID</div>
                 </div>
             </div>
 
-            <div class="card body-accel-card">
+            <div class="card body-accel-card" data-cardgroup="g4">
                 <div class="card-title">BODY ACCEL (m/s²)</div>
                 <div class="stats-grid" style="margin:0">
                     <div class="body-accel-item">
@@ -603,7 +604,7 @@
                 </div>
             </div>
 
-            <div class="card accel-chart-card">
+            <div class="card accel-chart-card" data-cardgroup="g4">
                 <div class="chart-title">ACCEL (G)</div>
                 <div class="accel-chart-container">
                     <canvas id="accel-chart"></canvas>
@@ -635,7 +636,7 @@
         <!-- P2 M-4 (#146): タイヤデグ率+ピットウィンドウ(ライブ戦略ミニカード)。
              race-metrics.js の1Hzポーリング(DOM表示値読取)が更新する。
              下部追加行・grid-column明示は race-metrics.css -->
-        <div id="rm-strategy-card" class="card race-metrics-strategy-card">
+        <div id="rm-strategy-card" class="card race-metrics-strategy-card" data-cardgroup="g3">
             <span class="card-title rm-title">STRATEGY</span>
             <span class="rm-strategy-item">DEG <b id="rm-deg-value">--</b></span>
             <span class="rm-strategy-item">PIT <b id="rm-pit-value">--</b></span>
@@ -660,5 +661,7 @@
     <script src="/app.js"></script>
     <script src="/card-drag.js"></script>
     <script src="/menu.js"></script>
+    <!-- card-groups.js は #app-toolbar(menu.js生成)へ CARDS ボタンを挿入するため menu.js より後 -->
+    <script src="/card-groups.js"></script>
 </body>
 </html>
