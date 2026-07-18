@@ -7,6 +7,16 @@
 
 ---
 
+## 2026-07-18 — 過去ラップのCSVエクスポート機能（#174/#175）
+
+### feat: REVIEW一覧の各ラップをCSV形式でダウンロード可能に
+- **背景**: #173（他テレメトリソフト機能比較調査）のP1推奨候補①。既存の`/api/laps/{file}`（fields射影+every間引き）をそのまま流用できる低難易度・高価値の候補として、#174で仕様書を作成（#118と同型の仕様書→査読→計承認→采GOゲート）、#175で実装。
+- **前提（必須明記）**: 自前記録データ（`gt7data/`のJSON）の単純CSV出力であり、MoTeC（.ld）/RaceChrono/iRacing（.ibt）等の他ソフトウェア形式への変換・互換性は未検証・未保証（対象ソフトを保有していないため実機検証不可）。
+- **実装**: `main.py`の`GET /api/laps/{file}`へ`format`クエリパラメータ（既定`json`、`csv`指定で分岐）を追加し、既存の`fields`/`every`パラメータと組み合わせ可能。CSV変換関数（`_csv_columns`/`_csv_row`/`_samples_to_csv`）を新設し、配列/辞書型フィールドを列展開（`tyre_temp`等の4輪配列→`_fl`/`_fr`/`_rl`/`_rr`、`gear_ratios`→`_1`〜`_8`、`flags`→`flag_*`、`course`→`course_*`）。`fields`未指定時は`CSV_ALL_FIELDS`（記録済み全フィールド）を既定使用（REVIEW距離チャート用の`DEFAULT_LAP_FIELDS`とは別枠）。UTF-8 BOM付き・カンマ区切り・ヘッダ行あり。CSV変換もto_thread内で完結させ既存のイベントループ非阻塞設計を維持。`review-view.js`のREVIEW一覧行へ`⬇ CSV`ダウンロードリンクを追加（`review-lap-play`と同様、行クリックのA/B選択とは分離）。ライブ受信経路・card-drag.js等のコア関数は無変更。
+- **検証**: JSON/CSV応答の値完全一致・配列フラット化順序の正確性・UTF-8 BOM確認・実測最大級（169.6MB）ラップでの応答時間（6.37秒、`every=1`）とイベントループ非阻塞確認・`format`未指定時の既存JSON応答の無回帰・既存回帰スイート（carddrag_smoke 22/22・cardgroups_smoke 17/17・視覚回帰7シナリオ）全PASS。査読で仕様書§2の`course`除外方針と実装の齟齬が指摘され、実データで`course`が全フレームに格納されていることを計・査が独立確認、仕様書を改訂（`course`のCSV含有を追認、`schema`/`samples_total`は引き続き除外）してコード変更なしで是認された。
+
+---
+
 ## 2026-07-18 — rm-replay-cardビューポート横スクロール是正（#165）
 
 ### fix: 画面幅800px前後で残存していた.dashboardの横スクロールを解消
