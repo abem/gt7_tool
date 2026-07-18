@@ -89,6 +89,15 @@ _telemetry_supervisor_task = None
 
 LOG_DIR = "gt7data"
 
+# インポートしたラップの保存先(#177/#178)。実記録データ(LOG_DIR)とは物理的に
+# 完全分離する(実データへの意図しない混入防止)。
+IMPORT_LOG_DIR = "gt7data_imported"
+
+# CSVインポートのアップロードサイズ上限(#178)。実測エクスポート比率
+# (169.6MB JSON→74MB CSV、#175検証)を踏まえ、実測最大級ラップの全件CSVでも
+# 収まるよう100MBを上限としたDoS対策(具体的な悪用防止のための上限値)。
+IMPORT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
 
 def ensure_log_dir():
     if not os.path.exists(LOG_DIR):
@@ -483,6 +492,148 @@ def _samples_to_csv(samples, fields):
     return buf.getvalue()
 
 
+# _csv_row では素通し(str(v))される整数フィールド。CSVからの逆変換時、これらは
+# decoder.py上の型(int)を保つため float() ではなく int(float()) で復元する
+# (car_id/lap_count等はファイル名導出・#177調査報告§2にも使うため型の正確性が必要)。
+_CSV_INT_FIELDS = frozenset((
+    "gear", "suggested_gear", "throttle", "brake", "rpm_alert_min", "max_rpm",
+    "car_max_speed", "package_id", "lap_count", "total_laps", "best_laptime",
+    "last_laptime", "current_laptime", "pre_race_position", "num_cars_pre_race",
+    "car_id", "laps_since_refuel",
+))
+
+
+def _valid_csv_columns():
+    """本ツールがエクスポートし得る全CSV列名の集合(アップロードのヘッダ検証用、#178)。"""
+    return set(_csv_columns(CSV_ALL_FIELDS))
+
+
+def _csv_num(v):
+    """CSV文字列値をfloatへ変換する(空文字は欠損としてNone)。"""
+    if v is None or v == "":
+        return None
+    return float(v)
+
+
+def _csv_row_to_sample(row):
+    """CSVの1行(列名→文字列値の辞書、csv.DictReader形式)を、_csv_row/_csv_columns の
+    変換規則を反転してサンプル辞書へ復元する(#178)。値の型変換に失敗した場合は
+    ValueError/TypeErrorがそのまま伝播し、呼び出し元(_parse_and_convert_csv)で
+    ファイル全体の拒否につながる(部分取込は行わない、#177調査報告§4)。
+    """
+    sample = {}
+    consumed = set()
+
+    for name in CSV_WHEEL_FIELDS:
+        cols = [f"{name}_{suf}" for suf in CSV_WHEEL_SUFFIXES]
+        if all(c in row for c in cols):
+            sample[name] = [_csv_num(row[c]) for c in cols]
+            consumed.update(cols)
+
+    gear_cols = [f"gear_ratios_{i}" for i in range(1, 9)]
+    if all(c in row for c in gear_cols):
+        sample["gear_ratios"] = [_csv_num(row[c]) for c in gear_cols]
+        consumed.update(gear_cols)
+
+    flag_cols = {k: f"flag_{k}" for k in CSV_FLAG_KEYS}
+    if all(c in row for c in flag_cols.values()):
+        sample["flags"] = {k: row[col] not in ("", "0") for k, col in flag_cols.items()}
+        consumed.update(flag_cols.values())
+
+    course_cols = {k: f"course_{k}" for k in CSV_COURSE_KEYS}
+    if all(c in row for c in course_cols.values()):
+        course = {}
+        for k, col in course_cols.items():
+            v = row[col]
+            if k == "confidence":
+                course[k] = _csv_num(v)
+            elif k == "verified":
+                course[k] = v not in ("", "0", "False", "false")
+            else:
+                course[k] = v
+        sample["course"] = course
+        consumed.update(course_cols.values())
+
+    for col, v in row.items():
+        if col is None or col in consumed:
+            continue
+        if col == "timestamp":
+            sample["timestamp"] = v
+        elif v is None or v == "":
+            continue
+        elif col in _CSV_INT_FIELDS:
+            sample[col] = int(float(v))
+        else:
+            sample[col] = float(v)
+
+    return sample
+
+
+def _parse_and_convert_csv(text):
+    """CSVテキスト(本ツールが出力した#174/#175形式)を検証しつつサンプル配列へ変換する
+    (#178)。ヘッダの列名が既知のCSV列集合の部分集合であること・timestamp/car_id列が
+    存在すること・各行の値変換が成功することを要求し、いずれか一つでも満たさない場合は
+    ファイル全体をValueErrorで拒否する(#177調査報告§4のリスク対策を実装)。
+    to_thread で実行すること(大型CSVのパースがイベントループを塞ぎ得るため)。
+    """
+    reader = csv.DictReader(io.StringIO(text))
+    if reader.fieldnames is None:
+        raise ValueError("empty CSV: no header row")
+
+    header = set(reader.fieldnames)
+    unknown = header - _valid_csv_columns()
+    if unknown:
+        raise ValueError(f"unknown CSV column(s): {', '.join(sorted(unknown))}")
+    if "timestamp" not in header:
+        raise ValueError("missing required column: timestamp")
+    if "car_id" not in header:
+        raise ValueError("missing required column: car_id")
+
+    samples = []
+    for i, row in enumerate(reader):
+        try:
+            sample = _csv_row_to_sample(row)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"row {i + 2}: {e}") from e
+        if not sample.get("timestamp"):
+            raise ValueError(f"row {i + 2}: missing timestamp value")
+        if sample.get("car_id") is None:
+            raise ValueError(f"row {i + 2}: missing car_id value")
+        samples.append(sample)
+
+    if not samples:
+        raise ValueError("CSV has no data rows")
+    return samples
+
+
+def _write_imported_lap(samples):
+    """検証済みサンプル配列を IMPORT_LOG_DIR へ書き込み、割当てたファイル名を返す。
+
+    ファイル名はクライアント指定(元アップロードファイル名)を一切使わず、サンプル自身の
+    timestamp/car_id/lap_count から導出したうえで LAP_FILE_RE に自己適合させる
+    (パストラバーサル対策、#177調査報告§4)。衝突時は Lap 番号をインクリメントして
+    再試行する。to_thread で実行すること(json.dumpsが大型ファイルで重いため)。
+    """
+    first = samples[0]
+    ts = datetime.fromisoformat(first["timestamp"])
+    car_id = max(int(first.get("car_id") or 0), 0)
+    lap_num = max(int(first.get("lap_count") or 0), 0)
+    base = ts.strftime("%Y-%m-%d_%H_%M_%S")
+
+    os.makedirs(IMPORT_LOG_DIR, exist_ok=True)
+    for attempt in range(1000):
+        filename = f"{base}_CAR-{car_id}_Lap-{lap_num + attempt}.json"
+        if not LAP_FILE_RE.match(filename):
+            continue
+        filepath = os.path.join(IMPORT_LOG_DIR, filename)
+        if os.path.exists(filepath):
+            continue
+        with open(filepath, 'w') as f:
+            json.dump(samples, f)
+        return filename
+    return None
+
+
 def _parse_lap_filename(name):
     """ラップファイル名をメタデータへ解釈する。形式不一致は None。"""
     m = LAP_FILE_RE.match(name)
@@ -508,11 +659,13 @@ def _int_query(request, name, default, lo, hi):
     return value
 
 
-def _scan_lap_files(date_filter, car_id_filter):
-    """gt7data/ を走査しメタデータ一覧を返す(内容は読まない。to_thread で実行)。"""
+def _scan_lap_files(date_filter, car_id_filter, log_dir=LOG_DIR, source="recorded"):
+    """log_dir を走査しメタデータ一覧を返す(内容は読まない。to_thread で実行)。
+    log_dir/source は#177/#178のインポート一覧統合用(既定はgt7data/・recordedで従来どおり)。
+    """
     entries = []
     try:
-        with os.scandir(LOG_DIR) as it:
+        with os.scandir(log_dir) as it:
             for entry in it:
                 if not entry.is_file():
                     continue
@@ -524,16 +677,20 @@ def _scan_lap_files(date_filter, car_id_filter):
                 if car_id_filter is not None and meta["car_id"] != car_id_filter:
                     continue
                 meta["size_bytes"] = entry.stat().st_size
+                meta["source"] = source
                 entries.append(meta)
     except FileNotFoundError:
-        # gt7data/ 未作成は初回起動直後の正常状態 → 空一覧
+        # ディレクトリ未作成は初回起動直後の正常状態 → 空一覧
         return []
     entries.sort(key=lambda m: m["recorded_at"], reverse=True)
     return entries
 
 
 async def api_laps_list_handler(request):
-    """GET /api/laps — 過去ラップの一覧(ファイル名メタのみ・軽量)。"""
+    """GET /api/laps — 過去ラップの一覧(ファイル名メタのみ・軽量)。
+    include_imported=true(#177/#178)指定時のみ gt7data_imported/ も合わせて走査する
+    (既定は従来どおり gt7data/ のみ。既存呼び出し元の挙動は無変更)。
+    """
     try:
         limit = _int_query(request, "limit", API_LAPS_LIMIT_DEFAULT, 1, API_LAPS_LIMIT_MAX)
         offset = _int_query(request, "offset", 0, 0, 10**9)
@@ -544,7 +701,15 @@ async def api_laps_list_handler(request):
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=400)
 
-    entries = await asyncio.to_thread(_scan_lap_files, date_filter, car_id)
+    include_imported = request.query.get("include_imported") == "true"
+    entries = await asyncio.to_thread(_scan_lap_files, date_filter, car_id, LOG_DIR, "recorded")
+    if include_imported:
+        imported = await asyncio.to_thread(
+            _scan_lap_files, date_filter, car_id, IMPORT_LOG_DIR, "imported"
+        )
+        entries = entries + imported
+        entries.sort(key=lambda m: m["recorded_at"], reverse=True)
+
     return web.json_response(
         {"total": len(entries), "laps": entries[offset:offset + limit]},
         headers={'Cache-Control': 'no-cache'}
@@ -623,7 +788,11 @@ async def api_lap_detail_handler(request):
         return web.json_response({"error": "not found"}, status=404)
     filepath = os.path.join(LOG_DIR, name)
     if not os.path.isfile(filepath):
-        return web.json_response({"error": "not found"}, status=404)
+        # gt7data/ に無ければインポート分(#177/#178)を探す(一覧でオプトイン
+        # 表示されたインポート済みラップの詳細取得・CSV変換・再生に必要)
+        filepath = os.path.join(IMPORT_LOG_DIR, name)
+        if not os.path.isfile(filepath):
+            return web.json_response({"error": "not found"}, status=404)
 
     try:
         every = _int_query(request, "every", API_LAPS_EVERY_DEFAULT, 1, API_LAPS_EVERY_MAX)
@@ -682,6 +851,59 @@ async def api_lap_detail_handler(request):
         text=body, content_type='application/json',
         headers={'Cache-Control': 'no-cache'}
     )
+
+
+async def api_laps_import_handler(request):
+    """POST /api/laps/import — 自前CSV(#174/#175形式)からラップをインポートする(#178)。
+
+    multipart/form-data の "file" パートを受け取り、検証+逆変換(_parse_and_convert_csv)を
+    to_thread で実行後、既存v2スキーマ(JSONサンプル配列)として IMPORT_LOG_DIR
+    (gt7data_imported/)へ保存する。実記録データ(LOG_DIR)には一切書き込まない
+    (#177調査報告§4のリスク対策)。ライブ受信経路(telemetry.py/decoder.py/websocket)には
+    一切触れない。
+    """
+    try:
+        reader = await request.multipart()
+    except Exception:
+        return web.json_response({"error": "invalid multipart request"}, status=400)
+
+    field = None
+    async for part in reader:
+        if part.name == "file":
+            field = part
+            break
+    if field is None:
+        return web.json_response({"error": "missing 'file' field"}, status=400)
+
+    chunks = []
+    total = 0
+    while True:
+        chunk = await field.read_chunk(size=65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > IMPORT_MAX_UPLOAD_BYTES:
+            return web.json_response(
+                {"error": f"file too large (max {IMPORT_MAX_UPLOAD_BYTES} bytes)"}, status=413
+            )
+        chunks.append(chunk)
+
+    try:
+        text = b"".join(chunks).decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return web.json_response({"error": "file is not valid UTF-8"}, status=400)
+
+    try:
+        samples = await asyncio.to_thread(_parse_and_convert_csv, text)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+    filename = await asyncio.to_thread(_write_imported_lap, samples)
+    if filename is None:
+        return web.json_response({"error": "could not allocate a unique filename"}, status=500)
+
+    logger.info(f"Imported lap data: {IMPORT_LOG_DIR}/{filename} ({len(samples)} samples)")
+    return web.json_response({"file": filename, "samples": len(samples)}, status=201)
 
 
 @web.middleware
@@ -791,6 +1013,7 @@ def main():
     app = web.Application(middlewares=[logging_middleware])
     # 読み出しAPIはワイルドカード静的ルート(/{filename})より前に登録する
     app.router.add_get('/api/laps', api_laps_list_handler)
+    app.router.add_post('/api/laps/import', api_laps_import_handler)
     app.router.add_get('/api/laps/{file}', api_lap_detail_handler)
     app.router.add_get('/', index_handler)
     app.router.add_get('/ws', websocket_handler)

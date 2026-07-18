@@ -72,6 +72,7 @@ function ensureReviewEls() {
     reviewState.els = {
         btn: document.getElementById('review-mode-btn'),
         root: document.getElementById('review-root'),
+        sidebarHead: document.getElementById('review-sidebar-head'),
         filterDate: document.getElementById('review-filter-date'),
         btnBest: document.getElementById('review-btn-best'),
         listStatus: document.getElementById('review-list-status'),
@@ -163,6 +164,7 @@ function initReviewView() {
             reviewSelectBest();
         });
     }
+    reviewInjectImportControls(els);
 
     // 保存ビューの復元。drive-view.js は 'review' を知らないため ANALYSIS で
     // 初期化しており、ここで REVIEW を上書き復元する(読込順で本処理が後)
@@ -178,6 +180,118 @@ function initReviewView() {
 }
 
 /* ================================================================
+ *  インポート (#177/#178)
+ * ================================================================ */
+
+/**
+ * インポートUI(「インポート済みを表示」チェックボックス+アップロードボタン+
+ * 隠しファイル入力)を review-sidebar-head へ動的注入する。index.html は
+ * 無改変のまま、既存のカードグループ注入・CSVボタン注入(#175)と同じ
+ * 「機能はJSが自己配線する」作法を踏襲する。initReviewView から一度だけ呼ぶ。
+ * @param {object} els ensureReviewEls() のキャッシュ
+ */
+function reviewInjectImportControls(els) {
+    if (!els.sidebarHead || document.getElementById('review-include-imported')) {
+        return; // 対象コンテナが無い、または注入済み(多重初期化ガード)
+    }
+
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'review-import-toggle';
+    toggleLabel.title = 'gt7data_imported/ のインポート済みラップを一覧に混在表示する(既定は非表示)';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'review-include-imported';
+    checkbox.addEventListener('change', function() {
+        reviewLoadList();
+    });
+
+    toggleLabel.appendChild(checkbox);
+    toggleLabel.appendChild(document.createTextNode('インポート済みを表示'));
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.id = 'review-import-file';
+    fileInput.accept = '.csv';
+    fileInput.style.display = 'none';
+    fileInput.addEventListener('change', function() {
+        if (fileInput.files && fileInput.files[0]) {
+            reviewUploadImportFile(fileInput.files[0]);
+        }
+        fileInput.value = ''; // 同一ファイルの連続選択でも change を発火させる
+    });
+
+    const importBtn = document.createElement('button');
+    importBtn.type = 'button';
+    importBtn.id = 'review-import-btn';
+    importBtn.textContent = 'CSVインポート';
+    importBtn.title = '本ツールが出力したCSV(#174/#175形式)を取り込む(gt7data_imported/へ分離保存)';
+    importBtn.addEventListener('click', function() {
+        fileInput.click();
+    });
+
+    els.sidebarHead.appendChild(toggleLabel);
+    els.sidebarHead.appendChild(importBtn);
+    els.sidebarHead.appendChild(fileInput);
+
+    els.includeImported = checkbox;
+    els.importBtn = importBtn;
+    els.importFile = fileInput;
+}
+
+/**
+ * 選択されたCSVファイルを /api/laps/import へアップロードする。
+ * 成功時は「インポート済みを表示」を自動でONにし一覧を再読込する(直後に
+ * 結果が見えないと分かりにくいため)。失敗時はサーバのエラーメッセージを
+ * ステータス欄にそのまま表示する(main.py側の検証メッセージが最終文言)。
+ * @param {File} file
+ */
+function reviewUploadImportFile(file) {
+    const els = ensureReviewEls();
+    if (els.listStatus) {
+        els.listStatus.textContent = 'インポート中… (' + file.name + ')';
+    }
+    if (els.importBtn) {
+        els.importBtn.disabled = true;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch('/api/laps/import', { method: 'POST', body: formData })
+        .then(function(res) {
+            return res.json().then(function(body) {
+                if (!res.ok) {
+                    throw new Error(body.error || ('HTTP ' + res.status));
+                }
+                return body;
+            });
+        })
+        .then(function(body) {
+            if (els.listStatus) {
+                els.listStatus.textContent =
+                    'インポート完了: ' + body.file + ' (' + body.samples + '件)';
+            }
+            if (els.includeImported) {
+                els.includeImported.checked = true;
+            }
+            // reviewLoadList() は直後に listStatus を「読込中…」で上書きするため、
+            // 完了メッセージが視認できるよう一呼吸置いてから一覧を再読込する。
+            setTimeout(reviewLoadList, 1200);
+        })
+        .catch(function(err) {
+            if (els.listStatus) {
+                els.listStatus.textContent = 'インポート失敗: ' + err.message;
+            }
+        })
+        .then(function() {
+            if (els.importBtn) {
+                els.importBtn.disabled = false;
+            }
+        });
+}
+
+/* ================================================================
  *  ラップ一覧 (A-4)
  * ================================================================ */
 
@@ -185,6 +299,8 @@ function initReviewView() {
  * /api/laps から全件を offset ページングで逐次取得して描画する。
  * 取得中もページごとに進捗をステータス表示する。ページ間で新規記録により
  * 重複が生じ得るため file 名でデデュープする。
+ * include_imported(#177/#178): 「インポート済みを表示」チェック時のみ
+ * 全ページ共通で付与する(既定は付与せず、サーバ既定動作=gt7data/のみと一致)。
  */
 function reviewLoadList() {
     const els = ensureReviewEls();
@@ -194,9 +310,11 @@ function reviewLoadList() {
 
     const collected = [];
     const seen = {};
+    const includeImported = !!(els.includeImported && els.includeImported.checked);
+    const importedQuery = includeImported ? '&include_imported=true' : '';
 
     const fetchPage = function(offset) {
-        return fetch('/api/laps?limit=' + REVIEW_LIST_PAGE + '&offset=' + offset)
+        return fetch('/api/laps?limit=' + REVIEW_LIST_PAGE + '&offset=' + offset + importedQuery)
             .then(function(res) {
                 if (!res.ok) {
                     throw new Error('HTTP ' + res.status);
@@ -341,6 +459,18 @@ function reviewBuildLapItem(lap) {
     badge.textContent = lap.file === reviewState.selA ? 'A'
         : (lap.file === reviewState.selB ? 'B' : '');
 
+    item.appendChild(badge);
+
+    // インポート済みラップの視覚区別(#177/#178調査報告§2-2)。既定は
+    // include_imported 未指定のため通常は出現しない(サーバ側opt-in)。
+    if (lap.source === 'imported') {
+        const importedBadge = document.createElement('span');
+        importedBadge.className = 'review-lap-badge-imported';
+        importedBadge.textContent = 'IMPORTED';
+        importedBadge.title = 'gt7data_imported/ から取り込まれたラップ(実記録データとは分離管理)';
+        item.appendChild(importedBadge);
+    }
+
     const time = document.createElement('span');
     time.className = 'review-lap-time';
     time.textContent = lap.recorded_at.slice(11, 19);
@@ -357,7 +487,6 @@ function reviewBuildLapItem(lap) {
     meta.textContent = 'CAR ' + lap.car_id + ' / ' +
         (lap.size_bytes / 1e6).toFixed(1) + 'MB';
 
-    item.appendChild(badge);
     item.appendChild(time);
     item.appendChild(label);
     item.appendChild(meta);
