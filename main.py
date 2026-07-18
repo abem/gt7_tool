@@ -1,4 +1,6 @@
 import asyncio
+import csv
+import io
 import json
 import os
 import re
@@ -391,6 +393,95 @@ API_LAPS_LIMIT_MAX = 1000
 API_LAPS_EVERY_DEFAULT = 6   # 60Hz記録を約10Hzへ間引き
 API_LAPS_EVERY_MAX = 60
 
+# CSVエクスポート(#174/#175)の既定射影: 記録済み全フィールド(実サンプルの実測キー一覧に基づく)。
+# JSON応答の既定(DEFAULT_LAP_FIELDS、REVIEW距離チャート用の最小集合)とは別に、
+# CSVは「表示されていない値も含め外部ツールで独自集計したい」という用途のため全件を既定とする。
+CSV_ALL_FIELDS = ("timestamp",) + tuple(sorted((
+    "accel_decel", "accel_g", "angular_velocity_x", "angular_velocity_y", "angular_velocity_z",
+    "best_laptime", "body_accel_heave", "body_accel_surge", "body_accel_sway", "body_height",
+    "boost", "brake", "brake_filtered_pct", "brake_pct", "car_id", "car_max_speed",
+    "clutch", "clutch_engagement", "clutch_gearbox_rpm", "course", "current_fuel",
+    "current_laptime", "energy_recovery", "flags", "fuel_capacity", "fuel_consumed",
+    "fuel_laps_remaining", "fuel_per_lap", "gear", "gear_ratios", "lap_count",
+    "laps_since_refuel", "last_laptime", "max_rpm", "num_cars_pre_race", "oil_pressure",
+    "orientation", "package_id", "position_x", "position_y", "position_z",
+    "pre_race_position", "road_plane_distance", "road_plane_x", "road_plane_y", "road_plane_z",
+    "rotation_pitch", "rotation_roll", "rotation_yaw", "rpm", "rpm_alert_min",
+    "speed_kmh", "speed_ms", "suggested_gear", "susp_height", "throttle",
+    "throttle_filtered_pct", "throttle_pct", "torque_vector", "total_laps",
+    "transmission_max_speed", "tyre_radius", "tyre_temp", "velocity_x", "velocity_y",
+    "velocity_z", "wheel_rotation", "wheel_rps",
+)))
+
+# CSV変換(#174仕様書§2)における配列/辞書フィールドの列展開ルール
+CSV_WHEEL_FIELDS = ("tyre_temp", "susp_height", "wheel_rps", "tyre_radius", "torque_vector")
+CSV_WHEEL_SUFFIXES = ("fl", "fr", "rl", "rr")
+CSV_FLAG_KEYS = (
+    "car_on_track", "paused", "loading", "in_gear", "has_turbo", "rev_limiter",
+    "hand_brake", "lights", "high_beams", "low_beams", "asm_active", "tcs_active",
+)
+CSV_COURSE_KEYS = ("id", "name_ja", "name_en", "confidence", "verified", "source")
+
+
+def _csv_columns(fields):
+    """CSV列名一覧を、要求フィールド順を保ちつつ配列/辞書型を展開して生成する(#174仕様書§2)。"""
+    columns = []
+    for name in fields:
+        if name in CSV_WHEEL_FIELDS:
+            columns.extend(f"{name}_{suf}" for suf in CSV_WHEEL_SUFFIXES)
+        elif name == "gear_ratios":
+            columns.extend(f"gear_ratios_{i}" for i in range(1, 9))
+        elif name == "flags":
+            columns.extend(f"flag_{k}" for k in CSV_FLAG_KEYS)
+        elif name == "course":
+            columns.extend(f"course_{k}" for k in CSV_COURSE_KEYS)
+        else:
+            columns.append(name)
+    return columns
+
+
+def _csv_row(sample, fields):
+    """1サンプルをCSV列順の値リストへ変換する(欠損時は空文字)。"""
+    row = []
+    for name in fields:
+        v = sample.get(name)
+        if name in CSV_WHEEL_FIELDS:
+            if isinstance(v, list) and len(v) == 4:
+                row.extend(v)
+            else:
+                row.extend([""] * 4)
+        elif name == "gear_ratios":
+            if isinstance(v, list):
+                vals = (list(v) + [""] * 8)[:8]
+                row.extend(vals)
+            else:
+                row.extend([""] * 8)
+        elif name == "flags":
+            if isinstance(v, dict):
+                row.extend(int(bool(v.get(k))) for k in CSV_FLAG_KEYS)
+            else:
+                row.extend([""] * len(CSV_FLAG_KEYS))
+        elif name == "course":
+            if isinstance(v, dict):
+                row.extend(v.get(k, "") for k in CSV_COURSE_KEYS)
+            else:
+                row.extend([""] * len(CSV_COURSE_KEYS))
+        else:
+            row.append(v if v is not None else "")
+    return row
+
+
+def _samples_to_csv(samples, fields):
+    """射影済みサンプル一覧をCSV文字列(UTF-8 BOM付き)へ変換する(#174仕様書§2/§3準拠)。"""
+    buf = io.StringIO()
+    buf.write('﻿')  # UTF-8 BOM(Excelでの文字化け回避)
+    writer = csv.writer(buf)
+    columns = _csv_columns(fields)
+    writer.writerow(columns)
+    for s in samples:
+        writer.writerow(_csv_row(s, fields))
+    return buf.getvalue()
+
 
 def _parse_lap_filename(name):
     """ラップファイル名をメタデータへ解釈する。形式不一致は None。"""
@@ -460,11 +551,12 @@ async def api_laps_list_handler(request):
     )
 
 
-def _load_lap_file(path, fields, every):
-    """ラップJSONを読み、間引き+射影した samples(JSON文字列) と件数を返す。
+def _load_lap_file(path, fields, every, output_format='json'):
+    """ラップJSONを読み、間引き+射影した samples を指定形式の文字列で返す。
 
     to_thread で実行する。大型ファイル(実測最大84MB)では json の parse も
-    dumps もイベントループを塞ぎ得るため、直列化までこの関数内で済ませる。
+    dumps(またはCSV変換)もイベントループを塞ぎ得るため、直列化までこの関数内で済ませる。
+    output_format: 'json'(既定、従来どおり) または 'csv'(#174/#175)。
     """
     with open(path, 'r') as f:
         data = json.load(f)
@@ -477,7 +569,11 @@ def _load_lap_file(path, fields, every):
     ]
     first = data[0] if data and isinstance(data[0], dict) else {}
     duration_ms = _lap_duration_approx_ms(data)
-    return json.dumps(samples), len(samples), len(data), first, duration_ms
+    if output_format == 'csv':
+        body = _samples_to_csv(samples, fields)
+    else:
+        body = json.dumps(samples)
+    return body, len(samples), len(data), first, duration_ms
 
 
 # 受信時刻差がこれ以上のサンプル間は「記録の中断」(メニュー放置・一時停止等)と
@@ -518,7 +614,9 @@ def _lap_duration_approx_ms(data):
 
 
 async def api_lap_detail_handler(request):
-    """GET /api/laps/{file} — 単一ラップの取得(fields射影+every間引き)。"""
+    """GET /api/laps/{file} — 単一ラップの取得(fields射影+every間引き)。
+    format=csv(#174/#175)指定時はCSVダウンロード応答(既定json応答は無変更)。
+    """
     name = request.match_info["file"]
     meta = _parse_lap_filename(name)
     if meta is None:
@@ -531,20 +629,37 @@ async def api_lap_detail_handler(request):
         every = _int_query(request, "every", API_LAPS_EVERY_DEFAULT, 1, API_LAPS_EVERY_MAX)
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=400)
+
+    output_format = request.query.get("format", "json")
+    if output_format not in ("json", "csv"):
+        return web.json_response({"error": f"invalid format: {output_format}"}, status=400)
+
     fields_raw = request.query.get("fields")
     if fields_raw:
         # 未知フィールド名はエラーにせず単に無視される(前方互換: 射影で自然に落ちる)
         fields = tuple(f.strip() for f in fields_raw.split(',') if f.strip())
+    elif output_format == "csv":
+        fields = CSV_ALL_FIELDS  # CSV既定は全件(#174仕様書§2)。JSON既定(DEFAULT_LAP_FIELDS)とは別枠
     else:
         fields = DEFAULT_LAP_FIELDS
 
     try:
-        samples_json, samples_returned, samples_total, first, duration_ms = await asyncio.to_thread(
-            _load_lap_file, filepath, fields, every
+        body_data, samples_returned, samples_total, first, duration_ms = await asyncio.to_thread(
+            _load_lap_file, filepath, fields, every, output_format
         )
     except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
         logger.error(f"Corrupt lap file {name}: {e}")
         return web.json_response({"error": "corrupt file"}, status=500)
+
+    if output_format == "csv":
+        csv_name = re.sub(r'\.json$', '.csv', name)
+        return web.Response(
+            text=body_data, content_type='text/csv', charset='utf-8',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Content-Disposition': f'attachment; filename="{csv_name}"',
+            }
+        )
 
     # スキーマ世代: 2026-07系(v2)は lap_count を持つ。2026-02系(v1)は持たない。
     schema = "v2" if "lap_count" in first else "v1"
@@ -562,7 +677,7 @@ async def api_lap_detail_handler(request):
         "laptime_ms_approx": duration_ms,
     })
     # samples は to_thread 内で直列化済み。meta だけここで dumps して結合する
-    body = '{"meta": ' + json.dumps(meta) + ', "samples": ' + samples_json + '}'
+    body = '{"meta": ' + json.dumps(meta) + ', "samples": ' + body_data + '}'
     return web.Response(
         text=body, content_type='application/json',
         headers={'Cache-Control': 'no-cache'}

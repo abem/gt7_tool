@@ -377,6 +377,19 @@ function reviewBuildLapItem(lap) {
         item.appendChild(play);
     }
 
+    // CSVダウンロード(#174/#175)。自前形式の単純出力(他ソフト形式との互換性は未検証)。
+    // 行クリック(A/B選択)とは分離。ブラウザネイティブのdownload属性でトリガー(#174仕様書§4)。
+    const csvLink = document.createElement('a');
+    csvLink.className = 'review-lap-csv';
+    csvLink.href = '/api/laps/' + encodeURIComponent(lap.file) + '?format=csv';
+    csvLink.download = lap.file.replace(/\.json$/, '.csv');
+    csvLink.textContent = '⬇ CSV';
+    csvLink.title = 'このラップをCSVでダウンロード（自前形式。他ソフトとの互換性は未検証）';
+    csvLink.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+    item.appendChild(csvLink);
+
     item.addEventListener('click', function() {
         reviewToggleSelect(lap.file);
     });
