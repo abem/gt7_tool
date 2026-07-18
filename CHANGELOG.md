@@ -101,6 +101,15 @@
 
 ---
 
+## 2026-07-16 — B案（保存ポリシー）本番有効化・cron登録（#130）
+
+### feat: gt7dataローテーションを本番で稼働開始（enabled:true化+週次cron登録）
+- **背景**: B案実装（#124、下記エントリ参照）はこの時点では `enabled: false`（実削除なし）のまま出荷されていた。実 `gt7data/` へのdry-run結果（対象0件・7.41GB/1,085件、上限20GB/180日に対し安全マージン大）を采へ提示し、同日中に本番有効化の決裁を受けた。
+- **実装**: `config.json` の `data_retention.enabled` を `false`→`true` へ変更（1値のみ、`max_total_gb`/`max_age_days`/`trash_days` の閾値は変更なし）。`root` の cron へ週1回（日曜 03:00）の `scripts/gt7data_rotate.py --apply` を登録。
+- **検証**: enabled:true化後の実データdry-run再実行で candidates=1085件（7.41GB）・targets=0件・無変更を確認（exit 0）。`--apply` は本チケットのスコープでは未実行（cron登録は計が別途実施）。視覚回帰5/5・機能テスト10/10・スモーク維持。
+
+---
+
 ## 2026-07-16 — gt7data 保存ポリシー（P1 B案）
 
 ### feat: 期間・容量上限ローテーションの基盤を追加（既定無効・実削除なし）

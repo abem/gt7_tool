@@ -431,7 +431,7 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
     "ssl_key": "ssl/server-key.pem",
     "recording_enabled": true,
     "data_retention": {
-        "enabled": false,
+        "enabled": true,
         "max_total_gb": 20,
         "max_age_days": 180,
         "trash_days": 14
@@ -440,7 +440,7 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
 ```
 
 - `recording_enabled`: `false` にすると受信・ライブ表示は継続したまま `gt7data/` へのファイル保存のみ停止する（反映には再ビルドが必要）。
-- `data_retention`: `scripts/gt7data_rotate.py` の保存ポリシー設定。`enabled: false`（既定）では `--apply` を拒否する安全設計。詳細は [README の「記録データの保存ポリシー」](../README.md#記録データの保存ポリシーローテーション)を参照。
+- `data_retention`: `scripts/gt7data_rotate.py` の保存ポリシー設定。ソースコードの既定値は安全側の `enabled: false`（`--apply` を拒否）だが、上記は**本ツールの現在の運用設定値**（`enabled: true`。cronで週1回自動実行中）。詳細は [README の「記録データの保存ポリシー」](../README.md#記録データの保存ポリシーローテーション)を参照。
 
 **環境変数による設定上書き**（環境変数優先・config.jsonフォールバック）:
 
