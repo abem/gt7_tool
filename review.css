@@ -45,6 +45,7 @@ body.review-mode #review-root {
 
 #review-sidebar-head {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
@@ -71,6 +72,38 @@ body.review-mode #review-root {
 
 #review-btn-best:hover {
     background: var(--surface-4);
+}
+
+/* インポートUI(#177/#178)。review-view.js が review-sidebar-head へ動的注入する。
+   filterDate(flex:1)の右側に、既存のbtn-best同水準の見た目で並ぶ。 */
+.review-import-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+#review-import-btn {
+    background: var(--surface-3);
+    color: var(--accent-brand);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+#review-import-btn:hover {
+    background: var(--surface-4);
+}
+
+#review-import-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
 #review-list-status {
@@ -153,6 +186,19 @@ body.review-mode #review-root {
 .review-lap-item.sel-b .review-lap-badge {
     background: var(--accent-green);
     color: var(--on-accent);
+}
+
+/* インポート済みラップの区別バッジ(#177/#178調査報告§2-2)。A/B選択バッジとは
+   別要素で、選択状態(sel-a/sel-b)とは独立して常時表示する。 */
+.review-lap-badge-imported {
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 0 4px;
+    background: var(--surface-4);
+    color: var(--text-muted);
+    border: 1px solid var(--border-strong);
+    white-space: nowrap;
 }
 
 /* ---- 右ペイン: サマリ + チャート ------------------------------------- */
