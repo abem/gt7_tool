@@ -367,6 +367,15 @@ function updateTyreState(data) {
     elements.roadPlaneZ.textContent = (data.road_plane_z || 0).toFixed(3);
     elements.roadPlaneDist.textContent = (data.road_plane_distance || 0).toFixed(3);
 
+    // 路面勾配(CAR ATTITUDE)へ反映。road_plane_*欠損時(旧スキーマ録画等)はundefinedのまま渡し、
+    // setRoadSlope側で「データ無し」として--表示にする(0=平坦との誤読を避ける)。
+    if (typeof setRoadSlope === 'function') {
+        setRoadSlope(
+            data.road_plane_x, data.road_plane_y, data.road_plane_z,
+            data.velocity_x, data.velocity_z
+        );
+    }
+
     // 車体加速度
     if (data.body_accel_sway !== undefined) {
         elements.bodySway.textContent = (data.body_accel_sway || 0).toFixed(3);
