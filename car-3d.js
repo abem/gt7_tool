@@ -9,6 +9,7 @@
  * 旧 WebGL 版と互換の口を提供:
  *   - initCar3D()                              : 初期化（例外を投げない）
  *   - updateCar3D(pitch, yaw, roll, rpm, steering, susp) : 毎フレーム更新
+ *   - setRoadSlope(nx, ny, nz, vx, vz)         : 路面勾配更新（road_plane_*由来、車体姿勢とは別枠）
  *   - car3DState.initialized                   : 初期化フラグ（test-mode.js が参照）
  *
  * 座標系（車体ローカル, 無次元）: x=右, y=上, z=前
@@ -28,8 +29,18 @@ var car3DState = {
     animationId: null,
     needsRender: true,
     resizeObserver: null,
-    webglFailed: false            // 互換のため保持（未使用）
+    webglFailed: false,           // 互換のため保持（未使用）
+    // 路面勾配（road_plane_* 由来。車体姿勢=pitch/roll/yawとは別物）
+    roadSlopeValid: false,        // road_plane_* が有効値で来ているか（旧スキーマ録画等ではfalse）
+    roadDirectional: false,       // 進行方向を分離できたか（低速時はfalse）
+    roadGradePct: 0,              // 縦断勾配（%, 進行方向）
+    roadCantDeg: 0,               // カント（度, 進行方向に直交）
+    roadTiltDeg: 0                // 全体傾斜角（度, 方向非依存。低速時のフォールバック表示）
 };
+
+// 進行方向を分離できると見なす最低速度（m/s）。これ未満は速度方向が不安定なため
+// 全体傾斜角（方向非依存）へフォールバックする。
+var ROAD_SLOPE_MIN_SPEED = 2.0;
 
 // シャシー/サス寸法・カメラ（無次元, 車体ローカル: x=右, y=上, z=前）
 var ATTITUDE_2D = {
@@ -78,7 +89,9 @@ var ATTITUDE_COLORS = {
     cogRef: 'rgba(160,180,210,0.28)',     // 参照リング/十字
     strutCompress: '#E8563B',             // 縮み（荷重大, 赤）
     strutNeutral: '#5AD08A',
-    strutExtend: '#43A6FF'                // 伸び（荷重小, 青）
+    strutExtend: '#43A6FF',               // 伸び（荷重小, 青）
+    roadValue: '#FFE9B0',                 // 路面勾配の数値（車体姿勢=白系と区別するアンバー系）
+    roadLabel: 'rgba(224,196,138,0.85)'   // 路面勾配のラベル
 };
 
 function initCar3D() {
@@ -169,6 +182,49 @@ function setCarGForce(lat, long) {
     car3DState.gLong = finiteOr0(long);
     car3DState.cogTrail.push({ lat: car3DState.gLat, long: car3DState.gLong });
     if (car3DState.cogTrail.length > COG.trailMax) car3DState.cogTrail.shift();
+    car3DState.needsRender = true;
+}
+
+// 数値が有限数か判定（undefined/null/NaN/文字列を「データ無し」として弾く）。
+// finiteOr0 と異なり、ここでは 0 へ丸めず「無い」ことをそのまま呼び出し元へ伝える。
+function isFiniteNum(v) {
+    return typeof v === 'number' && isFinite(v);
+}
+
+/**
+ * 路面勾配（road_plane_x/y/z 法線 + 進行方向）を受け取り、縦断勾配・カントを更新する。
+ * 車体姿勢（pitch/roll/yaw、サス圧縮の影響を受ける）とは別物として独立に保持する。
+ * @param {number} nx 路面法線ベクトル x（road_plane_x, ワールドXZ）
+ * @param {number} ny 路面法線ベクトル y（road_plane_y, ワールドY-up）
+ * @param {number} nz 路面法線ベクトル z（road_plane_z, ワールドXZ）
+ * @param {number} vx 速度ベクトル x（velocity_x, m/s）
+ * @param {number} vz 速度ベクトル z（velocity_z, m/s）
+ */
+function setRoadSlope(nx, ny, nz, vx, vz) {
+    if (!isFiniteNum(nx) || !isFiniteNum(ny) || !isFiniteNum(nz)) {
+        // road_plane_* 欠損（旧スキーマ録画のREVIEW/リプレイ等）。「平坦」に丸めず無効化する。
+        car3DState.roadSlopeValid = false;
+        car3DState.needsRender = true;
+        return;
+    }
+    car3DState.roadSlopeValid = true;
+
+    var deg = 180 / Math.PI;
+    car3DState.roadTiltDeg = Math.acos(Math.max(-1, Math.min(1, ny))) * deg;
+
+    var vMag = Math.sqrt(vx * vx + vz * vz);
+    if (isFiniteNum(vx) && isFiniteNum(vz) && vMag >= ROAD_SLOPE_MIN_SPEED && Math.abs(ny) > 1e-6) {
+        var dx = vx / vMag, dz = vz / vMag;   // 進行方向（ワールドXZ、単位ベクトル）
+        var rx = dz, rz = -dx;                 // 進行方向に直交する右方向（XZ平面内）
+        var grade = -(nx * dx + nz * dz) / ny;
+        var cant = -(nx * rx + nz * rz) / ny;
+        car3DState.roadDirectional = true;
+        car3DState.roadGradePct = grade * 100;
+        car3DState.roadCantDeg = Math.atan(cant) * deg;
+    } else {
+        // 低速時は進行方向が不安定なため、方向非依存の全体傾斜角へフォールバックする。
+        car3DState.roadDirectional = false;
+    }
     car3DState.needsRender = true;
 }
 
@@ -411,7 +467,8 @@ function drawLegend() {
     });
 }
 
-// PITCH / ROLL / YAW をキャンバス右上に描画
+// PITCH / ROLL / YAW（車体姿勢）+ GRADE / CANT（路面勾配、road_plane_*由来）を
+// キャンバス右上に描画。路面勾配は車体姿勢と別物のため、区切りと別色で視覚的に分離する。
 function drawReadout() {
     var ctx = car3DState.ctx;
     var deg = 180 / Math.PI;
@@ -430,6 +487,34 @@ function drawReadout() {
         ctx.fillText((r[1] >= 0 ? '+' : '') + r[1].toFixed(1) + '°', x, y);
         ctx.font = '700 9px "Segoe UI", system-ui, sans-serif';
         ctx.fillStyle = 'rgba(150,172,200,0.85)';
+        ctx.fillText(r[0], x - 52, y);
+    });
+    ctx.textAlign = 'left';
+
+    // 路面勾配（車体姿勢とは区切りを空けて別群として表示）
+    var ry0 = y0 + rows.length * 17 + 8;
+    var roadRows;
+    if (!car3DState.roadSlopeValid) {
+        roadRows = [['GRADE', '--'], ['CANT', '--']];
+    } else if (car3DState.roadDirectional) {
+        var g = car3DState.roadGradePct;
+        roadRows = [
+            ['GRADE', (g >= 0 ? '+' : '') + g.toFixed(1) + '%'],
+            ['CANT', (car3DState.roadCantDeg >= 0 ? '+' : '') + car3DState.roadCantDeg.toFixed(1) + '°']
+        ];
+    } else {
+        // 低速フォールバック: 方向非依存の全体傾斜角のみ（GRADE/CANTと別ラベルで明示）
+        roadRows = [['TILT', car3DState.roadTiltDeg.toFixed(1) + '°']];
+    }
+    ctx.textBaseline = 'middle';
+    roadRows.forEach(function (r, i) {
+        var y = ry0 + i * 17;
+        ctx.textAlign = 'right';
+        ctx.font = '700 13px "Segoe UI", system-ui, sans-serif';
+        ctx.fillStyle = ATTITUDE_COLORS.roadValue;
+        ctx.fillText(r[1], x, y);
+        ctx.font = '700 9px "Segoe UI", system-ui, sans-serif';
+        ctx.fillStyle = ATTITUDE_COLORS.roadLabel;
         ctx.fillText(r[0], x - 52, y);
     });
     ctx.textAlign = 'left';
