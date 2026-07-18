@@ -122,3 +122,22 @@ body.replay-mode .engineer-feed {
 .review-lap-play:hover {
     background: var(--surface-4);
 }
+
+/* REVIEW 一覧のCSVダウンロードリンク(#174/#175)。review-lap-playと同水準の見た目に統一。
+   <a>要素をボタン風に整形(text-decoration解除等)。 */
+.review-lap-csv {
+    background: var(--surface-3);
+    color: var(--accent-brand);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 0 6px;
+    cursor: pointer;
+    line-height: 1.5;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.review-lap-csv:hover {
+    background: var(--surface-4);
+}
