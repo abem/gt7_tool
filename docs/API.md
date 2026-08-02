@@ -17,6 +17,7 @@ GT7 Toolは、GT7（グランツーリスモ7）からのテレメトリデー�
 | `/api/laps` | GET | 過去ラップの一覧（ファイル名メタのみ・軽量。`include_imported=true`でインポート済み分も混在） |
 | `/api/laps/import` | POST | 自前CSVからのラップインポート（#177/#178） |
 | `/api/laps/{file}` | GET | 単一ラップの詳細（fields射影・every間引き対応。`format=csv`でCSVダウンロード） |
+| `/api/predict/laptime` | GET | ラップタイム予測（品質ゲート済み・MAE≤3%のコース×車種のみ、#434 P5 Stage2） |
 | `/{filename}` | GET | 静的ファイル配信 |
 
 ### 1. メインダッシュボード `/`
@@ -208,13 +209,13 @@ ws.onmessage = (event) => {
 
 | パラメータ | 型 | 既定値 | 説明 |
 |-----------|-----|--------|------|
-| `fields` | string（カンマ区切り） | 既定フィールド集合（`format=csv`時は既定が異なる。下記参照） | 返却するサンプルのフィールドを絞り込み |
+| `fields` | string（カンマ区切り） | 既定フィールド集合（`format=csv`/`format=fastf1`時は既定が異なる。下記参照） | 返却するサンプルのフィールドを絞り込み |
 | `every` | int | 実装既定値 | Nフレームごとに1件間引き |
-| `format` | string（`json`/`csv`） | `json` | `csv`指定でCSVダウンロード応答に切替（#174/#175） |
+| `format` | string（`json`/`csv`/`fastf1`） | `json` | `csv`指定でCSVダウンロード応答、`fastf1`指定でFastF1互換CSVダウンロード応答に切替（`csv`は#174/#175、`fastf1`は#434 P2） |
 
 **レスポンス（`format=json`、既定）**: `samples`（射影・間引き済みサンプル配列）、`samples_total`/`samples_returned`（元の総件数/返却件数）、`schema`（`v1`/`v2`。`lap_count` の有無で判定）、`course`（コース情報、旧形式データでは省略）等のメタ情報。
 
-存在しないファイル・命名規則不一致は404、破損ファイルは500を返します。`format`に`json`/`csv`以外の値を指定した場合は400を返します。
+存在しないファイル・命名規則不一致は404、破損ファイルは500を返します。`format`に`json`/`csv`/`fastf1`以外の値を指定した場合は400を返します。
 
 #### CSVエクスポート（`format=csv`）
 
@@ -225,6 +226,88 @@ ws.onmessage = (event) => {
 - **配列/辞書フィールドの列展開**: `tyre_temp`/`susp_height`/`wheel_rps`/`tyre_radius`/`torque_vector`は`_fl`/`_fr`/`_rl`/`_rr`の4列へ、`gear_ratios`は`_1`〜`_8`の8列へ、`flags`は`flag_*`（12列）へ、`course`は`course_*`（`id`/`name_ja`/`name_en`/`confidence`/`verified`/`source`の6列）へ展開されます。
 - **レスポンスヘッダ**: `Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="<元ファイル名の拡張子を.csvに置換>"`。
 - **エンコーディング**: UTF-8 with BOM（Windows版Excelでの文字化け回避）。区切り文字はカンマ、1行目はヘッダ行。
+
+#### FastF1互換エクスポート（`format=fastf1`）
+
+`?format=fastf1`を指定すると、Pythonの[FastF1](https://github.com/theOehrly/Fast-F1)ライブラリのTelemetry/Laps DataFrameが用いる列名・単位規約に合わせたCSVをダウンロードできます（#434 P2）。`pandas.read_csv()`で読み込めば、FastF1向けに書かれた汎用の解析・可視化コードをそのまま再利用しやすくなります。ダウンロードUIは無く、URLに`?format=fastf1`を付けて直接アクセスします。
+
+- **前提（部分互換）**: 本ツールは自車1台分のテレメトリのみを受信するため、複数ドライバー前提のFastF1設計とは構造的に非対応の列があります。対応できるのはCar Data/Position Data相当の列のみです。
+- **列マッピング**:
+
+| 本ツールのフィールド | FastF1列名 | 変換内容 |
+|---|---|---|
+| `timestamp` | `Date` | そのまま |
+| `speed_kmh` | `Speed` | 単位一致（km/h） |
+| `rpm` | `RPM` | そのまま |
+| `gear` | `nGear` | そのまま |
+| `throttle_pct` | `Throttle` | 単位一致（0-100%） |
+| `brake_pct` | `Brake` | `0%`超を`True`、それ以外を`False`（連続値→bool、情報量は落ちる） |
+| `position_x`/`y`/`z` | `X`/`Y`/`Z` | メートル→1/10m単位へ換算（×10）。座標軸は本ツール側の慣習（`position_y`=高さ）をそのまま踏襲し、FastF1側の軸慣習との厳密な整合は行っていません |
+| `flags.car_on_track` | `Status` | `True`→`"OnTrack"`、`False`→`"OffTrack"` |
+| `lap_count` | `LapNumber` | そのまま |
+| `last_laptime` | `LapTime` | そのまま（`current_laptime`は既知の誤用フィールドのため使用しません） |
+
+- **非対応列（FastF1側にのみ存在）**: `DRS`（GT7にDRS相当システムなし）・`Compound`/`TyreLife`/`Stint`（タイヤコンパウンド・スティント情報がGT7テレメトリに存在しない）・`DriverAhead`/`DistanceToDriverAhead`（他車の位置情報を本ツールは持たない）。
+- **`fields`の既定値**: `format=fastf1`時は`fields`省略時の既定が上表の対応済みフィールド集合（`FASTF1_FIELDS`）になります。`format=csv`の既定（`CSV_ALL_FIELDS`、記録済み全フィールド）とは別枠です。
+- **レスポンスヘッダ**: `Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="<元ファイル名の拡張子を_fastf1.csvに置換>"`（`format=csv`の出力ファイルとは別名になり、混同を避けられます）。
+- **エンコーディング**: UTF-8 with BOM。区切り文字はカンマ、1行目はFastF1列名のヘッダ行。
+- **MoTeC（.ld）連携について**: #434では MoTeC i2 互換エクスポートも検討されましたが、MoTeC社が.ld形式の公式仕様を公開しておらず、かつ本チーム内にMoTeC i2の実機・ライセンスが無く出力の実機検証ができないため、本Phaseでは実装を見送りました。
+
+### 6. ラップタイム予測 `/api/predict/laptime`
+
+**メソッド:** GET
+
+**説明:** `train_laptime_model.py`（オフライン学習パイプライン、#434 P5 Stage1）が学習したコース×車種別モデルを用いて、走行中の部分特徴量からそのラップの最終タイム（ms）を予測します。**品質ゲート（MAE≤3%）を満たすコース×車種の組み合わせのみ**対応し、それ以外は404を返します（中間帯の個別許容なし、采指示2026-08-02厳守）。現時点でこのエンドポイントを呼び出すフロントエンドは未実装です（ライブ特徴量計算・UI表示はStage3で別途実装予定）。
+
+**クエリパラメータ（すべて必須）:**
+
+| パラメータ | 型 | 説明 |
+|-----------|-----|------|
+| `course` | string | コースID（`course.id`。例: `goodwood`） |
+| `car_id` | int | 車種ID |
+| `progress` | float（0.0-1.0） | ラップ進行度（距離基準の割合） |
+| `avg_speed_kmh` | float | 進行度時点までの平均速度(km/h) |
+| `max_speed_kmh` | float | 進行度時点までの最高速度(km/h) |
+| `avg_throttle_pct` | float（0-100） | 進行度時点までの平均スロットル開度(%) |
+| `avg_brake_pct` | float（0-100） | 進行度時点までの平均ブレーキ踏力(%) |
+| `avg_tyre_temp` | float | 進行度時点までの4輪平均タイヤ温度 |
+
+**レスポンス（200、品質ゲート適合時）:**
+
+```json
+{
+  "course": "goodwood",
+  "car_id": 345,
+  "predicted_laptime_ms": 112295.7,
+  "mae_ms": 940.6,
+  "mae_pct": 0.84,
+  "n_laps": 99,
+  "algorithm": "random_forest"
+}
+```
+
+- `mae_ms`/`mae_pct`/`n_laps`/`algorithm`は、Stage1のオフライン検証結果（`models/gated_groups.json`由来）をそのまま返します。フロントエンド（Stage3）で予測値の前提条件（検証精度・学習データ量）をユーザーに明示するための情報です。
+
+**レスポンス（404、品質ゲート対象外）:**
+
+```json
+{"error": "no quality-gated model for this course/car_id combination"}
+```
+
+学習データ不足・MAE>3%・未学習の組み合わせは全てこの404になります（対応済みコース×車種の一覧は`models/gated_groups.json`、2026-08-02時点で11組み合わせ）。
+
+**レスポンス（400、パラメータ不正）:**
+
+```json
+{"error": "missing required query parameter: avg_speed_kmh"}
+```
+
+必須パラメータの欠落・非数値・範囲外（`progress`は0.0-1.0、`avg_throttle_pct`/`avg_brake_pct`は0-100）はすべて400を返します。
+
+**前提・制約**:
+- 本エンドポイントは読み取り専用で、`gt7data/`・`decoder.py`・`telemetry.py`・ライブ受信/配信経路（`telemetry_background_task`/`broadcast_to_clients`/`broadcast_consumer_task`）には一切触れません。
+- モデルのロード（`joblib.load`）は`asyncio.to_thread`でオフロードされ、他のリクエスト処理をブロックしません。
+- モデル自体は`gt7data/`の蓄積状況に応じて`train_laptime_model.py`の再実行でのみ更新されます（本APIはライブ学習を行いません）。
 
 ### データフィールド詳細
 

@@ -158,6 +158,14 @@ body.replay-mode #rm-replay-card {
     margin-left: 6px;
 }
 
+/* #434 P5 Stage3: 予測ラップタイムの前提条件(MAE%/n_laps)を小さめのサブテキストで表示 */
+.rm-strategy-sub {
+    font-size: 10px;
+    color: var(--text-secondary);
+    opacity: 0.75;
+    margin-left: 6px;
+}
+
 body.drive-mode #rm-strategy-card {
     display: none;
 }

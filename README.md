@@ -20,6 +20,7 @@ PS5/PS4 から送信されるテレメトリパケットを受信・Salsa20 復�
 | **STEER RESPONSE** | 舵角（ステアリングホイール角）から期待される旋回（狙い=青破線）と実ヨーレートから求めた旋回（実際=橙実線）を弧で比較。バランス比 \|ω\|/\|ω_exp\| でアンダー/オーバー判定、車固有の中立ゲインを実走行から自動較正。詳細は [docs/steer-response.md](docs/steer-response.md) |
 | **ラップ** | ラップタイム記録、ベストラップ、距離基準ライブ・タイムデルタ、推定ラップタイム（セクタータイムは非対応。理由は後述） |
 | **解析** | 距離索引ラップ解析、リファレンス速度重畳チャート、レースエンジニア通知、グリップ状態、一貫性σ |
+| **バーチャルピットウォール** | 別端末（`/engineer`）からエンジニア役が「FUEL MAP 3」「LIFT & COAST」等の指示を送信し、ドライバー側画面へ通知表示＋音声読み上げ（ブラウザ標準 SpeechSynthesis）で伝達 |
 | **過去ラップ活用** | REVIEW ビュー（記録済みラップの一覧・距離基準の2ラップ重畳比較・ベスト比較）と**全カード再生**（過去ラップを走行時と同じ全カードで時間/距離スクラバー再生。倍速・シーク対応、再生中もライブ受信・記録は継続） |
 | **ビュー切替** | DRIVE（走行用最小表示: ギア/シフトライト/デルタ中心、F1 ディスプレイ流）と ANALYSIS（全パネル解析表示）をワンクリック切替 |
 | **レイアウト操作** | 全ブロック（カード / チャートタイル / 上部レーシングバー）をドラッグで自由配置（配置は localStorage に保存・ページスクロールに追従）、ヘッダーのフラット 1 段ツールバー（ANALYSIS│DRIVE 切替 / TEST MODE / ALIGN / FULLSCREEN） |
@@ -194,6 +195,11 @@ sudo python3 scripts/gt7data_rotate.py --apply   # 実行(gt7data が root 所�
 | `feature/*` | 個別機能の開発 |
 
 ## 更新履歴
+
+### 2026-08-02
+- **バーチャルピットウォール機能を追加**（#434 P4）: 別端末（`/engineer`、新規ページ）からエンジニア役が「FUEL MAP 3」「LIFT & COAST」等の指示やクイックプリセット・自由入力メッセージを送信すると、ドライバー側のダッシュボードへ通知トースト（既存のレースエンジニア通知パネルを再利用）＋音声読み上げ（ブラウザ標準SpeechSynthesis Web API、新規外部依存なし）で伝達。既存の`websocket_handler`の受信ループへ`{"type":"engineer_message",...}`のディスパッチを追加し、`broadcast_queue`（P1-b、テレメトリ向けの「最新優先」破棄ポリシー）は経由せず`broadcast_to_clients`を直接使用（低頻度・欠落厳禁のメッセージのため）。ライブ受信・配信経路（`decoder.py`/`telemetry.py`/`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`）は無変更。
+- **ラップタイム予測（AI）をSTRATEGYカードに追加**（#434 P5）: 走行中のラップ進行状況（速度・スロットル/ブレーキ・タイヤ温度・距離ベースの進行度）から、機械学習モデル（コース×車種別に事前学習、`train_laptime_model.py`）で最終ラップタイムを予測し、**PRED**表示としてSTRATEGYカードへ追加。学習データが十分でオフライン検証精度（MAE）が3%以下と確認できた組み合わせのみ表示し、それ以外は`--`（中立表示）のまま。表示時は検証誤差（MAE%）・学習ラップ数（n）を併記し、予測の前提条件を明示。ライブ受信・配信経路（`decoder.py`/`telemetry.py`/`telemetry_background_task`/`broadcast_to_clients`/`broadcast_consumer_task`）は無変更、新規バックエンドAPI（`GET /api/predict/laptime`）は読み取り専用。
+- **FastF1互換CSVエクスポートを追加**（#434 P2）: `GET /api/laps/{file}?format=fastf1` で、Pythonの[FastF1](https://github.com/theOehrly/Fast-F1)ライブラリのTelemetry/Laps列規約（`Speed`/`RPM`/`nGear`/`Throttle`/`Brake`/`X`/`Y`/`Z`/`Date`/`Status`/`LapNumber`/`LapTime`）に列名・単位を合わせたCSVを出力（詳細は[API.md](docs/API.md#csvエクスポートformatcsv)参照）。単一車両テレメトリのため、複数ドライバー前提の列（`DRS`/`Compound`/`TyreLife`/`Stint`/`DriverAhead`等）は非対応（部分互換）。MoTeC（.ld）連携は本Phaseでは見送り（公式仕様なし・実機検証手段なしのため）。既存の`format=csv`/`format=json`・CSVダウンロードUIは無変更。
 
 ### 2026-07-18
 - **過去ラップのCSVインポート機能を追加**（#177/#178）: REVIEW 一覧上部の **CSVインポート** ボタンから、本ツール自前形式のCSV（上記エクスポートで得られるもの）を取り込み可能に。実記録データ（`gt7data/`）とは別領域（`gt7data_imported/`）に分離保存し、一覧では既定非表示（オプトインで **IMPORTED** バッジ付き表示）

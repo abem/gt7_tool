@@ -6,7 +6,9 @@ import os
 import re
 import ssl
 import logging
+import time
 import aiohttp
+import joblib
 from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
@@ -84,6 +86,13 @@ CONFIG = load_config()
 # アプリケーション状態: 接続中のWebSocketクライアント一覧
 websocket_clients = set()
 
+# 配信専用キュー(#434 P1-b): telemetry_background_taskの受信ループから配信I/O
+# (broadcast_to_clients、低速/無応答クライアントで最大1秒/クライアントの遅延あり)を
+# 分離するためのバッファ。telemetry.py側の受信キュー(#434 P1予備調査(b)で確認済み)と
+# 同じ「最新優先」ポリシー(満杯時は最古を破棄して最新を積む)を踏襲する。
+BROADCAST_QUEUE_MAXSIZE = 16
+broadcast_queue = asyncio.Queue(maxsize=BROADCAST_QUEUE_MAXSIZE)
+
 # アプリケーション状態: テレメトリ監視タスク（on_cleanup でキャンセルするため保持）
 _telemetry_supervisor_task = None
 
@@ -97,6 +106,22 @@ IMPORT_LOG_DIR = "gt7data_imported"
 # (169.6MB JSON→74MB CSV、#175検証)を踏まえ、実測最大級ラップの全件CSVでも
 # 収まるよう100MBを上限としたDoS対策(具体的な悪用防止のための上限値)。
 IMPORT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
+# 保存失敗時の退避先(#434 P1)。実データ(LOG_DIR)とは物理的に分離し、再試行後も
+# なお書込みに失敗したラップをここへ退避する。ファイル名にLAP_FILE_REと一致しない
+# 接尾辞を付けるため、/api/laps一覧走査(_scan_lap_files)には混入しない。
+LOG_DIR_FAILED = "gt7data_failed"
+
+# 進行中ラップの周期チェックポイント保存先・間隔(#434 P1)。固定ファイル名1本を
+# 上書きすることで、SIGKILL/OOM等でfinally節を経ずに終了した場合の未保存データを
+# 一定間隔ごとに縮小する。ファイル名はLAP_FILE_REと一致しない固定名のため
+# /api/laps一覧走査には現れない。
+CHECKPOINT_FILE = f"{LOG_DIR}/.checkpoint_current_lap.json"
+CHECKPOINT_INTERVAL_SEC = 5.0
+
+# save_lap_to_file の書込み失敗時リトライ回数・待機秒数(#434 P1)。
+SAVE_RETRY_COUNT = 3
+SAVE_RETRY_DELAY_SEC = 0.5
 
 
 def ensure_log_dir():
@@ -113,12 +138,70 @@ def save_lap_to_file(lap_data, lap_num):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
     car_id = lap_data[0].get("car_id", 0) if lap_data else 0
     filename = f"{LOG_DIR}/{timestamp}_CAR-{car_id}_Lap-{lap_num}.json"
+
+    # 書込み失敗時の再試行(#434 P1): 一時的なI/Oエラーの自己解消を想定し、
+    # 短い待機を挟んで規定回数まで再試行してから退避処理へ進む。
+    last_error = None
+    for attempt in range(1, SAVE_RETRY_COUNT + 1):
+        try:
+            with open(filename, 'w') as f:
+                json.dump(lap_data, f)
+            logger.info(f"Saved lap data: {filename} ({len(lap_data)} samples)")
+            return
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"Save attempt {attempt}/{SAVE_RETRY_COUNT} failed for {filename}: {e}"
+            )
+            if attempt < SAVE_RETRY_COUNT:
+                time.sleep(SAVE_RETRY_DELAY_SEC)
+
+    # 全リトライ失敗 → 退避ディレクトリへ(#434 P1)。実データ(LOG_DIR)とは物理分離し、
+    # 単純破棄していた旧挙動から変更する。
     try:
-        with open(filename, 'w') as f:
+        os.makedirs(LOG_DIR_FAILED, exist_ok=True)
+        failed_filename = f"{LOG_DIR_FAILED}/{timestamp}_CAR-{car_id}_Lap-{lap_num}_failed.json"
+        with open(failed_filename, 'w') as f:
             json.dump(lap_data, f)
-        logger.info(f"Saved lap data: {filename} ({len(lap_data)} samples)")
+        logger.error(
+            f"Saved lap data to fallback after {SAVE_RETRY_COUNT} failed attempts: "
+            f"{failed_filename} ({len(lap_data)} samples). Last error: {last_error}"
+        )
     except Exception as e:
-        logger.error(f"Error saving lap data: {e}", exc_info=True)
+        logger.error(
+            f"Lap data LOST: primary and fallback save both failed for lap {lap_num} "
+            f"(car_id={car_id}, {len(lap_data)} samples). "
+            f"primary_error={last_error} fallback_error={e}",
+            exc_info=True
+        )
+
+
+def _save_checkpoint(lap_data, lap_num):
+    """進行中ラップの周期チェックポイントを固定ファイルへ上書き保存する(#434 P1)。
+
+    ラップ境界保存(save_lap_to_file)とは独立した安全網であり、失敗しても
+    ロギングのみ行い次回間隔で再試行する(例外を上位へ伝播させない)。
+    """
+    if not lap_data:
+        return
+    try:
+        with open(CHECKPOINT_FILE, 'w') as f:
+            json.dump({"lap_num": lap_num, "samples": lap_data}, f)
+    except Exception as e:
+        logger.warning(f"Checkpoint save failed: {e}")
+
+
+def _clear_checkpoint():
+    """チェックポイントファイルを削除する(#434 P1)。
+
+    ラップ境界での正規保存成功時・正常シャットダウン時に呼び、既に完全保存済み
+    ラップの残骸をチェックポイントとして誤認しないようにする。
+    """
+    try:
+        if os.path.exists(CHECKPOINT_FILE):
+            os.remove(CHECKPOINT_FILE)
+    except Exception as e:
+        logger.warning(f"Checkpoint clear failed: {e}")
 
 
 def calculate_acceleration(speed_kmh, last_speed_kmh, time_delta):
@@ -221,6 +304,23 @@ async def _heartbeat_loop(client):
             await asyncio.sleep(interval)
 
 
+async def broadcast_consumer_task():
+    """配信キューを消費しWebSocketクライアントへ配信する専用タスク(#434 P1-b)。
+
+    telemetry_background_taskの受信ループから配信I/O(broadcast_to_clients)を
+    切り離すことで、低速/無応答クライアントによる配信遅延が受信ループ
+    (→telemetry.py内部キューの溢れ)へ波及しないようにする。
+    """
+    while True:
+        message = await broadcast_queue.get()
+        try:
+            await broadcast_to_clients(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Broadcast consumer error: {e}", exc_info=True)
+
+
 async def telemetry_background_task():
     """バックグラウンドでGT7からのテレメトリデータを受信し続けるタスク。
 
@@ -246,11 +346,20 @@ async def telemetry_background_task():
     last_time = datetime.now()
     current_lap_data = []
     current_lap_number = 0
+    # パケットロス計測(#434 P1): 受理されなかった/破棄されたパケットの累積カウント。
+    packet_loss_count = 0
+    # 周期的チェックポイント保存(#434 P1): 前回チェックポイントからの経過時間追跡。
+    last_checkpoint_time = datetime.now()
+    # 配信キュー溢れ計測(#434 P1-b): telemetry.py側のパケットドロップ(packet_loss_count)
+    # とは別に、配信側の遅延蓄積(broadcast_queue満杯による最古メッセージ破棄)を計測する。
+    broadcast_drop_count = 0
 
     await client.connect()  # UDP エンドポイント作成（イベントループ上で必要）
 
     # ハートビート送信を独立タスクで駆動
     heartbeat_task = asyncio.create_task(_heartbeat_loop(client))
+    # 配信専用タスクを独立起動(#434 P1-b): 受信ループから配信I/Oを分離する
+    broadcast_task = asyncio.create_task(broadcast_consumer_task())
 
     try:
         while True:
@@ -260,59 +369,109 @@ async def telemetry_background_task():
 
             if raw_data:
                 decrypted = decoder.decrypt(raw_data)
-                if decrypted:
-                    parsed = decoder.parse(decrypted)
-                    pid = parsed.get("package_id", 0) if parsed else 0
-                    # 受理条件: 通常は単調増加のみ（重複・順序逆転パケットを除外）。
-                    # ただしゲーム再起動で package_id が 0 付近にリセットされると
-                    # 「pid > last_package_id」を二度と満たせず全パケットが弾かれて
-                    # 無言で固まるため、大幅な後退（1000 超）はリセットとみなして受理する。
-                    if parsed and (pid > last_package_id or pid < last_package_id - 1000):
-                        last_package_id = pid
+                if not decrypted:
+                    # パケットロス計測(#434 P1): 受信したが復号できなかったパケット
+                    packet_loss_count += 1
+                    continue
 
-                        current_time = datetime.now()
-                        parsed["timestamp"] = current_time.isoformat()
+                parsed = decoder.parse(decrypted)
+                if parsed is None:
+                    # パケットロス計測(#434 P1): 復号はできたが解析できなかったパケット
+                    packet_loss_count += 1
+                    continue
 
-                        # 加速度計算
-                        time_delta = (current_time - last_time).total_seconds()
-                        accel_g, decel_g = calculate_acceleration(
-                            parsed["speed_kmh"], last_speed_kmh, time_delta
-                        )
-                        parsed["accel_g"] = accel_g
-                        parsed["accel_decel"] = decel_g
-                        last_speed_kmh = parsed["speed_kmh"]
-                        last_time = current_time
+                pid = parsed.get("package_id", 0)
+                # 受理条件: 通常は単調増加のみ（重複・順序逆転パケットを除外）。
+                # ただしゲーム再起動で package_id が 0 付近にリセットされると
+                # 「pid > last_package_id」を二度と満たせず全パケットが弾かれて
+                # 無言で固まるため、大幅な後退（1000 超）はリセットとみなして受理する。
+                if not (pid > last_package_id or pid < last_package_id - 1000):
+                    # パケットロス計測(#434 P1): 受理されなかったパケット
+                    # (重複・順序逆転。リセット扱いでもない)
+                    packet_loss_count += 1
+                    continue
 
-                        # コース推定
-                        course_info = course_estimator.estimate_course(
-                            parsed.get("position_x", 0),
-                            parsed.get("position_z", 0)
-                        )
-                        parsed["course"] = course_info
+                # パケットロス計測(#434 P1): 単調増加区間で生じた欠番(gap)を損失として
+                # 計上する。リセット(大幅後退)直後はgap計算をスキップする(誤検知防止)。
+                if last_package_id > 0:
+                    gap = pid - last_package_id - 1
+                    if gap > 0:
+                        packet_loss_count += gap
+                last_package_id = pid
 
-                        # 燃料計算
-                        fuel_data = fuel_tracker.update(
-                            parsed.get("current_fuel"),
-                            parsed.get("fuel_capacity", 100),
-                            current_lap_number
-                        )
-                        parsed.update(fuel_data)
+                current_time = datetime.now()
+                parsed["timestamp"] = current_time.isoformat()
 
-                        # ラップデータ蓄積・保存（lap_count変化検知）
-                        lap_count = parsed.get("lap_count", 1)
-                        current_lap_data.append(parsed)
+                # 加速度計算
+                time_delta = (current_time - last_time).total_seconds()
+                accel_g, decel_g = calculate_acceleration(
+                    parsed["speed_kmh"], last_speed_kmh, time_delta
+                )
+                parsed["accel_g"] = accel_g
+                parsed["accel_decel"] = decel_g
+                last_speed_kmh = parsed["speed_kmh"]
+                last_time = current_time
 
-                        # ラップ境界検出：lap_countが変化したら保存
-                        # 同期 json 書込はイベントループを数百ms塞ぐためワーカースレッドへ。
-                        # 旧リストは保存スレッドに渡し切り、以後はここで新リストへ差し替えるので
-                        # 書込み中のリストが変更されることはない。
-                        if lap_count > current_lap_number and current_lap_number > 0:
-                            await asyncio.to_thread(save_lap_to_file, current_lap_data, current_lap_number)
-                            current_lap_data = []
-                        current_lap_number = lap_count
+                # コース推定
+                course_info = course_estimator.estimate_course(
+                    parsed.get("position_x", 0),
+                    parsed.get("position_z", 0)
+                )
+                parsed["course"] = course_info
 
-                        # WebSocket配信
-                        await broadcast_to_clients(json.dumps(parsed))
+                # 燃料計算
+                fuel_data = fuel_tracker.update(
+                    parsed.get("current_fuel"),
+                    parsed.get("fuel_capacity", 100),
+                    current_lap_number
+                )
+                parsed.update(fuel_data)
+
+                # ラップデータ蓄積・保存（lap_count変化検知）
+                lap_count = parsed.get("lap_count", 1)
+                current_lap_data.append(parsed)
+
+                # 周期的チェックポイント保存(#434 P1): ラップ境界を待たず一定間隔で
+                # current_lap_data を中間保存する。SIGKILL/OOM等でfinally節を経ずに
+                # 終了した場合の未保存データを縮小する安全網。既存のラップ保存と同じく
+                # ワーカースレッドへオフロードし、受信ループ(イベントループ)を塞がない。
+                if (current_time - last_checkpoint_time).total_seconds() >= CHECKPOINT_INTERVAL_SEC:
+                    await asyncio.to_thread(_save_checkpoint, current_lap_data, current_lap_number)
+                    if packet_loss_count > 0:
+                        logger.warning(f"Packet loss count (cumulative): {packet_loss_count}")
+                    if broadcast_drop_count > 0:
+                        # 配信キュー溢れ計測(#434 P1-b): packet_loss_countとは別指標として明示
+                        logger.warning(f"Broadcast queue full, dropped (cumulative): {broadcast_drop_count}")
+                    last_checkpoint_time = current_time
+
+                # ラップ境界検出：lap_countが変化したら保存
+                # 同期 json 書込はイベントループを数百ms塞ぐためワーカースレッドへ。
+                # 旧リストは保存スレッドに渡し切り、以後はここで新リストへ差し替えるので
+                # 書込み中のリストが変更されることはない。
+                if lap_count > current_lap_number and current_lap_number > 0:
+                    await asyncio.to_thread(save_lap_to_file, current_lap_data, current_lap_number)
+                    await asyncio.to_thread(_clear_checkpoint)
+                    current_lap_data = []
+                    last_checkpoint_time = current_time
+                current_lap_number = lap_count
+
+                # WebSocket配信(#434 P1-b): 受信ループを配信I/Oから切り離すため、
+                # 直接awaitせず非ブロッキングでbroadcast_queueへ積む。実際の送信は
+                # broadcast_consumer_taskが独立して行う。満杯時は最古を破棄して
+                # 最新を積む(telemetry.py:50-55と同じ「最新優先」ポリシー)。
+                message = json.dumps(parsed)
+                try:
+                    broadcast_queue.put_nowait(message)
+                except asyncio.QueueFull:
+                    try:
+                        broadcast_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                    broadcast_drop_count += 1
+                    try:
+                        broadcast_queue.put_nowait(message)
+                    except asyncio.QueueFull:
+                        pass
 
     except Exception as e:
         logger.error(f"Telemetry task error: {e}", exc_info=True)
@@ -322,9 +481,23 @@ async def telemetry_background_task():
             await heartbeat_task
         except asyncio.CancelledError:
             pass
+        broadcast_task.cancel()
+        try:
+            await broadcast_task
+        except asyncio.CancelledError:
+            pass
         if current_lap_data:
             save_lap_to_file(current_lap_data, current_lap_number)
+            _clear_checkpoint()
         client.close()
+
+
+# バーチャルピットウォール(#434 P4): エンジニア役からのメッセージ本文の長さ上限。
+MAX_ENGINEER_MESSAGE_LEN = 200
+# 既知のseverity値(未知値はnoticeへフォールバック)。既存の.engineer-alert CSS分類
+# (styles.css、good/warning/serious/critical)と、通常の指示メッセージ用に新設した
+# noticeで揃える(フロント側のクラス名と1対1対応させ、表示側で追加の変換をしない)。
+ENGINEER_MESSAGE_SEVERITIES = frozenset(("notice", "good", "warning", "serious", "critical"))
 
 
 async def websocket_handler(request):
@@ -337,7 +510,29 @@ async def websocket_handler(request):
 
     try:
         async for msg in ws:
-            if msg.type == aiohttp.WSMsgType.ERROR:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                # バーチャルピットウォール(#434 P4): エンジニア役端末からのメッセージ受信。
+                # テレメトリ配信(broadcast_queue、P1-b)とは別経路で直接配信する
+                # (低頻度・欠落厳禁のため、高頻度テレメトリ向けの「最新優先」破棄
+                # ポリシーを持つbroadcast_queueは経由しない)。
+                try:
+                    data = json.loads(msg.data)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(data, dict) or data.get("type") != "engineer_message":
+                    continue
+                text = str(data.get("text", "")).strip()[:MAX_ENGINEER_MESSAGE_LEN]
+                if not text:
+                    continue
+                severity = data.get("severity")
+                if severity not in ENGINEER_MESSAGE_SEVERITIES:
+                    severity = "notice"
+                await broadcast_to_clients(json.dumps({
+                    "type": "engineer_message",
+                    "text": text,
+                    "severity": severity,
+                }))
+            elif msg.type == aiohttp.WSMsgType.ERROR:
                 logger.warning(f"WebSocket error: {ws.exception()}")
                 break
     except Exception as e:
@@ -353,6 +548,16 @@ async def index_handler(request):
     """メインダッシュボードを配信"""
     # no-cache: ブラウザは ETag で必ず再検証する（デプロイ後に古い JS/HTML を掴み続けるのを防ぐ）
     return web.FileResponse('index.html', headers={'Cache-Control': 'no-cache'})
+
+
+async def engineer_handler(request):
+    """バーチャルピットウォール(#434 P4): エンジニア役端末向けページを配信。
+
+    index_handlerと同じパターン(専用ルートで固定ファイルを返す)。static_handler
+    (.js/.css許可リスト方式)は.htmlを配信しない設計のため、engineer.html配信専用の
+    ルートをここに新設する(static_handlerの許可リスト自体は変更しない)。
+    """
+    return web.FileResponse('engineer.html', headers={'Cache-Control': 'no-cache'})
 
 
 async def static_handler(request):
@@ -489,6 +694,74 @@ def _samples_to_csv(samples, fields):
     writer.writerow(columns)
     for s in samples:
         writer.writerow(_csv_row(s, fields))
+    return buf.getvalue()
+
+
+# FastF1連携(#434 P2)の既定フィールド集合。FastF1のCar Data/Position Data列
+# (Speed/RPM/nGear/Throttle/Brake/X/Y/Z/Date/Status/LapNumber/LapTime)に
+# 改名・単位変換で対応できるフィールドのみを含む(部分互換方針、予備調査報告§(b)参照)。
+# CSV_ALL_FIELDSとは独立(既存format=csvの列構成に影響を与えないため)。
+FASTF1_FIELDS = (
+    "timestamp", "speed_kmh", "rpm", "gear", "throttle_pct", "brake_pct",
+    "position_x", "position_y", "position_z", "flags", "lap_count", "last_laptime",
+)
+
+# GT7の position_x/y/z(メートル)をFastF1のX/Y/Z単位(1/10m)へ揃える倍率。
+FASTF1_POSITION_UNIT_SCALE = 10
+
+# FastF1列名への対応。座標軸(X/Y/Z)は本ツール側の慣習(position_y=高さ)を
+# そのまま踏襲し、F1側の軸慣習との厳密な整合は行わない(予備調査報告の質問事項3、
+# 計承認2026-08-02。本Phaseのスコープ外)。
+_FASTF1_COLUMN_NAMES = {
+    "timestamp": "Date",
+    "speed_kmh": "Speed",
+    "rpm": "RPM",
+    "gear": "nGear",
+    "throttle_pct": "Throttle",
+    "brake_pct": "Brake",
+    "position_x": "X",
+    "position_y": "Y",
+    "position_z": "Z",
+    "flags": "Status",
+    "lap_count": "LapNumber",
+    "last_laptime": "LapTime",
+}
+
+
+def _fastf1_columns(fields):
+    """FastF1列名一覧を、要求フィールド順を保ちつつ生成する(#434 P2)。"""
+    return [_FASTF1_COLUMN_NAMES.get(name, name) for name in fields]
+
+
+def _fastf1_row(sample, fields):
+    """1サンプルをFastF1列規約の値リストへ変換する(#434 P2、予備調査報告§(b)の対応表準拠)。
+
+    Brake: 連続値(0-100%)をFastF1のbool規約(0%超=True)へ変換(情報量は落ちる、部分互換)。
+    X/Y/Z: メートル→1/10m単位へ換算。
+    Status: flags.car_on_track(bool)をOnTrack/OffTrack文字列へ変換。
+    """
+    row = []
+    for name in fields:
+        v = sample.get(name)
+        if name == "brake_pct":
+            row.append("True" if (v or 0) > 0 else "False")
+        elif name in ("position_x", "position_y", "position_z"):
+            row.append(v * FASTF1_POSITION_UNIT_SCALE if isinstance(v, (int, float)) else "")
+        elif name == "flags":
+            row.append("OnTrack" if isinstance(v, dict) and v.get("car_on_track") else "OffTrack")
+        else:
+            row.append(v if v is not None else "")
+    return row
+
+
+def _samples_to_fastf1_csv(samples, fields):
+    """射影済みサンプル一覧をFastF1互換CSV文字列(UTF-8 BOM付き)へ変換する(#434 P2)。"""
+    buf = io.StringIO()
+    buf.write('﻿')  # UTF-8 BOM(Excelでの文字化け回避)
+    writer = csv.writer(buf)
+    writer.writerow(_fastf1_columns(fields))
+    for s in samples:
+        writer.writerow(_fastf1_row(s, fields))
     return buf.getvalue()
 
 
@@ -721,7 +994,7 @@ def _load_lap_file(path, fields, every, output_format='json'):
 
     to_thread で実行する。大型ファイル(実測最大84MB)では json の parse も
     dumps(またはCSV変換)もイベントループを塞ぎ得るため、直列化までこの関数内で済ませる。
-    output_format: 'json'(既定、従来どおり) または 'csv'(#174/#175)。
+    output_format: 'json'(既定、従来どおり)・'csv'(#174/#175)・'fastf1'(#434 P2)。
     """
     with open(path, 'r') as f:
         data = json.load(f)
@@ -736,6 +1009,8 @@ def _load_lap_file(path, fields, every, output_format='json'):
     duration_ms = _lap_duration_approx_ms(data)
     if output_format == 'csv':
         body = _samples_to_csv(samples, fields)
+    elif output_format == 'fastf1':
+        body = _samples_to_fastf1_csv(samples, fields)
     else:
         body = json.dumps(samples)
     return body, len(samples), len(data), first, duration_ms
@@ -780,7 +1055,8 @@ def _lap_duration_approx_ms(data):
 
 async def api_lap_detail_handler(request):
     """GET /api/laps/{file} — 単一ラップの取得(fields射影+every間引き)。
-    format=csv(#174/#175)指定時はCSVダウンロード応答(既定json応答は無変更)。
+    format=csv(#174/#175)・format=fastf1(#434 P2)指定時はCSVダウンロード応答
+    (既定json応答・format=csvの列構成は無変更)。
     """
     name = request.match_info["file"]
     meta = _parse_lap_filename(name)
@@ -800,7 +1076,7 @@ async def api_lap_detail_handler(request):
         return web.json_response({"error": str(e)}, status=400)
 
     output_format = request.query.get("format", "json")
-    if output_format not in ("json", "csv"):
+    if output_format not in ("json", "csv", "fastf1"):
         return web.json_response({"error": f"invalid format: {output_format}"}, status=400)
 
     fields_raw = request.query.get("fields")
@@ -809,6 +1085,8 @@ async def api_lap_detail_handler(request):
         fields = tuple(f.strip() for f in fields_raw.split(',') if f.strip())
     elif output_format == "csv":
         fields = CSV_ALL_FIELDS  # CSV既定は全件(#174仕様書§2)。JSON既定(DEFAULT_LAP_FIELDS)とは別枠
+    elif output_format == "fastf1":
+        fields = FASTF1_FIELDS  # FastF1互換列のみ(#434 P2、予備調査報告§(b)の対応表準拠)
     else:
         fields = DEFAULT_LAP_FIELDS
 
@@ -827,6 +1105,17 @@ async def api_lap_detail_handler(request):
             headers={
                 'Cache-Control': 'no-cache',
                 'Content-Disposition': f'attachment; filename="{csv_name}"',
+            }
+        )
+
+    if output_format == "fastf1":
+        # #434 P2: FastF1互換CSV(既存csvダウンロードと別枠、ファイル名で区別)
+        fastf1_name = re.sub(r'\.json$', '_fastf1.csv', name)
+        return web.Response(
+            text=body_data, content_type='text/csv', charset='utf-8',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Content-Disposition': f'attachment; filename="{fastf1_name}"',
             }
         )
 
@@ -904,6 +1193,132 @@ async def api_laps_import_handler(request):
 
     logger.info(f"Imported lap data: {IMPORT_LOG_DIR}/{filename} ({len(samples)} samples)")
     return web.json_response({"file": filename, "samples": len(samples)}, status=201)
+
+
+# ================================================================
+#  ラップタイム予測ライブ推論API (#434 P5 Stage2)
+#
+#  train_laptime_model.py(オフライン学習パイプライン)が生成した学習済みモデルを
+#  用いた読み取り専用の推論エンドポイント。ライブ受信経路(decoder.py/telemetry.py/
+#  telemetry_background_task/broadcast_to_clients/broadcast_consumer_task、
+#  P1/P1-b実装分)には一切触れない、独立したモジュールレベル関数。
+#
+#  品質ゲート(采指示2026-08-02厳守): MAE%が QUALITY_GATE_MAE_PCT(train_laptime_model.py
+#  で定義、既定3.0)を超えるコース×車種の組み合わせは本APIから一切提供しない
+#  (中間帯の個別許容なし)。閾値判定はtrain_laptime_model.py側で完結しており、
+#  models/gated_groups.json に事前フィルタ済みの許可リストとして書き出される。
+#  本APIはそのリストに存在する組み合わせのみを扱う(ここで閾値を再判定しない)。
+# ================================================================
+
+PREDICT_MODEL_DIR = "models"
+PREDICT_GATED_GROUPS_FILE = os.path.join(PREDICT_MODEL_DIR, "gated_groups.json")
+
+# train_laptime_model.py の FEATURE_COLUMNS と同一順序(モデル入力の列順を一致させる)。
+PREDICT_FEATURE_COLUMNS = (
+    "progress_fraction", "avg_speed_kmh", "max_speed_kmh",
+    "avg_throttle_pct", "avg_brake_pct", "avg_tyre_temp",
+)
+
+
+def _load_gated_groups():
+    """品質ゲート済みグループ一覧(models/gated_groups.json)を読み込む(#434 P5 Stage2)。
+
+    train_laptime_model.pyが生成する小さな許可リストファイル。ファイル不在・破損時は
+    空dict(=全リクエストが404、安全側にフォールバック)。
+    """
+    if not os.path.isfile(PREDICT_GATED_GROUPS_FILE):
+        return {}
+    try:
+        with open(PREDICT_GATED_GROUPS_FILE) as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load {PREDICT_GATED_GROUPS_FILE}: {e}")
+        return {}
+
+
+def _float_query_required(request, name, lo=None, hi=None):
+    """必須の浮動小数点クエリパラメータを取得する(#434 P5 Stage2)。
+
+    欠落・非数値・範囲外はValueError(呼び出し元で400に変換する)。
+    """
+    raw = request.query.get(name)
+    if raw is None or raw == "":
+        raise ValueError(f"missing required query parameter: {name}")
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"invalid float for {name}: {raw!r}")
+    if lo is not None and value < lo or hi is not None and value > hi:
+        raise ValueError(f"{name} out of range [{lo},{hi}]: {value}")
+    return value
+
+
+def _predict_laptime(model_path, feature_values):
+    """joblibモデルをロードし推論する(#434 P5 Stage2、同期関数)。
+
+    joblib.load()のデシリアライズコストがイベントループを塞がないよう、
+    呼び出し元は必ずasyncio.to_thread経由で呼ぶこと(既存の_load_lap_fileと同じ方針)。
+    """
+    model = joblib.load(model_path)
+    prediction = model.predict([feature_values])
+    return float(prediction[0])
+
+
+async def api_predict_laptime_handler(request):
+    """GET /api/predict/laptime — 品質ゲート済み(MAE<=3%)グループのみラップタイムを
+    推論する(#434 P5 Stage2)。
+
+    クエリ: course, car_id(組み合わせの特定) / progress, avg_speed_kmh, max_speed_kmh,
+    avg_throttle_pct, avg_brake_pct, avg_tyre_temp(train_laptime_model.pyと同じ特徴量)。
+    品質ゲート対象外(MAE>3%・未学習の組み合わせ)は404。
+    """
+    course = request.query.get("course")
+    car_id_raw = request.query.get("car_id")
+    if not course or not car_id_raw:
+        return web.json_response({"error": "course and car_id are required"}, status=400)
+
+    gated = _load_gated_groups()
+    key = f"{course}__{car_id_raw}"
+    group = gated.get(key)
+    if group is None:
+        return web.json_response(
+            {"error": "no quality-gated model for this course/car_id combination"},
+            status=404,
+        )
+
+    try:
+        progress = _float_query_required(request, "progress", lo=0.0, hi=1.0)
+        avg_speed_kmh = _float_query_required(request, "avg_speed_kmh", lo=0.0)
+        max_speed_kmh = _float_query_required(request, "max_speed_kmh", lo=0.0)
+        avg_throttle_pct = _float_query_required(request, "avg_throttle_pct", lo=0.0, hi=100.0)
+        avg_brake_pct = _float_query_required(request, "avg_brake_pct", lo=0.0, hi=100.0)
+        avg_tyre_temp = _float_query_required(request, "avg_tyre_temp")
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+    feature_values = [
+        progress, avg_speed_kmh, max_speed_kmh,
+        avg_throttle_pct, avg_brake_pct, avg_tyre_temp,
+    ]
+
+    try:
+        predicted_ms = await asyncio.to_thread(_predict_laptime, group["model_path"], feature_values)
+    except Exception as e:
+        logger.error(f"Prediction failed for {key}: {e}", exc_info=True)
+        return web.json_response({"error": "prediction failed"}, status=500)
+
+    return web.json_response(
+        {
+            "course": course,
+            "car_id": group.get("car_id", car_id_raw),
+            "predicted_laptime_ms": round(predicted_ms, 1),
+            "mae_ms": group["mae_ms"],
+            "mae_pct": group["mae_pct"],
+            "n_laps": group["n_laps"],
+            "algorithm": group.get("algorithm"),
+        },
+        headers={'Cache-Control': 'no-cache'},
+    )
 
 
 @web.middleware
@@ -1015,7 +1430,9 @@ def main():
     app.router.add_get('/api/laps', api_laps_list_handler)
     app.router.add_post('/api/laps/import', api_laps_import_handler)
     app.router.add_get('/api/laps/{file}', api_lap_detail_handler)
+    app.router.add_get('/api/predict/laptime', api_predict_laptime_handler)
     app.router.add_get('/', index_handler)
+    app.router.add_get('/engineer', engineer_handler)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/{filename:.*}', static_handler)
 
