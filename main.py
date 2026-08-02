@@ -499,6 +499,10 @@ MAX_ENGINEER_MESSAGE_LEN = 200
 # noticeで揃える(フロント側のクラス名と1対1対応させ、表示側で追加の変換をしない)。
 ENGINEER_MESSAGE_SEVERITIES = frozenset(("notice", "good", "warning", "serious", "critical"))
 
+# ドライバーレスポンスタップボタン(#436 T2): DRIVE view上のタップボタンから送る
+# 許可された応答値(#436原文の例に準拠、3種固定)。
+DRIVER_RESPONSE_VALUES = frozenset(("OK", "COPY", "RE-PLAN"))
+
 
 async def websocket_handler(request):
     """WebSocket接続を処理"""
@@ -511,27 +515,38 @@ async def websocket_handler(request):
     try:
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
-                # バーチャルピットウォール(#434 P4): エンジニア役端末からのメッセージ受信。
-                # テレメトリ配信(broadcast_queue、P1-b)とは別経路で直接配信する
-                # (低頻度・欠落厳禁のため、高頻度テレメトリ向けの「最新優先」破棄
-                # ポリシーを持つbroadcast_queueは経由しない)。
+                # バーチャルピットウォール(#434 P4 / #436 T2): エンジニア↔ドライバーの
+                # メッセージ受信。テレメトリ配信(broadcast_queue、P1-b)とは別経路で
+                # 直接配信する(低頻度・欠落厳禁のため、高頻度テレメトリ向けの
+                # 「最新優先」破棄ポリシーを持つbroadcast_queueは経由しない)。
                 try:
                     data = json.loads(msg.data)
                 except json.JSONDecodeError:
                     continue
-                if not isinstance(data, dict) or data.get("type") != "engineer_message":
+                if not isinstance(data, dict):
                     continue
-                text = str(data.get("text", "")).strip()[:MAX_ENGINEER_MESSAGE_LEN]
-                if not text:
-                    continue
-                severity = data.get("severity")
-                if severity not in ENGINEER_MESSAGE_SEVERITIES:
-                    severity = "notice"
-                await broadcast_to_clients(json.dumps({
-                    "type": "engineer_message",
-                    "text": text,
-                    "severity": severity,
-                }))
+                msg_type = data.get("type")
+                if msg_type == "engineer_message":
+                    text = str(data.get("text", "")).strip()[:MAX_ENGINEER_MESSAGE_LEN]
+                    if not text:
+                        continue
+                    severity = data.get("severity")
+                    if severity not in ENGINEER_MESSAGE_SEVERITIES:
+                        severity = "notice"
+                    await broadcast_to_clients(json.dumps({
+                        "type": "engineer_message",
+                        "text": text,
+                        "severity": severity,
+                    }))
+                elif msg_type == "driver_response":
+                    # #436 T2: ドライバー→エンジニアの応答(OK/COPY/RE-PLANの3種固定)。
+                    response = data.get("response")
+                    if response not in DRIVER_RESPONSE_VALUES:
+                        continue
+                    await broadcast_to_clients(json.dumps({
+                        "type": "driver_response",
+                        "response": response,
+                    }))
             elif msg.type == aiohttp.WSMsgType.ERROR:
                 logger.warning(f"WebSocket error: {ws.exception()}")
                 break

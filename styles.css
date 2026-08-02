@@ -1693,6 +1693,44 @@ body {
 .drive-tyre.warm    { background: var(--tyre-warm); }
 .drive-tyre.hot     { background: var(--tyre-hot); }
 
+/* --- Driver response tap buttons (#436 T2) ------------------------------ */
+/* DRIVE mode時のみ表示(body.drive-mode .drive-response-rowで切替)。
+   走行中の誤操作防止のため大きめのタップ領域(min-height 56px、
+   #434 P4 engineer.cssの.engineer-preset-btnと同水準)を確保する。 */
+.drive-response-row {
+    display: none;
+    gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-6);
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-lg);
+}
+
+.drive-response-btn {
+    flex: 1 1 auto;
+    min-width: 100px;
+    min-height: 56px;
+    padding: var(--sp-4);
+    background: var(--surface-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-md);
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+
+.drive-response-btn:active {
+    background: var(--accent-wash);
+    border-color: var(--accent-brand);
+}
+
+.drive-response-btn.sent {
+    border-color: var(--good);
+    color: var(--good);
+}
+
 /* --- DRIVE mode layout switches ------------------------------------------ */
 /* Tier-3 (解析専用) を非表示にし、中央 1 カラム + ヒーロー拡大に再構成 */
 body.drive-mode .left-panel,
@@ -1727,6 +1765,10 @@ body.drive-mode .racing-delta-section {
 
 body.drive-mode .drive-strip {
     display: grid;
+}
+
+body.drive-mode .drive-response-row {
+    display: flex;
 }
 
 /* DRIVE 中はヒーローの主要素を拡大 (Tier-1: ギアは最大グリフ) */
@@ -1787,6 +1829,12 @@ body.drive-mode .steer-response-card {
     body.drive-mode .header-row {
         flex-wrap: wrap;
         row-gap: var(--sp-2);
+    }
+
+    /* #436 T2: 縦画面スマホ幅(360px等)でも3ボタンが折返しなく収まるよう、
+       min-widthを狭める(P3の教訓を踏まえた予防的対応)。 */
+    .drive-response-btn {
+        min-width: 80px;
     }
 }
 

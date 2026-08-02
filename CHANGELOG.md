@@ -7,6 +7,17 @@
 
 ---
 
+## 2026-08-02 — ドライバーレスポンスタップボタン T2（#436）
+
+### feat: DRIVE ビューからエンジニアへ「OK / COPY / RE-PLAN」を返信できる応答ボタンを追加
+- **背景**: #436区分3「擬似的双方向テレメトリ」の応答経路。P4（バーチャルピットウォール）はエンジニア→ドライバーの一方向通知のみで、ドライバー側からの応答手段がなかった。GT7パケットにはコントローラーのボタン状態フィールドが存在しない（Nenkai/PDTools `SimulatorPacket.cs`で確認済み、F1調査で報告済み）ため、応答は固定の3値（OK/COPY/RE-PLAN）のタップボタンとして実装。
+- **バックエンド（`main.py`のみ、`decoder.py`/`telemetry.py`・既存の`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`は無変更）**: `websocket_handler`の受信ディスパッチへ`{"type":"driver_response","response":...}`の分岐を追加。`DRIVER_RESPONSE_VALUES = frozenset(("OK", "COPY", "RE-PLAN"))`の許可リストに無い値・欠落値は無視。既存の`engineer_message`と同様、低頻度・欠落厳禁のメッセージとして`broadcast_queue`（P1-bの「最新優先」破棄ポリシー）を経由せず`broadcast_to_clients`を直接使用。
+- **ドライバー側UI（`index.html`/`styles.css`/新規`drive-view.js`の`initDriveResponseButtons()`）**: DRIVE ビュー（`.drive-strip`直下）に「OK / COPY / RE-PLAN」の3つの大型タップボタン（`min-height: 56px`、誤操作防止）を配置。`body.drive-mode`時のみ表示（ANALYSIS では非表示）。クリックで`wsState`（`websocket.js`のグローバル、プレーンscript共有スコープ）経由で送信し、送信直後は`.sent`クラスで視覚フィードバック（600ms）。
+- **エンジニア側UI（`engineer.html`/`engineer.js`）**: 新規カード「ドライバーからの応答」を追加し、既存の「送信履歴」（自分が送った内容）とは別リスト（`#driver-response-log`）に表示して方向の混同を防止。`engineerLog()`を`listId`引数付きに一般化（既存呼び出し箇所は後方互換）。
+- **検証**: aiohttp TestServer + Playwrightで、ドライバー側DRIVE mode切替→3ボタン全てのタップ→エンジニア側`#driver-response-log`への実際のWebSocket経由の反映をエンドツーエンドで実測（ANALYSIS mode復帰でボタン非表示になることも確認）。バックエンド側の入力検証（不正response値・欠落値の無視、`engineer_message`との混在時も両方正しく処理されること）を単体テストで確認（送信6件中、期待どおり有効な4件のみ配信）。P3で修正した縦画面（390×844等）でのCSS Grid横スクロール回帰がないことを`mobile_check_p3.py`で再確認（3viewport全てで`scrollWidth`=`clientWidth`）。標準TEST MODEヘッドレス検証で`pageerror`0件。`decoder.py`/`telemetry.py`無改変、`main.py`の`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`に差分なし（`git diff`で確認）。
+
+---
+
 ## 2026-08-02 — アウトライヤー検出自動化 B1（#436）
 
 ### feat: マシントラブル警告の自動検知をSTRATEGYカードへ追加

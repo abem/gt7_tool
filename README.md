@@ -20,7 +20,7 @@ PS5/PS4 から送信されるテレメトリパケットを受信・Salsa20 復�
 | **STEER RESPONSE** | 舵角（ステアリングホイール角）から期待される旋回（狙い=青破線）と実ヨーレートから求めた旋回（実際=橙実線）を弧で比較。バランス比 \|ω\|/\|ω_exp\| でアンダー/オーバー判定、車固有の中立ゲインを実走行から自動較正。詳細は [docs/steer-response.md](docs/steer-response.md) |
 | **ラップ** | ラップタイム記録、ベストラップ、距離基準ライブ・タイムデルタ、推定ラップタイム（セクタータイムは非対応。理由は後述） |
 | **解析** | 距離索引ラップ解析、リファレンス速度重畳チャート、レースエンジニア通知、グリップ状態、一貫性σ |
-| **バーチャルピットウォール** | 別端末（`/engineer`）からエンジニア役が「FUEL MAP 3」「LIFT & COAST」等の指示を送信し、ドライバー側画面へ通知表示＋音声読み上げ（ブラウザ標準 SpeechSynthesis）で伝達 |
+| **バーチャルピットウォール** | 別端末（`/engineer`）からエンジニア役が「FUEL MAP 3」「LIFT & COAST」等の指示を送信し、ドライバー側画面へ通知表示＋音声読み上げ（ブラウザ標準 SpeechSynthesis）で伝達。DRIVE ビューにはドライバーからエンジニアへ「OK / COPY / RE-PLAN」を返信するタップボタンがあり、応答はエンジニア側画面に別リスト表示される |
 | **過去ラップ活用** | REVIEW ビュー（記録済みラップの一覧・距離基準の2ラップ重畳比較・ベスト比較）と**全カード再生**（過去ラップを走行時と同じ全カードで時間/距離スクラバー再生。倍速・シーク対応、再生中もライブ受信・記録は継続） |
 | **ビュー切替** | DRIVE（走行用最小表示: ギア/シフトライト/デルタ中心、F1 ディスプレイ流）と ANALYSIS（全パネル解析表示）をワンクリック切替 |
 | **レイアウト操作** | 全ブロック（カード / チャートタイル / 上部レーシングバー）をドラッグで自由配置（配置は localStorage に保存・ページスクロールに追従）、ヘッダーのフラット 1 段ツールバー（ANALYSIS│DRIVE 切替 / TEST MODE / ALIGN / FULLSCREEN） |
@@ -197,6 +197,7 @@ sudo python3 scripts/gt7data_rotate.py --apply   # 実行(gt7data が root 所�
 ## 更新履歴
 
 ### 2026-08-02
+- **ドライバーレスポンスタップボタンを追加**（#436 T2）: バーチャルピットウォールに応答経路を追加。DRIVE ビュー上に「OK / COPY / RE-PLAN」の3種固定タップボタンを配置し、ドライバーがエンジニアの指示に即座に応答できます。既存の`websocket_handler`の受信ループへ`{"type":"driver_response","response":...}`のディスパッチを追加（許可された3値のみ受理、それ以外は無視）、既存の`engineer_message`と同様に低頻度・欠落厳禁のメッセージとして`broadcast_to_clients`を直接使用（`broadcast_queue`は非経由）。エンジニア側（`/engineer`）には「送信履歴」とは別に「ドライバーからの応答」専用リストを新設し、方向を混同しないよう表示を分離。ライブ受信・配信経路（`decoder.py`/`telemetry.py`/`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`）は無変更。
 - **アウトライヤー検出自動化を追加**（#436 B1）: RACE METRICSのSTRATEGYカードで、走行中に「マシントラブルの未然防止」に繋がる4つの異常兆候を自動検知し、既存のレースエンジニア通知パネルへ警告表示するようになりました。①ラップタイムの異常な悪化（既存のタイヤデグ率計算と同じ中央値±8%方式を流用）、②タイヤ温度の急激な上昇、③油圧の異常な低下、④燃料消費率の急増（ドライビングスタイル変化との判別が難しいため緩めの閾値・低優先度で通知）。ライブ受信・配信経路（`decoder.py`/`telemetry.py`/`websocket.js`本体）は無変更、既存カードのDOM表示値を読み取るだけの設計（`race-metrics.js`の既存M-4パターンを踏襲）。
 - **バーチャルピットウォール機能を追加**（#434 P4）: 別端末（`/engineer`、新規ページ）からエンジニア役が「FUEL MAP 3」「LIFT & COAST」等の指示やクイックプリセット・自由入力メッセージを送信すると、ドライバー側のダッシュボードへ通知トースト（既存のレースエンジニア通知パネルを再利用）＋音声読み上げ（ブラウザ標準SpeechSynthesis Web API、新規外部依存なし）で伝達。既存の`websocket_handler`の受信ループへ`{"type":"engineer_message",...}`のディスパッチを追加し、`broadcast_queue`（P1-b、テレメトリ向けの「最新優先」破棄ポリシー）は経由せず`broadcast_to_clients`を直接使用（低頻度・欠落厳禁のメッセージのため）。ライブ受信・配信経路（`decoder.py`/`telemetry.py`/`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`）は無変更。
 - **ラップタイム予測（AI）をSTRATEGYカードに追加**（#434 P5）: 走行中のラップ進行状況（速度・スロットル/ブレーキ・タイヤ温度・距離ベースの進行度）から、機械学習モデル（コース×車種別に事前学習、`train_laptime_model.py`）で最終ラップタイムを予測し、**PRED**表示としてSTRATEGYカードへ追加。学習データが十分でオフライン検証精度（MAE）が3%以下と確認できた組み合わせのみ表示し、それ以外は`--`（中立表示）のまま。表示時は検証誤差（MAE%）・学習ラップ数（n）を併記し、予測の前提条件を明示。ライブ受信・配信経路（`decoder.py`/`telemetry.py`/`telemetry_background_task`/`broadcast_to_clients`/`broadcast_consumer_task`）は無変更、新規バックエンドAPI（`GET /api/predict/laptime`）は読み取り専用。
