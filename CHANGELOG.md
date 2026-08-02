@@ -7,6 +7,17 @@
 
 ---
 
+## 2026-08-02 — ラップタイム予測 P5（Stage1〜3、#434）
+
+### feat: 機械学習によるライブラップタイム予測をSTRATEGYカードへ追加
+- **背景**: #434区分2「AIを活用したリアルタイム予測」。当初案の車両3D物理モデル（Physical AI）はテレメトリに車両質量・タイヤコンパウンド・空力係数等が含まれず実現不可と判明（Stage1予備調査）、機械学習ベース回帰（コース×車種別）へ方針変更（采承認）。
+- **Stage1（オフライン学習パイプライン）**: `train_laptime_model.py`新設。`gt7data/`のラップ単位JSONから、距離進行度25/50/75%のチェックポイントごとに特徴量（速度・スロットル/ブレーキ・タイヤ温度等）を抽出し、コース×車種別にRidge回帰/RandomForestを学習・MAE/RMSE検証。学習データ量不足の組み合わせは対象外。析(seki)調査で判明した2026-02-11〜13の旧保存形式（30秒固定間隔スナップショット）由来の重複stale-labelを排除するフィルタ、および品質ゲート境界値の丸め誤差バグ（査sa指摘）を是正済み。
+- **Stage2（バックエンド推論API）**: `GET /api/predict/laptime`新設。**品質ゲート（オフライン検証MAE≤3%のグループのみ、采指示厳守）**を`models/gated_groups.json`（学習パイプラインが生成する許可リスト）で判定し、対象外は404。既存の受信〜配信経路（`decoder.py`/`telemetry.py`/`telemetry_background_task`/`broadcast_to_clients`/`broadcast_consumer_task`）は無改変。
+- **Stage3（フロント統合）**: 新規`laptime-predict.js`が、既存DOM表示値（`#speed`/`#throttle-value`/`#brake-value`/`#fl-temp`等）を独自タイマー（250ms）でサンプリングし、ラップ内累積平均・距離を自前算出（ライブ経路JSは無改変の方針を踏襲、race-metrics.js M-4と同じ設計）。進行度は距離ベース（同コース×車種の参照ラップ総距離を`/api/laps`から一度だけ取得しキャッシュ、采指示）。STRATEGYカードに**PRED**表示を追加し、品質ゲート対象外時は`--`（中立表示）、表示時はMAE%・学習ラップ数(n)を併記して前提条件を明示。
+- **検証**: Stage1は実データ（1452ファイル走査、25グループ学習→データ品質是正後20グループ）でMAE実測・単体テスト（品質ゲート境界値の再現確認含む）。Stage2はaiohttp TestClientによる実HTTPリクエスト（200/404/400の各シナリオ）。Stage3はPlaywrightヘッドレス検証（TEST MODE、`pageerror`0件）およびAPIモックによる表示ロジック確認（品質ゲート適合時のMAE%/n表示・対象外時の中立表示、両方実測）。
+
+---
+
 ## 2026-08-02 — 高度解析エクスポート P2（#434）
 
 ### feat: FastF1互換CSVエクスポート（`format=fastf1`）を追加、MoTeC .ld出力は見送り

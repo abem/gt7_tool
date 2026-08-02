@@ -445,6 +445,9 @@ function updatePositionText(data) {
     // コース名（COURSE MAP 廃止で #course-name は無い。要素があるときだけ更新）
     if (elements.courseName && data.course && data.course.name && data.course.id !== 'unknown') {
         elements.courseName.textContent = data.course.name;
+        // ラップタイム予測(#434 P5 Stage3)用にcourse.idもdata属性として保持する。
+        // 新規の受信経路ではなく、この既存ブロック(要素がある時のみ動作)への追加。
+        elements.courseName.dataset.courseId = data.course.id;
     }
 }
 

@@ -640,7 +640,14 @@
             <span class="card-title rm-title">STRATEGY</span>
             <span class="rm-strategy-item">DEG <b id="rm-deg-value">--</b></span>
             <span class="rm-strategy-item">PIT <b id="rm-pit-value">--</b></span>
+            <!-- #434 P5 Stage3: ラップタイム予測(品質ゲートMAE<=3%のみ、対象外は既存パターンに
+                 倣い'--'表示)。前提条件(MAE%/n_laps)をサブテキストで併記(采指示2026-08-02)。 -->
+            <span class="rm-strategy-item">PRED <b id="rm-predict-value">--</b><span class="rm-strategy-sub" id="rm-predict-meta"></span></span>
         </div>
+        <!-- #434 P5 Stage3: course.idをlaptime-predict.js用に保持するための非表示要素。
+             websocket.js既存のcourse.name書込み条件ブロック(要素があるときのみ動作)を
+             有効化する(新規受信経路ではない)。 -->
+        <span id="course-name" style="display:none"></span>
     </div>
 
     <!-- Three.js 廃止: CAR ATTITUDE は car-3d.js の Canvas2D 実装（WebGL不要）に置換 -->
@@ -657,6 +664,7 @@
     <script src="/replay-mode.js"></script>
     <script src="/race-metrics.js"></script>
     <script src="/websocket.js"></script>
+    <script src="/laptime-predict.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>
     <script src="/card-drag.js"></script>
