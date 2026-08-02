@@ -7,6 +7,15 @@
 
 ---
 
+## 2026-08-02 — モバイルUI最適化 P3（DRIVE mode縦画面対応、#434）
+
+### fix: DRIVE mode縦画面(スマホホルダー想定)での横スクロール・要素不可視化を解消
+- **背景**: #434「モバイル専用ダッシュボードの最適化」。予備調査でDRIVE modeを縦画面（390×844等のスマホ相当幅）で実機検証したところ、横スクロールが発生し、THROTTLE/BRAKEの%数値・TYRES欄のタイヤ状態インジケータが画面外で完全に不可視になっていることを発見（既存の`@media (max-width: 999px)`ブレークポイントは、DRIVE mode専用の`body.drive-mode .racing-top-bar`ルールがメディアクエリ外で定義されCSS詳細度が高いため、実質的に無効化されていた）。
+- **修正（`styles.css`のみ、JS・バックエンドは無改変）**: (1) `body.drive-mode .dashboard`の`grid-template-columns`を`1fr`→`minmax(0, 1fr)`（暗黙のmin-width:autoによるCSS Grid縮小阻害の解消、実装中に追加特定）。(2) `body.drive-mode .racing-top-bar`へ`@media (max-width: 999px)`内で単一カラム化の上書きを追加。(3) `body.drive-mode .drive-strip`（LAP/LAST/BEST/EST/FUEL/TYRES）を3列×2行へ折返し。(4) `body.drive-mode .header-row`へ`flex-wrap: wrap`を追加（実装中に追加発見、接続状態表示の不可視化を解消）。
+- **検証**: ヘッドレスTEST MODE実機検証（縦画面390×844・360×780、横画面844×390）で修正前後を比較。修正前は縦画面2種で横スクロール発生（`scrollWidth`444px）、修正後はいずれも解消（`scrollWidth`=`clientWidth`）。スクリーンショットでTHROTTLE/BRAKE%・TYRES表示が正常に見えることを視覚確認。回帰確認: ANALYSIS mode・通常デスクトップ幅（1920×1080）ではDRIVE mode含め横スクロールなし（回帰なし、既存のANALYSIS mode縦画面の別問題は本修正のスコープ外として計へ報告済み）。`pageerror`は全ケース0件。
+
+---
+
 ## 2026-08-02 — ラップタイム予測 P5（Stage1〜3、#434）
 
 ### feat: 機械学習によるライブラップタイム予測をSTRATEGYカードへ追加
