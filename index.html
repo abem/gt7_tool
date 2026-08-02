@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/race-metrics.css">
     <link rel="stylesheet" href="/card-groups.css">
     <link rel="stylesheet" href="/voice-command.css">
+    <link rel="stylesheet" href="/sector-time.css">
 </head>
 <body>
     <div class="dashboard">
@@ -517,6 +518,22 @@
                         <span class="lap-time-value" id="est-lap-time">--:--.---</span>
                     </div>
                 </div>
+                <!-- #436 B4: 仮想セクタータイム。GT7パケットに実セクター情報が無いため、
+                     参照ラップの走行距離をN=3等分した仮想境界での区間タイム(sector-time.js)。 -->
+                <div class="lap-times-row sector-time-row" id="sector-time-row">
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">S1</span>
+                        <span class="lap-time-value" id="sector-1-value">--.---</span>
+                    </div>
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">S2</span>
+                        <span class="lap-time-value" id="sector-2-value">--.---</span>
+                    </div>
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">S3</span>
+                        <span class="lap-time-value" id="sector-3-value">--.---</span>
+                    </div>
+                </div>
             </div>
 
             <div class="card delta-card" data-cardgroup="g5">
@@ -679,6 +696,7 @@
     <script src="/websocket.js"></script>
     <script src="/pit-wall.js"></script>
     <script src="/laptime-predict.js"></script>
+    <script src="/sector-time.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>
     <script src="/card-drag.js"></script>

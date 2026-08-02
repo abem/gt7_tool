@@ -7,6 +7,18 @@
 
 ---
 
+## 2026-08-02 — 仮想セクタータイム算出 B4（#436）
+
+### feat: 参照ラップの距離ベース進行度を流用した仮想セクタータイム(S1/S2/S3)を追加
+- **背景**: #436区分4「仮想セクタータイムの算出: GT7パケットにセクター情報が含まれないため非対応中。course_database.jsonのGPS座標を用いて仮想セクターラインを設定し、セクタータイム・区間最高速を動的算出」。
+- **予備調査での確認**: `gt7_tool/course_database.json`（アプリケーションが実際にロードする、`courses`19件+`known_courses`4件=全23件）をプログラム的に全数走査した結果、全エントリのキー和集合は`{bounds, name_ja, description, name_en, fallback, id, verified, name}`のみで、走行ライン形状（ポリライン・ウェイポイント）を保持するフィールドは1件も存在しないことを確認。バウンディングボックスのみでは幾何学的なセクターラインの設定は不可能なため、work order§3-1-2で示唆された代替案（#434 P5 Stage3の距離ベース進行度の応用）を採用した。
+- **実装（新規`sector-time.js`。既存`decoder.py`/`telemetry.py`/`main.py`/`websocket.js`本体・`laptime-predict.js`/`telemetry-analysis.js`本体は無変更、読み取り専用参照のみ）**: 参照ラップの総距離（既存`lpFetchReferenceDistance(courseId, carId)`、P5 Stage3で確立・キャッシュ済み）をN=3等分した仮想境界を設定。ライブの累積距離（既存`lpState.cumDistance`）が境界を跨いだ時点で、ライブのラップ内経過秒（既存`analysisState.lapClockS`）から区間タイムを算出・確定する1Hzティッカーを追加。最終区間（S3）はラップ完了時（`#current-lap`変化）に、完了ラップの総タイム（`#current-lap-time`のLAST表示）から逆算して確定させる。セッション内のコース×車種ごとの自己ベスト区間タイムをクライアント側状態のみで追跡し（バックエンド永続化なし、B1/P5と同方針）、更新時は該当セクターを紫色（`--session-best`）でハイライト。
+- **UI（`index.html`の`.lap-times-card`へS1/S2/S3行を追加、新規`sector-time.css`）**: 既存の`.lap-time-item`/`.lap-time-label`/`.lap-time-value`をそのまま再利用し、視覚言語を統一。
+- **検証**: 実データ(gt7dataの複数ラップファイル)での結合テストにおいて、`course_database.json`のバウンディングボックスのみに基づく既存のコース自動推定が、同一ファイル内で最大26回もコースIDを行き来する重大な不安定性（境界重複による誤検知の実例）を発見したため、この既知の不安定性から独立した決定論的検証（`lpFetchReferenceDistance`をスタブ化し、`lpState.cumDistance`/`analysisState.lapClockS`/ラップ番号を直接操作）を採用。境界跨ぎでのセクター確定・最終セクターのラップ完了時確定・セッションベスト更新とハイライト付与を実測確認（10項目のアサーション全PASS）。P3のモバイル回帰確認（3viewport）・標準TEST MODEヘッドレス検証で`pageerror`0件。
+- **既知の制約**: 参照ラップとの走行ラインの違いにより境界位置に微小な誤差が生じる。参照距離の見積もり誤差により、まれに最終セクター（S3）が確定しないままラップが終わることがある（curLapSectorsがnullのまま=表示は`--.---`のまま、既知の限界として予備調査報告に明記済み）。GT7公式のコースセクター境界とは異なる旨をユーザーガイドで明示。区間最高速の表示は本Phaseでは見送り（work order原文の言及事項だが、予備調査時点の設計協議でセクタータイムを主眼とし、実装規模を抑える判断）。
+
+---
+
 ## 2026-08-02 — 音声コマンドビュー切替 B3（#436）
 
 ### feat: SpeechRecognition Web APIによるハンズフリーのビュー/カード表示グループ切替を追加
