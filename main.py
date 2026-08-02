@@ -492,6 +492,14 @@ async def telemetry_background_task():
         client.close()
 
 
+# バーチャルピットウォール(#434 P4): エンジニア役からのメッセージ本文の長さ上限。
+MAX_ENGINEER_MESSAGE_LEN = 200
+# 既知のseverity値(未知値はnoticeへフォールバック)。既存の.engineer-alert CSS分類
+# (styles.css、good/warning/serious/critical)と、通常の指示メッセージ用に新設した
+# noticeで揃える(フロント側のクラス名と1対1対応させ、表示側で追加の変換をしない)。
+ENGINEER_MESSAGE_SEVERITIES = frozenset(("notice", "good", "warning", "serious", "critical"))
+
+
 async def websocket_handler(request):
     """WebSocket接続を処理"""
     ws = web.WebSocketResponse()
@@ -502,7 +510,29 @@ async def websocket_handler(request):
 
     try:
         async for msg in ws:
-            if msg.type == aiohttp.WSMsgType.ERROR:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                # バーチャルピットウォール(#434 P4): エンジニア役端末からのメッセージ受信。
+                # テレメトリ配信(broadcast_queue、P1-b)とは別経路で直接配信する
+                # (低頻度・欠落厳禁のため、高頻度テレメトリ向けの「最新優先」破棄
+                # ポリシーを持つbroadcast_queueは経由しない)。
+                try:
+                    data = json.loads(msg.data)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(data, dict) or data.get("type") != "engineer_message":
+                    continue
+                text = str(data.get("text", "")).strip()[:MAX_ENGINEER_MESSAGE_LEN]
+                if not text:
+                    continue
+                severity = data.get("severity")
+                if severity not in ENGINEER_MESSAGE_SEVERITIES:
+                    severity = "notice"
+                await broadcast_to_clients(json.dumps({
+                    "type": "engineer_message",
+                    "text": text,
+                    "severity": severity,
+                }))
+            elif msg.type == aiohttp.WSMsgType.ERROR:
                 logger.warning(f"WebSocket error: {ws.exception()}")
                 break
     except Exception as e:
@@ -518,6 +548,16 @@ async def index_handler(request):
     """メインダッシュボードを配信"""
     # no-cache: ブラウザは ETag で必ず再検証する（デプロイ後に古い JS/HTML を掴み続けるのを防ぐ）
     return web.FileResponse('index.html', headers={'Cache-Control': 'no-cache'})
+
+
+async def engineer_handler(request):
+    """バーチャルピットウォール(#434 P4): エンジニア役端末向けページを配信。
+
+    index_handlerと同じパターン(専用ルートで固定ファイルを返す)。static_handler
+    (.js/.css許可リスト方式)は.htmlを配信しない設計のため、engineer.html配信専用の
+    ルートをここに新設する(static_handlerの許可リスト自体は変更しない)。
+    """
+    return web.FileResponse('engineer.html', headers={'Cache-Control': 'no-cache'})
 
 
 async def static_handler(request):
@@ -1392,6 +1432,7 @@ def main():
     app.router.add_get('/api/laps/{file}', api_lap_detail_handler)
     app.router.add_get('/api/predict/laptime', api_predict_laptime_handler)
     app.router.add_get('/', index_handler)
+    app.router.add_get('/engineer', engineer_handler)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/{filename:.*}', static_handler)
 

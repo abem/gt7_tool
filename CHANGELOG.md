@@ -7,6 +7,18 @@
 
 ---
 
+## 2026-08-02 — バーチャルピットウォール P4（#434）
+
+### feat: エンジニア役端末からの指示通知・音声読み上げを追加
+- **背景**: #434区分3「バーチャル・ピットウォール機能（擬似的双方向テレメトリ）」。既存`websocket_handler`の`async for msg in ws`受信ループは存在したが、`ERROR`型以外のメッセージ（`TEXT`型）は一切処理せず破棄していた（ディスパッチ未実装）。
+- **バックエンド（`main.py`のみ、`decoder.py`/`telemetry.py`・P1/P1-b実装分の`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`は無変更）**: `websocket_handler`へ`{"type":"engineer_message","text":...,"severity":...}`形式のメッセージディスパッチを追加。長さ上限（`MAX_ENGINEER_MESSAGE_LEN=200`）・severity値の許可リスト（`notice`/`good`/`warning`/`serious`/`critical`、不正値は`notice`へフォールバック）・不正JSON/空文字の無視を実装。配信は`broadcast_queue`（P1-b、テレメトリ向けの「最新優先」破棄ポリシー）を経由せず`broadcast_to_clients`を直接使用（低頻度・欠落厳禁のメッセージのため）。新規`GET /engineer`ルート・`engineer_handler`でエンジニア役ページを配信。
+- **エンジニア役UI（新規`engineer.html`/`engineer.js`/`engineer.css`）**: メインダッシュボードとは独立した軽量ページ。プリセットボタン（FUEL MAP 3 / LIFT & COAST）・自由入力・送信履歴ログを備える。既存の「ドライバー表示/エンジニア解析の分離ドクトリン」（`drive-view.js`）を踏襲し、別端末向けの専用ページとして分離。
+- **ドライバー側受信（新規`pit-wall.js`）**: `websocket.js`の受信フレーム処理へ`data.type === 'engineer_message'`の分岐を1箇所追加し（テレメトリ処理とは別経路）、既存の`pushNotification()`（レースエンジニア通知パネル）で表示、ブラウザ標準`SpeechSynthesis` Web APIで読み上げ（新規外部依存なし）。
+- **検証**: aiohttp TestServer + Playwrightで、エンジニア役ページ→ドライバー側ダッシュボードへの実際のWebSocket経由のメッセージ配信をエンドツーエンドで実測（プリセット送信・自由入力送信、通知表示・TTS呼び出しの両方を確認）。バックエンド側の入力検証（不正JSON・不正severityのフォールバック・長さ超過の切り詰め・空文字の無視）を単体テストで確認。`decoder.py`/`telemetry.py`無改変、`main.py`の`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`に差分なし。ヘッドレスTEST MODE実機検証で`pageerror`0件。
+- **既知の制約**: 認証・アクセス制御は本Phaseの対象外（同一ネットワーク内利用が前提）。TEST MODE/REPLAY中は既存の`processTelemetryFrame`のガードにより、エンジニアメッセージを含む全WS受信メッセージの処理が停止する（既存仕様どおりの挙動であり、実運用では影響しない）。
+
+---
+
 ## 2026-08-02 — モバイルUI最適化 P3（DRIVE mode縦画面対応、#434）
 
 ### fix: DRIVE mode縦画面(スマホホルダー想定)での横スクロール・要素不可視化を解消

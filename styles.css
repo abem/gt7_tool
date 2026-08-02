@@ -1927,6 +1927,9 @@ body.drive-mode .steer-response-card {
 .engineer-alert.serious  { border-left-color: var(--serious); }
 .engineer-alert.critical { border-left-color: var(--critical); }
 .engineer-alert.pb       { border-left-color: var(--session-best); }
+/* バーチャルピットウォール(#434 P4): エンジニア役からの通常の指示メッセージ用
+   (good/warning/serious/criticalのいずれにも該当しない中立な通知)。 */
+.engineer-alert.notice   { border-left-color: var(--accent-brand); }
 
 /* --- Optional grip / consistency --------------------------------------- */
 .grip-status {
