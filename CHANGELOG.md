@@ -7,6 +7,16 @@
 
 ---
 
+## 2026-08-02 — 高度解析エクスポート P2（#434）
+
+### feat: FastF1互換CSVエクスポート（`format=fastf1`）を追加、MoTeC .ld出力は見送り
+- **背景**: Redmine #434区分1に基づく。予備調査（`00_レビュー依頼/作から計への予備調査完了報告_高度解析エクスポート_20260802.md`）で、MoTeC .ld形式はMoTeC社が公式仕様を非公開にしており、本チーム内にMoTeC i2の実機・ライセンスも無く出力の実機検証ができないことを確認。指示書の判断基準（実現性が確認できたフォーマットのみ実装）に基づき、MoTeC出力は本Phaseで見送った（計・査確認済み）。FastF1ライブラリは汎用インポート機能を持たないため、「FastF1のDataFrame列規約と互換なCSV出力」として実装した。
+- **実装（`main.py`のみ、`decoder.py`/`telemetry.py`は無改変）**: 新規`output_format`値`fastf1`を既存の`_load_lap_file`・`api_lap_detail_handler`の分岐へ追加（既存`csv`/`json`分岐は無改変）。`FASTF1_FIELDS`（対応済みフィールド集合）・`_samples_to_fastf1_csv`（列名改名・単位変換）を新設。対応列: `Speed`/`RPM`/`nGear`/`Throttle`/`Brake`（bool変換）/`X`/`Y`/`Z`（1/10m単位変換）/`Date`/`Status`/`LapNumber`/`LapTime`。複数ドライバー前提の`DRS`/`Compound`/`TyreLife`/`Stint`/`DriverAhead`はGT7の単一車両テレメトリに構造的に存在せず非対応（部分互換）。ダウンロードファイル名は`_fastf1.csv`接尾辞で既存`format=csv`出力と区別。フロントエンドのダウンロードUI追加は行わず、APIパラメータのみで提供。
+- **検証**: `git diff --exit-code --name-only -- decoder.py telemetry.py` exit 0（受信・デコード経路無改変）。`grep -n "output_format =="`で新設分岐が既存csv分岐と同一関数内にあることを確認。既存`format=csv`/`format=json`の行が削除されていないことを確認（diff上`^-`行に該当パターンなし）。新規関数（`_fastf1_columns`/`_fastf1_row`/`_samples_to_fastf1_csv`）を直接呼び出して列名・単位変換・bool変換を実測確認、全PASS。aiohttp TestClientによるHTTPエンドポイント実測で`format=fastf1`（200・text/csv・ファイル名`_fastf1.csv`）・既存`format=csv`/`format=json`/不正format（無回帰）を確認、全PASS。ヘッドレスTEST MODE実機検証（Playwright）で`pageerror`0件。新規トップレベルシンボル（`FASTF1_FIELDS`/`FASTF1_POSITION_UNIT_SCALE`/`_FASTF1_COLUMN_NAMES`/`_fastf1_columns`/`_fastf1_row`/`_samples_to_fastf1_csv`）は既存シンボルとの名前衝突なしをgrep事前確認済み。
+- **ドキュメント**: README.md（更新履歴）・docs/API.md（`format=fastf1`セクション新設・列マッピング表）・docs/USER_GUIDE.md（上級者向け利用方法を追記）を更新。
+
+---
+
 ## 2026-08-02 — バックエンド堅牢化・データ損失防止 P1（#434）
 
 ### feat: パケットロス計測・周期チェックポイント保存・ラップ保存失敗時のretry/退避を追加

@@ -604,6 +604,74 @@ def _samples_to_csv(samples, fields):
     return buf.getvalue()
 
 
+# FastF1連携(#434 P2)の既定フィールド集合。FastF1のCar Data/Position Data列
+# (Speed/RPM/nGear/Throttle/Brake/X/Y/Z/Date/Status/LapNumber/LapTime)に
+# 改名・単位変換で対応できるフィールドのみを含む(部分互換方針、予備調査報告§(b)参照)。
+# CSV_ALL_FIELDSとは独立(既存format=csvの列構成に影響を与えないため)。
+FASTF1_FIELDS = (
+    "timestamp", "speed_kmh", "rpm", "gear", "throttle_pct", "brake_pct",
+    "position_x", "position_y", "position_z", "flags", "lap_count", "last_laptime",
+)
+
+# GT7の position_x/y/z(メートル)をFastF1のX/Y/Z単位(1/10m)へ揃える倍率。
+FASTF1_POSITION_UNIT_SCALE = 10
+
+# FastF1列名への対応。座標軸(X/Y/Z)は本ツール側の慣習(position_y=高さ)を
+# そのまま踏襲し、F1側の軸慣習との厳密な整合は行わない(予備調査報告の質問事項3、
+# 計承認2026-08-02。本Phaseのスコープ外)。
+_FASTF1_COLUMN_NAMES = {
+    "timestamp": "Date",
+    "speed_kmh": "Speed",
+    "rpm": "RPM",
+    "gear": "nGear",
+    "throttle_pct": "Throttle",
+    "brake_pct": "Brake",
+    "position_x": "X",
+    "position_y": "Y",
+    "position_z": "Z",
+    "flags": "Status",
+    "lap_count": "LapNumber",
+    "last_laptime": "LapTime",
+}
+
+
+def _fastf1_columns(fields):
+    """FastF1列名一覧を、要求フィールド順を保ちつつ生成する(#434 P2)。"""
+    return [_FASTF1_COLUMN_NAMES.get(name, name) for name in fields]
+
+
+def _fastf1_row(sample, fields):
+    """1サンプルをFastF1列規約の値リストへ変換する(#434 P2、予備調査報告§(b)の対応表準拠)。
+
+    Brake: 連続値(0-100%)をFastF1のbool規約(0%超=True)へ変換(情報量は落ちる、部分互換)。
+    X/Y/Z: メートル→1/10m単位へ換算。
+    Status: flags.car_on_track(bool)をOnTrack/OffTrack文字列へ変換。
+    """
+    row = []
+    for name in fields:
+        v = sample.get(name)
+        if name == "brake_pct":
+            row.append("True" if (v or 0) > 0 else "False")
+        elif name in ("position_x", "position_y", "position_z"):
+            row.append(v * FASTF1_POSITION_UNIT_SCALE if isinstance(v, (int, float)) else "")
+        elif name == "flags":
+            row.append("OnTrack" if isinstance(v, dict) and v.get("car_on_track") else "OffTrack")
+        else:
+            row.append(v if v is not None else "")
+    return row
+
+
+def _samples_to_fastf1_csv(samples, fields):
+    """射影済みサンプル一覧をFastF1互換CSV文字列(UTF-8 BOM付き)へ変換する(#434 P2)。"""
+    buf = io.StringIO()
+    buf.write('﻿')  # UTF-8 BOM(Excelでの文字化け回避)
+    writer = csv.writer(buf)
+    writer.writerow(_fastf1_columns(fields))
+    for s in samples:
+        writer.writerow(_fastf1_row(s, fields))
+    return buf.getvalue()
+
+
 # _csv_row では素通し(str(v))される整数フィールド。CSVからの逆変換時、これらは
 # decoder.py上の型(int)を保つため float() ではなく int(float()) で復元する
 # (car_id/lap_count等はファイル名導出・#177調査報告§2にも使うため型の正確性が必要)。
@@ -833,7 +901,7 @@ def _load_lap_file(path, fields, every, output_format='json'):
 
     to_thread で実行する。大型ファイル(実測最大84MB)では json の parse も
     dumps(またはCSV変換)もイベントループを塞ぎ得るため、直列化までこの関数内で済ませる。
-    output_format: 'json'(既定、従来どおり) または 'csv'(#174/#175)。
+    output_format: 'json'(既定、従来どおり)・'csv'(#174/#175)・'fastf1'(#434 P2)。
     """
     with open(path, 'r') as f:
         data = json.load(f)
@@ -848,6 +916,8 @@ def _load_lap_file(path, fields, every, output_format='json'):
     duration_ms = _lap_duration_approx_ms(data)
     if output_format == 'csv':
         body = _samples_to_csv(samples, fields)
+    elif output_format == 'fastf1':
+        body = _samples_to_fastf1_csv(samples, fields)
     else:
         body = json.dumps(samples)
     return body, len(samples), len(data), first, duration_ms
@@ -892,7 +962,8 @@ def _lap_duration_approx_ms(data):
 
 async def api_lap_detail_handler(request):
     """GET /api/laps/{file} — 単一ラップの取得(fields射影+every間引き)。
-    format=csv(#174/#175)指定時はCSVダウンロード応答(既定json応答は無変更)。
+    format=csv(#174/#175)・format=fastf1(#434 P2)指定時はCSVダウンロード応答
+    (既定json応答・format=csvの列構成は無変更)。
     """
     name = request.match_info["file"]
     meta = _parse_lap_filename(name)
@@ -912,7 +983,7 @@ async def api_lap_detail_handler(request):
         return web.json_response({"error": str(e)}, status=400)
 
     output_format = request.query.get("format", "json")
-    if output_format not in ("json", "csv"):
+    if output_format not in ("json", "csv", "fastf1"):
         return web.json_response({"error": f"invalid format: {output_format}"}, status=400)
 
     fields_raw = request.query.get("fields")
@@ -921,6 +992,8 @@ async def api_lap_detail_handler(request):
         fields = tuple(f.strip() for f in fields_raw.split(',') if f.strip())
     elif output_format == "csv":
         fields = CSV_ALL_FIELDS  # CSV既定は全件(#174仕様書§2)。JSON既定(DEFAULT_LAP_FIELDS)とは別枠
+    elif output_format == "fastf1":
+        fields = FASTF1_FIELDS  # FastF1互換列のみ(#434 P2、予備調査報告§(b)の対応表準拠)
     else:
         fields = DEFAULT_LAP_FIELDS
 
@@ -939,6 +1012,17 @@ async def api_lap_detail_handler(request):
             headers={
                 'Cache-Control': 'no-cache',
                 'Content-Disposition': f'attachment; filename="{csv_name}"',
+            }
+        )
+
+    if output_format == "fastf1":
+        # #434 P2: FastF1互換CSV(既存csvダウンロードと別枠、ファイル名で区別)
+        fastf1_name = re.sub(r'\.json$', '_fastf1.csv', name)
+        return web.Response(
+            text=body_data, content_type='text/csv', charset='utf-8',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Content-Disposition': f'attachment; filename="{fastf1_name}"',
             }
         )
 

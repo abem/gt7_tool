@@ -195,6 +195,9 @@ sudo python3 scripts/gt7data_rotate.py --apply   # 実行(gt7data が root 所�
 
 ## 更新履歴
 
+### 2026-08-02
+- **FastF1互換CSVエクスポートを追加**（#434 P2）: `GET /api/laps/{file}?format=fastf1` で、Pythonの[FastF1](https://github.com/theOehrly/Fast-F1)ライブラリのTelemetry/Laps列規約（`Speed`/`RPM`/`nGear`/`Throttle`/`Brake`/`X`/`Y`/`Z`/`Date`/`Status`/`LapNumber`/`LapTime`）に列名・単位を合わせたCSVを出力（詳細は[API.md](docs/API.md#csvエクスポートformatcsv)参照）。単一車両テレメトリのため、複数ドライバー前提の列（`DRS`/`Compound`/`TyreLife`/`Stint`/`DriverAhead`等）は非対応（部分互換）。MoTeC（.ld）連携は本Phaseでは見送り（公式仕様なし・実機検証手段なしのため）。既存の`format=csv`/`format=json`・CSVダウンロードUIは無変更。
+
 ### 2026-07-18
 - **過去ラップのCSVインポート機能を追加**（#177/#178）: REVIEW 一覧上部の **CSVインポート** ボタンから、本ツール自前形式のCSV（上記エクスポートで得られるもの）を取り込み可能に。実記録データ（`gt7data/`）とは別領域（`gt7data_imported/`）に分離保存し、一覧では既定非表示（オプトインで **IMPORTED** バッジ付き表示）
 - **過去ラップのCSVエクスポート機能を追加**（#174/#175）: REVIEW 一覧の各行から **⬇ CSV** ボタンで記録済みラップをCSVダウンロード可能に（自前形式。他ソフトウェアとの互換性は未検証・未保証）
