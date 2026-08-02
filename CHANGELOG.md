@@ -7,6 +7,21 @@
 
 ---
 
+## 2026-08-02 — バックエンド堅牢化・データ損失防止 P1（#434）
+
+### feat: パケットロス計測・周期チェックポイント保存・ラップ保存失敗時のretry/退避を追加
+- **背景**: Redmine #434区分4に基づく。`telemetry_background_task`はSIGKILL/OOM等で`finally`節を経ずに終了すると進行中ラップの未保存分を全損し、`save_lap_to_file`は書込み失敗時にログのみでデータを破棄していた。予備調査（`00_レビュー依頼/作から計への予備調査完了報告_バックエンド堅牢化データ損失防止_20260802.md`）で、作業指示書背景記載の「OS UDP受信バッファ溢れ」は`telemetry.py`が既にasyncio.Queue(maxsize256)+DatagramProtocolで疎結合済みのため発生しないこと、実リスクは同キューの溢れである点を確認した上で着手。
+- **実装（`main.py`のみ、`decoder.py`/`telemetry.py`は無改変）**:
+  - パケットロス計測: 復号失敗・解析失敗・受理されなかったパケット（重複/順序逆転）・単調増加区間の欠番(gap)を`packet_loss_count`として累積カウントし、周期チェックポイントと同じタイミングで0超過時にWARNINGログへ反映。
+  - 周期的チェックポイント保存: ラップ境界を待たず5秒間隔で進行中`current_lap_data`を固定ファイル（`gt7data/.checkpoint_current_lap.json`）へ上書き保存（`asyncio.to_thread`オフロード、既存のラップ保存オフロードと同方式）。ラップ境界での正規保存成功時・正常シャットダウン時に削除。
+  - `save_lap_to_file`書込み失敗時: 規定回数（3回）まで再試行後、退避ディレクトリ`gt7data_failed/`へ保存（単純破棄からの変更）。
+  - チェックポイント・退避ファイルの命名は`LAP_FILE_RE`と一致しない固定名/接尾辞のため、`/api/laps`一覧・詳細取得には現れない（追加の除外ロジック不要）。
+  - DB導入は不要と判断し実装せず（根拠は予備調査完了報告§(e)参照）。
+- **検証**: `git diff --exit-code --name-only -- decoder.py telemetry.py` exit 0（受信・デコード経路無改変）。新規関数（`save_lap_to_file`の正常系/全リトライ失敗時のフォールバック/`_save_checkpoint`/`_clear_checkpoint`/`_scan_lap_files`によるチェックポイント・退避ファイルの一覧除外）を一時ディレクトリ上で直接呼び出し実測確認、全PASS。ヘッドレスTEST MODE実機検証（Playwright）で`pageerror`0件、speed/rpm/gear表示が正常に変化することを確認。新規トップレベルシンボル（`LOG_DIR_FAILED`/`CHECKPOINT_FILE`/`CHECKPOINT_INTERVAL_SEC`/`SAVE_RETRY_COUNT`/`SAVE_RETRY_DELAY_SEC`/`_save_checkpoint`/`_clear_checkpoint`/`packet_loss_count`/`last_checkpoint_time`）は既存シンボルとの名前衝突なしをgrep事前確認済み。
+- **UI/操作手順への影響**: なし（バックエンド内部処理のみ。パケットロス数はログのみでUI配信メッセージへは反映していない）。
+
+---
+
 ## 2026-07-19 — CAR ATTITUDE 路面勾配表示（#202）
 
 ### feat: 路面法線ベクトルから縦断勾配・カントを算出しCAR ATTITUDEカードへ追加表示

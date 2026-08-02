@@ -6,6 +6,7 @@ import os
 import re
 import ssl
 import logging
+import time
 import aiohttp
 from datetime import datetime
 from aiohttp import web
@@ -98,6 +99,22 @@ IMPORT_LOG_DIR = "gt7data_imported"
 # 収まるよう100MBを上限としたDoS対策(具体的な悪用防止のための上限値)。
 IMPORT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
+# 保存失敗時の退避先(#434 P1)。実データ(LOG_DIR)とは物理的に分離し、再試行後も
+# なお書込みに失敗したラップをここへ退避する。ファイル名にLAP_FILE_REと一致しない
+# 接尾辞を付けるため、/api/laps一覧走査(_scan_lap_files)には混入しない。
+LOG_DIR_FAILED = "gt7data_failed"
+
+# 進行中ラップの周期チェックポイント保存先・間隔(#434 P1)。固定ファイル名1本を
+# 上書きすることで、SIGKILL/OOM等でfinally節を経ずに終了した場合の未保存データを
+# 一定間隔ごとに縮小する。ファイル名はLAP_FILE_REと一致しない固定名のため
+# /api/laps一覧走査には現れない。
+CHECKPOINT_FILE = f"{LOG_DIR}/.checkpoint_current_lap.json"
+CHECKPOINT_INTERVAL_SEC = 5.0
+
+# save_lap_to_file の書込み失敗時リトライ回数・待機秒数(#434 P1)。
+SAVE_RETRY_COUNT = 3
+SAVE_RETRY_DELAY_SEC = 0.5
+
 
 def ensure_log_dir():
     if not os.path.exists(LOG_DIR):
@@ -113,12 +130,70 @@ def save_lap_to_file(lap_data, lap_num):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
     car_id = lap_data[0].get("car_id", 0) if lap_data else 0
     filename = f"{LOG_DIR}/{timestamp}_CAR-{car_id}_Lap-{lap_num}.json"
+
+    # 書込み失敗時の再試行(#434 P1): 一時的なI/Oエラーの自己解消を想定し、
+    # 短い待機を挟んで規定回数まで再試行してから退避処理へ進む。
+    last_error = None
+    for attempt in range(1, SAVE_RETRY_COUNT + 1):
+        try:
+            with open(filename, 'w') as f:
+                json.dump(lap_data, f)
+            logger.info(f"Saved lap data: {filename} ({len(lap_data)} samples)")
+            return
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"Save attempt {attempt}/{SAVE_RETRY_COUNT} failed for {filename}: {e}"
+            )
+            if attempt < SAVE_RETRY_COUNT:
+                time.sleep(SAVE_RETRY_DELAY_SEC)
+
+    # 全リトライ失敗 → 退避ディレクトリへ(#434 P1)。実データ(LOG_DIR)とは物理分離し、
+    # 単純破棄していた旧挙動から変更する。
     try:
-        with open(filename, 'w') as f:
+        os.makedirs(LOG_DIR_FAILED, exist_ok=True)
+        failed_filename = f"{LOG_DIR_FAILED}/{timestamp}_CAR-{car_id}_Lap-{lap_num}_failed.json"
+        with open(failed_filename, 'w') as f:
             json.dump(lap_data, f)
-        logger.info(f"Saved lap data: {filename} ({len(lap_data)} samples)")
+        logger.error(
+            f"Saved lap data to fallback after {SAVE_RETRY_COUNT} failed attempts: "
+            f"{failed_filename} ({len(lap_data)} samples). Last error: {last_error}"
+        )
     except Exception as e:
-        logger.error(f"Error saving lap data: {e}", exc_info=True)
+        logger.error(
+            f"Lap data LOST: primary and fallback save both failed for lap {lap_num} "
+            f"(car_id={car_id}, {len(lap_data)} samples). "
+            f"primary_error={last_error} fallback_error={e}",
+            exc_info=True
+        )
+
+
+def _save_checkpoint(lap_data, lap_num):
+    """進行中ラップの周期チェックポイントを固定ファイルへ上書き保存する(#434 P1)。
+
+    ラップ境界保存(save_lap_to_file)とは独立した安全網であり、失敗しても
+    ロギングのみ行い次回間隔で再試行する(例外を上位へ伝播させない)。
+    """
+    if not lap_data:
+        return
+    try:
+        with open(CHECKPOINT_FILE, 'w') as f:
+            json.dump({"lap_num": lap_num, "samples": lap_data}, f)
+    except Exception as e:
+        logger.warning(f"Checkpoint save failed: {e}")
+
+
+def _clear_checkpoint():
+    """チェックポイントファイルを削除する(#434 P1)。
+
+    ラップ境界での正規保存成功時・正常シャットダウン時に呼び、既に完全保存済み
+    ラップの残骸をチェックポイントとして誤認しないようにする。
+    """
+    try:
+        if os.path.exists(CHECKPOINT_FILE):
+            os.remove(CHECKPOINT_FILE)
+    except Exception as e:
+        logger.warning(f"Checkpoint clear failed: {e}")
 
 
 def calculate_acceleration(speed_kmh, last_speed_kmh, time_delta):
@@ -246,6 +321,10 @@ async def telemetry_background_task():
     last_time = datetime.now()
     current_lap_data = []
     current_lap_number = 0
+    # パケットロス計測(#434 P1): 受理されなかった/破棄されたパケットの累積カウント。
+    packet_loss_count = 0
+    # 周期的チェックポイント保存(#434 P1): 前回チェックポイントからの経過時間追跡。
+    last_checkpoint_time = datetime.now()
 
     await client.connect()  # UDP エンドポイント作成（イベントループ上で必要）
 
@@ -260,59 +339,91 @@ async def telemetry_background_task():
 
             if raw_data:
                 decrypted = decoder.decrypt(raw_data)
-                if decrypted:
-                    parsed = decoder.parse(decrypted)
-                    pid = parsed.get("package_id", 0) if parsed else 0
-                    # 受理条件: 通常は単調増加のみ（重複・順序逆転パケットを除外）。
-                    # ただしゲーム再起動で package_id が 0 付近にリセットされると
-                    # 「pid > last_package_id」を二度と満たせず全パケットが弾かれて
-                    # 無言で固まるため、大幅な後退（1000 超）はリセットとみなして受理する。
-                    if parsed and (pid > last_package_id or pid < last_package_id - 1000):
-                        last_package_id = pid
+                if not decrypted:
+                    # パケットロス計測(#434 P1): 受信したが復号できなかったパケット
+                    packet_loss_count += 1
+                    continue
 
-                        current_time = datetime.now()
-                        parsed["timestamp"] = current_time.isoformat()
+                parsed = decoder.parse(decrypted)
+                if parsed is None:
+                    # パケットロス計測(#434 P1): 復号はできたが解析できなかったパケット
+                    packet_loss_count += 1
+                    continue
 
-                        # 加速度計算
-                        time_delta = (current_time - last_time).total_seconds()
-                        accel_g, decel_g = calculate_acceleration(
-                            parsed["speed_kmh"], last_speed_kmh, time_delta
-                        )
-                        parsed["accel_g"] = accel_g
-                        parsed["accel_decel"] = decel_g
-                        last_speed_kmh = parsed["speed_kmh"]
-                        last_time = current_time
+                pid = parsed.get("package_id", 0)
+                # 受理条件: 通常は単調増加のみ（重複・順序逆転パケットを除外）。
+                # ただしゲーム再起動で package_id が 0 付近にリセットされると
+                # 「pid > last_package_id」を二度と満たせず全パケットが弾かれて
+                # 無言で固まるため、大幅な後退（1000 超）はリセットとみなして受理する。
+                if not (pid > last_package_id or pid < last_package_id - 1000):
+                    # パケットロス計測(#434 P1): 受理されなかったパケット
+                    # (重複・順序逆転。リセット扱いでもない)
+                    packet_loss_count += 1
+                    continue
 
-                        # コース推定
-                        course_info = course_estimator.estimate_course(
-                            parsed.get("position_x", 0),
-                            parsed.get("position_z", 0)
-                        )
-                        parsed["course"] = course_info
+                # パケットロス計測(#434 P1): 単調増加区間で生じた欠番(gap)を損失として
+                # 計上する。リセット(大幅後退)直後はgap計算をスキップする(誤検知防止)。
+                if last_package_id > 0:
+                    gap = pid - last_package_id - 1
+                    if gap > 0:
+                        packet_loss_count += gap
+                last_package_id = pid
 
-                        # 燃料計算
-                        fuel_data = fuel_tracker.update(
-                            parsed.get("current_fuel"),
-                            parsed.get("fuel_capacity", 100),
-                            current_lap_number
-                        )
-                        parsed.update(fuel_data)
+                current_time = datetime.now()
+                parsed["timestamp"] = current_time.isoformat()
 
-                        # ラップデータ蓄積・保存（lap_count変化検知）
-                        lap_count = parsed.get("lap_count", 1)
-                        current_lap_data.append(parsed)
+                # 加速度計算
+                time_delta = (current_time - last_time).total_seconds()
+                accel_g, decel_g = calculate_acceleration(
+                    parsed["speed_kmh"], last_speed_kmh, time_delta
+                )
+                parsed["accel_g"] = accel_g
+                parsed["accel_decel"] = decel_g
+                last_speed_kmh = parsed["speed_kmh"]
+                last_time = current_time
 
-                        # ラップ境界検出：lap_countが変化したら保存
-                        # 同期 json 書込はイベントループを数百ms塞ぐためワーカースレッドへ。
-                        # 旧リストは保存スレッドに渡し切り、以後はここで新リストへ差し替えるので
-                        # 書込み中のリストが変更されることはない。
-                        if lap_count > current_lap_number and current_lap_number > 0:
-                            await asyncio.to_thread(save_lap_to_file, current_lap_data, current_lap_number)
-                            current_lap_data = []
-                        current_lap_number = lap_count
+                # コース推定
+                course_info = course_estimator.estimate_course(
+                    parsed.get("position_x", 0),
+                    parsed.get("position_z", 0)
+                )
+                parsed["course"] = course_info
 
-                        # WebSocket配信
-                        await broadcast_to_clients(json.dumps(parsed))
+                # 燃料計算
+                fuel_data = fuel_tracker.update(
+                    parsed.get("current_fuel"),
+                    parsed.get("fuel_capacity", 100),
+                    current_lap_number
+                )
+                parsed.update(fuel_data)
+
+                # ラップデータ蓄積・保存（lap_count変化検知）
+                lap_count = parsed.get("lap_count", 1)
+                current_lap_data.append(parsed)
+
+                # 周期的チェックポイント保存(#434 P1): ラップ境界を待たず一定間隔で
+                # current_lap_data を中間保存する。SIGKILL/OOM等でfinally節を経ずに
+                # 終了した場合の未保存データを縮小する安全網。既存のラップ保存と同じく
+                # ワーカースレッドへオフロードし、受信ループ(イベントループ)を塞がない。
+                if (current_time - last_checkpoint_time).total_seconds() >= CHECKPOINT_INTERVAL_SEC:
+                    await asyncio.to_thread(_save_checkpoint, current_lap_data, current_lap_number)
+                    if packet_loss_count > 0:
+                        logger.warning(f"Packet loss count (cumulative): {packet_loss_count}")
+                    last_checkpoint_time = current_time
+
+                # ラップ境界検出：lap_countが変化したら保存
+                # 同期 json 書込はイベントループを数百ms塞ぐためワーカースレッドへ。
+                # 旧リストは保存スレッドに渡し切り、以後はここで新リストへ差し替えるので
+                # 書込み中のリストが変更されることはない。
+                if lap_count > current_lap_number and current_lap_number > 0:
+                    await asyncio.to_thread(save_lap_to_file, current_lap_data, current_lap_number)
+                    await asyncio.to_thread(_clear_checkpoint)
+                    current_lap_data = []
+                    last_checkpoint_time = current_time
+                current_lap_number = lap_count
+
+                # WebSocket配信
+                await broadcast_to_clients(json.dumps(parsed))
 
     except Exception as e:
         logger.error(f"Telemetry task error: {e}", exc_info=True)
@@ -324,6 +435,7 @@ async def telemetry_background_task():
             pass
         if current_lap_data:
             save_lap_to_file(current_lap_data, current_lap_number)
+            _clear_checkpoint()
         client.close()
 
 
