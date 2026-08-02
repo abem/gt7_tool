@@ -8,6 +8,7 @@ import ssl
 import logging
 import time
 import aiohttp
+import joblib
 from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
@@ -1154,6 +1155,132 @@ async def api_laps_import_handler(request):
     return web.json_response({"file": filename, "samples": len(samples)}, status=201)
 
 
+# ================================================================
+#  ラップタイム予測ライブ推論API (#434 P5 Stage2)
+#
+#  train_laptime_model.py(オフライン学習パイプライン)が生成した学習済みモデルを
+#  用いた読み取り専用の推論エンドポイント。ライブ受信経路(decoder.py/telemetry.py/
+#  telemetry_background_task/broadcast_to_clients/broadcast_consumer_task、
+#  P1/P1-b実装分)には一切触れない、独立したモジュールレベル関数。
+#
+#  品質ゲート(采指示2026-08-02厳守): MAE%が QUALITY_GATE_MAE_PCT(train_laptime_model.py
+#  で定義、既定3.0)を超えるコース×車種の組み合わせは本APIから一切提供しない
+#  (中間帯の個別許容なし)。閾値判定はtrain_laptime_model.py側で完結しており、
+#  models/gated_groups.json に事前フィルタ済みの許可リストとして書き出される。
+#  本APIはそのリストに存在する組み合わせのみを扱う(ここで閾値を再判定しない)。
+# ================================================================
+
+PREDICT_MODEL_DIR = "models"
+PREDICT_GATED_GROUPS_FILE = os.path.join(PREDICT_MODEL_DIR, "gated_groups.json")
+
+# train_laptime_model.py の FEATURE_COLUMNS と同一順序(モデル入力の列順を一致させる)。
+PREDICT_FEATURE_COLUMNS = (
+    "progress_fraction", "avg_speed_kmh", "max_speed_kmh",
+    "avg_throttle_pct", "avg_brake_pct", "avg_tyre_temp",
+)
+
+
+def _load_gated_groups():
+    """品質ゲート済みグループ一覧(models/gated_groups.json)を読み込む(#434 P5 Stage2)。
+
+    train_laptime_model.pyが生成する小さな許可リストファイル。ファイル不在・破損時は
+    空dict(=全リクエストが404、安全側にフォールバック)。
+    """
+    if not os.path.isfile(PREDICT_GATED_GROUPS_FILE):
+        return {}
+    try:
+        with open(PREDICT_GATED_GROUPS_FILE) as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load {PREDICT_GATED_GROUPS_FILE}: {e}")
+        return {}
+
+
+def _float_query_required(request, name, lo=None, hi=None):
+    """必須の浮動小数点クエリパラメータを取得する(#434 P5 Stage2)。
+
+    欠落・非数値・範囲外はValueError(呼び出し元で400に変換する)。
+    """
+    raw = request.query.get(name)
+    if raw is None or raw == "":
+        raise ValueError(f"missing required query parameter: {name}")
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"invalid float for {name}: {raw!r}")
+    if lo is not None and value < lo or hi is not None and value > hi:
+        raise ValueError(f"{name} out of range [{lo},{hi}]: {value}")
+    return value
+
+
+def _predict_laptime(model_path, feature_values):
+    """joblibモデルをロードし推論する(#434 P5 Stage2、同期関数)。
+
+    joblib.load()のデシリアライズコストがイベントループを塞がないよう、
+    呼び出し元は必ずasyncio.to_thread経由で呼ぶこと(既存の_load_lap_fileと同じ方針)。
+    """
+    model = joblib.load(model_path)
+    prediction = model.predict([feature_values])
+    return float(prediction[0])
+
+
+async def api_predict_laptime_handler(request):
+    """GET /api/predict/laptime — 品質ゲート済み(MAE<=3%)グループのみラップタイムを
+    推論する(#434 P5 Stage2)。
+
+    クエリ: course, car_id(組み合わせの特定) / progress, avg_speed_kmh, max_speed_kmh,
+    avg_throttle_pct, avg_brake_pct, avg_tyre_temp(train_laptime_model.pyと同じ特徴量)。
+    品質ゲート対象外(MAE>3%・未学習の組み合わせ)は404。
+    """
+    course = request.query.get("course")
+    car_id_raw = request.query.get("car_id")
+    if not course or not car_id_raw:
+        return web.json_response({"error": "course and car_id are required"}, status=400)
+
+    gated = _load_gated_groups()
+    key = f"{course}__{car_id_raw}"
+    group = gated.get(key)
+    if group is None:
+        return web.json_response(
+            {"error": "no quality-gated model for this course/car_id combination"},
+            status=404,
+        )
+
+    try:
+        progress = _float_query_required(request, "progress", lo=0.0, hi=1.0)
+        avg_speed_kmh = _float_query_required(request, "avg_speed_kmh", lo=0.0)
+        max_speed_kmh = _float_query_required(request, "max_speed_kmh", lo=0.0)
+        avg_throttle_pct = _float_query_required(request, "avg_throttle_pct", lo=0.0, hi=100.0)
+        avg_brake_pct = _float_query_required(request, "avg_brake_pct", lo=0.0, hi=100.0)
+        avg_tyre_temp = _float_query_required(request, "avg_tyre_temp")
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+
+    feature_values = [
+        progress, avg_speed_kmh, max_speed_kmh,
+        avg_throttle_pct, avg_brake_pct, avg_tyre_temp,
+    ]
+
+    try:
+        predicted_ms = await asyncio.to_thread(_predict_laptime, group["model_path"], feature_values)
+    except Exception as e:
+        logger.error(f"Prediction failed for {key}: {e}", exc_info=True)
+        return web.json_response({"error": "prediction failed"}, status=500)
+
+    return web.json_response(
+        {
+            "course": course,
+            "car_id": group.get("car_id", car_id_raw),
+            "predicted_laptime_ms": round(predicted_ms, 1),
+            "mae_ms": group["mae_ms"],
+            "mae_pct": group["mae_pct"],
+            "n_laps": group["n_laps"],
+            "algorithm": group.get("algorithm"),
+        },
+        headers={'Cache-Control': 'no-cache'},
+    )
+
+
 @web.middleware
 async def logging_middleware(request, handler):
     start_time = datetime.now()
@@ -1263,6 +1390,7 @@ def main():
     app.router.add_get('/api/laps', api_laps_list_handler)
     app.router.add_post('/api/laps/import', api_laps_import_handler)
     app.router.add_get('/api/laps/{file}', api_lap_detail_handler)
+    app.router.add_get('/api/predict/laptime', api_predict_laptime_handler)
     app.router.add_get('/', index_handler)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/{filename:.*}', static_handler)

@@ -60,6 +60,41 @@ FEATURE_COLUMNS = (
     "avg_throttle_pct", "avg_brake_pct", "avg_tyre_temp",
 )
 
+# 品質ゲート閾値(#434 P5 Stage2、采指示2026-08-02厳守): MAE%がこの値を超えるグループは
+# ライブ推論API(main.py: api_predict_laptime_handler)から一切提供しない(中間帯の個別許容なし)。
+QUALITY_GATE_MAE_PCT = 3.0
+
+GATED_GROUPS_FILENAME = "gated_groups.json"
+
+
+def _write_gated_groups(model_dir, group_results):
+    """品質ゲート(MAE<=QUALITY_GATE_MAE_PCT)を満たすグループのみを抽出し、
+    ライブ推論API(main.py)が参照する許可リストファイル(gated_groups.json)へ書き出す
+    (#434 P5 Stage2)。閾値判定はこの1箇所に一元化し、main.py側では再判定しない。
+    """
+    gated = {}
+    for key, result in group_results.items():
+        if "error" in result:
+            continue
+        # 境界値バグ是正(#434 P5是正、査sa指摘2026-08-02): result["mae_pct"]は表示用に
+        # round()済みのため、3.001〜3.005%等がround()で3.00%となり閾値を誤通過し得る。
+        # round()は表示専用に限定し、判定は生のmae_ms/mean_laptime_ms比で行う。
+        mae_pct_raw = result["mae_ms"] / result["mean_laptime_ms"] * 100
+        if mae_pct_raw <= QUALITY_GATE_MAE_PCT:
+            gated[key] = {
+                "course_id": result["course_id"],
+                "car_id": result["car_id"],
+                "model_path": result["model_path"],
+                "mae_ms": result["mae_ms"],
+                "mae_pct": result["mae_pct"],  # 表示用(丸め済み)。判定はmae_pct_rawで実施済み
+                "n_laps": result["n_laps"],
+                "algorithm": result["algorithm"],
+            }
+    path = os.path.join(model_dir, GATED_GROUPS_FILENAME)
+    with open(path, "w") as f:
+        json.dump(gated, f, indent=2, ensure_ascii=False)
+    return gated
+
 
 def _iter_lap_files(log_dir):
     for fn in sorted(os.listdir(log_dir)):
@@ -144,6 +179,12 @@ def build_dataset(log_dir):
     rows = []
     skipped = defaultdict(int)
     total_files = 0
+    # 重複stale-labelフィルタ(#434 P5是正、2026-08-02采判断): 同一(course_id, car_id)内で
+    # last_laptimeが完全一致するファイル群は、ラップ境界と無関係な固定間隔保存(旧形式、
+    # 2026-02-11〜13、30秒固定間隔・n_samples=1800固定)由来のstale値による重複ラベルの
+    # 疑いがあるため、最初に出現した1件のみを採用する。_iter_lap_filesはファイル名
+    # (=タイムスタンプ)昇順のため、最も古いファイルが採用される。
+    seen_laptime_keys = set()
 
     for fn, path in _iter_lap_files(log_dir):
         total_files += 1
@@ -175,6 +216,12 @@ def build_dataset(log_dir):
         if not isinstance(llt, (int, float)) or not (MIN_LAPTIME_MS <= llt <= MAX_LAPTIME_MS):
             skipped["invalid_laptime"] += 1
             continue
+
+        dedup_key = (course_id, car_id, llt)
+        if dedup_key in seen_laptime_keys:
+            skipped["duplicate_laptime"] += 1
+            continue
+        seen_laptime_keys.add(dedup_key)
 
         lap_rows = _extract_checkpoint_rows(fn, data, course_id, car_id, llt)
         if not lap_rows:
@@ -265,7 +312,12 @@ def run(log_dir, model_dir, min_group_size, summary_out=None):
         model_path = os.path.join(model_dir, f"{key}.joblib")
         joblib.dump(model, model_path)
         result["model_path"] = model_path
+        result["course_id"] = course_id
+        result["car_id"] = car_id
+        result["mae_pct"] = round(result["mae_ms"] / result["mean_laptime_ms"] * 100, 2)
         group_results[key] = result
+
+    gated_groups = _write_gated_groups(model_dir, group_results)
 
     summary = {
         "total_files_scanned": total_files,
@@ -277,6 +329,8 @@ def run(log_dir, model_dir, min_group_size, summary_out=None):
         "excluded_groups_below_threshold": {
             f"{c}__{car}": n for (c, car), n in excluded_groups.items()
         },
+        "quality_gate_mae_pct": QUALITY_GATE_MAE_PCT,
+        "gated_groups_count": len(gated_groups),
     }
 
     if summary_out:

@@ -17,6 +17,7 @@ GT7 Toolは、GT7（グランツーリスモ7）からのテレメトリデー�
 | `/api/laps` | GET | 過去ラップの一覧（ファイル名メタのみ・軽量。`include_imported=true`でインポート済み分も混在） |
 | `/api/laps/import` | POST | 自前CSVからのラップインポート（#177/#178） |
 | `/api/laps/{file}` | GET | 単一ラップの詳細（fields射影・every間引き対応。`format=csv`でCSVダウンロード） |
+| `/api/predict/laptime` | GET | ラップタイム予測（品質ゲート済み・MAE≤3%のコース×車種のみ、#434 P5 Stage2） |
 | `/{filename}` | GET | 静的ファイル配信 |
 
 ### 1. メインダッシュボード `/`
@@ -251,6 +252,62 @@ ws.onmessage = (event) => {
 - **レスポンスヘッダ**: `Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="<元ファイル名の拡張子を_fastf1.csvに置換>"`（`format=csv`の出力ファイルとは別名になり、混同を避けられます）。
 - **エンコーディング**: UTF-8 with BOM。区切り文字はカンマ、1行目はFastF1列名のヘッダ行。
 - **MoTeC（.ld）連携について**: #434では MoTeC i2 互換エクスポートも検討されましたが、MoTeC社が.ld形式の公式仕様を公開しておらず、かつ本チーム内にMoTeC i2の実機・ライセンスが無く出力の実機検証ができないため、本Phaseでは実装を見送りました。
+
+### 6. ラップタイム予測 `/api/predict/laptime`
+
+**メソッド:** GET
+
+**説明:** `train_laptime_model.py`（オフライン学習パイプライン、#434 P5 Stage1）が学習したコース×車種別モデルを用いて、走行中の部分特徴量からそのラップの最終タイム（ms）を予測します。**品質ゲート（MAE≤3%）を満たすコース×車種の組み合わせのみ**対応し、それ以外は404を返します（中間帯の個別許容なし、采指示2026-08-02厳守）。現時点でこのエンドポイントを呼び出すフロントエンドは未実装です（ライブ特徴量計算・UI表示はStage3で別途実装予定）。
+
+**クエリパラメータ（すべて必須）:**
+
+| パラメータ | 型 | 説明 |
+|-----------|-----|------|
+| `course` | string | コースID（`course.id`。例: `goodwood`） |
+| `car_id` | int | 車種ID |
+| `progress` | float（0.0-1.0） | ラップ進行度（距離基準の割合） |
+| `avg_speed_kmh` | float | 進行度時点までの平均速度(km/h) |
+| `max_speed_kmh` | float | 進行度時点までの最高速度(km/h) |
+| `avg_throttle_pct` | float（0-100） | 進行度時点までの平均スロットル開度(%) |
+| `avg_brake_pct` | float（0-100） | 進行度時点までの平均ブレーキ踏力(%) |
+| `avg_tyre_temp` | float | 進行度時点までの4輪平均タイヤ温度 |
+
+**レスポンス（200、品質ゲート適合時）:**
+
+```json
+{
+  "course": "goodwood",
+  "car_id": 345,
+  "predicted_laptime_ms": 112295.7,
+  "mae_ms": 940.6,
+  "mae_pct": 0.84,
+  "n_laps": 99,
+  "algorithm": "random_forest"
+}
+```
+
+- `mae_ms`/`mae_pct`/`n_laps`/`algorithm`は、Stage1のオフライン検証結果（`models/gated_groups.json`由来）をそのまま返します。フロントエンド（Stage3）で予測値の前提条件（検証精度・学習データ量）をユーザーに明示するための情報です。
+
+**レスポンス（404、品質ゲート対象外）:**
+
+```json
+{"error": "no quality-gated model for this course/car_id combination"}
+```
+
+学習データ不足・MAE>3%・未学習の組み合わせは全てこの404になります（対応済みコース×車種の一覧は`models/gated_groups.json`、2026-08-02時点で11組み合わせ）。
+
+**レスポンス（400、パラメータ不正）:**
+
+```json
+{"error": "missing required query parameter: avg_speed_kmh"}
+```
+
+必須パラメータの欠落・非数値・範囲外（`progress`は0.0-1.0、`avg_throttle_pct`/`avg_brake_pct`は0-100）はすべて400を返します。
+
+**前提・制約**:
+- 本エンドポイントは読み取り専用で、`gt7data/`・`decoder.py`・`telemetry.py`・ライブ受信/配信経路（`telemetry_background_task`/`broadcast_to_clients`/`broadcast_consumer_task`）には一切触れません。
+- モデルのロード（`joblib.load`）は`asyncio.to_thread`でオフロードされ、他のリクエスト処理をブロックしません。
+- モデル自体は`gt7data/`の蓄積状況に応じて`train_laptime_model.py`の再実行でのみ更新されます（本APIはライブ学習を行いません）。
 
 ### データフィールド詳細
 
