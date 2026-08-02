@@ -49,6 +49,16 @@ const RM_STRATEGY_TICK_MS = 1000;         // M-4 ライブポーリング周期(
 const RM_DEG_LAPS = 5;                    // デグ回帰に使う直近ラップ数
 const RM_DEG_OUTLIER_FRAC = 0.08;         // 中央値±8%超を外れ値(ピット/ミス周)として除外
 
+/* ---- B1(#436) アウトライヤー検出自動化 定数 ---- */
+// ラップタイム異常悪化: RM_DEG_LAPS/RM_DEG_OUTLIER_FRAC(既存rmDegRateと同じ中央値±8%)を転用。
+// タイヤ温度・油圧・燃料消費率(ライブ連続値)は方式2(移動窓・変化率ベース)を用いる。
+const RM_TYRE_TEMP_HISTORY_LEN = 5;       // 直近5サンプル(1Hzサンプリングで概ね5秒)
+const RM_TYRE_TEMP_RATE_THRESHOLD = 15;   // 直近5サンプルでの上昇量がこれ超で警告(℃)
+const RM_OIL_PRESSURE_HISTORY_LEN = 5;
+const RM_OIL_PRESSURE_DROP_FRAC = 0.3;    // 直近平均比でこの割合超の低下で警告
+const RM_FUEL_PER_LAP_HISTORY_LEN = 5;
+const RM_FUEL_PER_LAP_RISE_FRAC = 0.5;    // 誤検知リスクが高いため緩めの閾値(直近平均比+50%)
+
 /* ---- P3(#147) 定数 ---- */
 // M-5 滑らかさ raw 指標の重み(低いほど滑らか)。各成分は無次元化してから合成:
 //   スロットル一階差分std[%/サンプル] / 舵角修正頻度[反転回数/km] / 舵角一階差分std[rad]
@@ -70,7 +80,13 @@ const rmState = {
     replayGGBase: null,  // 再生G-Gの事前描画(offscreen canvas)
     smoothPool: {},      // P3 M-5: file -> {raw, laptime} 較正プール
     replayEtSupport: null, // P3 M-6: 現バッファの回生/トルク対応判定
-    strategyLast: null   // P2 M-4: 直近パース値(検証用)
+    strategyLast: null,  // P2 M-4: 直近パース値(検証用)
+    outlier: {            // B1(#436): アウトライヤー検出自動化の移動窓状態
+        tyreTempHistory: [[], [], [], []], // FL/FR/RL/RRそれぞれの直近サンプル配列
+        oilPressureHistory: [],
+        fuelPerLapHistory: [],
+        notifiedLapNumbers: new Set()       // 既に警告済みのラップ番号(重複通知防止)
+    }
 };
 
 function rmEnsureEls() {
@@ -570,6 +586,105 @@ function rmDegRate(lapTimes) {
     return (n * sxy - sx * sy) / denom;   // [s/lap]
 }
 
+/**
+ * アウトライヤー検出自動化(B1、#436)。マシントラブルの未然防止を狙い、
+ * 「除外」ではなく「検出・警告」する方向でrmDegRateと同じ中央値±8%方式(ラップタイム)、
+ * および移動窓・変化率ベースの新方式(タイヤ温度・油圧・燃料消費率のライブ値)を用いる。
+ * 検出時は既存pushNotification()(トースト通知、既存の#race-engineer-feed)を再利用する。
+ * ライブ経路JS(websocket.js本体)は無改変、既存カードのDOM表示値を厳格パースする
+ * M-4と同じ設計方針を踏襲する。
+ */
+function rmOutlierTick() {
+    // 1. ラップタイム異常悪化(方式1: 既存rmDegRateと同じ中央値±8%を転用)
+    if (typeof lapState !== 'undefined' && Array.isArray(lapState.lapTimes) && lapState.lapTimes.length >= 3) {
+        const recent = lapState.lapTimes.slice(-RM_DEG_LAPS);
+        const latest = recent[recent.length - 1];
+        if (!rmState.outlier.notifiedLapNumbers.has(latest.number)) {
+            const times = recent.map(function(l) { return l.time; });
+            const sorted = times.slice().sort(function(a, b) { return a - b; });
+            const median = sorted[Math.floor(sorted.length / 2)];
+            if (median > 0) {
+                const deviation = (latest.time - median) / median;
+                if (deviation > RM_DEG_OUTLIER_FRAC) {
+                    rmState.outlier.notifiedLapNumbers.add(latest.number);
+                    if (typeof pushNotification === 'function') {
+                        pushNotification(
+                            'LAP ANOMALY',
+                            'L' + latest.number + ' +' + (deviation * 100).toFixed(0) + '%',
+                            'warning'
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. タイヤ温度急変(方式2: 直近RM_TYRE_TEMP_HISTORY_LENサンプルの変化量)
+    const tyreIds = ['fl-temp', 'fr-temp', 'rl-temp', 'rr-temp'];
+    const tyreLabels = ['FL', 'FR', 'RL', 'RR'];
+    tyreIds.forEach(function(id, i) {
+        const el = document.getElementById(id);
+        const v = el ? rmParseFloatStrict(el.textContent) : null;
+        if (v == null) {
+            return;
+        }
+        const hist = rmState.outlier.tyreTempHistory[i];
+        if (hist.length >= RM_TYRE_TEMP_HISTORY_LEN) {
+            const delta = v - hist[0];
+            if (delta > RM_TYRE_TEMP_RATE_THRESHOLD) {
+                if (typeof pushNotification === 'function') {
+                    pushNotification('TYRE TEMP', tyreLabels[i] + ' +' + delta.toFixed(0) + '°C/5s', 'warning');
+                }
+                hist.length = 0; // 連続通知を避けるためリセット
+            }
+        }
+        hist.push(v);
+        while (hist.length > RM_TYRE_TEMP_HISTORY_LEN) {
+            hist.shift();
+        }
+    });
+
+    // 3. 油圧異常低下(方式2: 直近平均比RM_OIL_PRESSURE_DROP_FRAC超の低下)
+    const oilEl = document.getElementById('oil-pressure');
+    const oilV = oilEl ? rmParseFloatStrict(oilEl.textContent) : null;
+    if (oilV != null) {
+        const hist = rmState.outlier.oilPressureHistory;
+        if (hist.length >= RM_OIL_PRESSURE_HISTORY_LEN) {
+            const baseline = hist.reduce(function(a, b) { return a + b; }, 0) / hist.length;
+            if (baseline > 0 && (baseline - oilV) / baseline > RM_OIL_PRESSURE_DROP_FRAC) {
+                if (typeof pushNotification === 'function') {
+                    pushNotification('OIL PRESSURE', oilV.toFixed(1) + ' bar', 'serious');
+                }
+                hist.length = 0;
+            }
+        }
+        hist.push(oilV);
+        while (hist.length > RM_OIL_PRESSURE_HISTORY_LEN) {
+            hist.shift();
+        }
+    }
+
+    // 4. 燃料消費率急増(方式2、誤検知リスクが高いため緩めの閾値・低severity)
+    const fuelEl = document.getElementById('fuel-per-lap');
+    const fuelV = fuelEl ? rmParseFloatStrict(fuelEl.textContent) : null;
+    if (fuelV != null) {
+        const hist = rmState.outlier.fuelPerLapHistory;
+        if (hist.length >= RM_FUEL_PER_LAP_HISTORY_LEN) {
+            const baseline = hist.reduce(function(a, b) { return a + b; }, 0) / hist.length;
+            if (baseline > 0 && (fuelV - baseline) / baseline > RM_FUEL_PER_LAP_RISE_FRAC) {
+                if (typeof pushNotification === 'function') {
+                    pushNotification('FUEL RATE', fuelV.toFixed(2) + ' L/lap', 'notice');
+                }
+                hist.length = 0;
+            }
+        }
+        hist.push(fuelV);
+        while (hist.length > RM_FUEL_PER_LAP_HISTORY_LEN) {
+            hist.shift();
+        }
+    }
+}
+
 /** M-4 の1Hz更新本体。 */
 function rmStrategyTick() {
     const els = rmEnsureEls();
@@ -607,6 +722,9 @@ function rmStrategyTick() {
 
     // 検証用に最終パース値を保持(rm接頭辞の自前状態のみに書込)
     rmState.strategyLast = { deg: deg, fuelLaps: fuelLaps, lap: lap };
+
+    // B1(#436): アウトライヤー検出自動化。同じ1Hzティックに統合(新規タイマーは追加しない)。
+    rmOutlierTick();
 }
 
 /* ================================================================
