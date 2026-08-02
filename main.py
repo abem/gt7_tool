@@ -85,6 +85,13 @@ CONFIG = load_config()
 # アプリケーション状態: 接続中のWebSocketクライアント一覧
 websocket_clients = set()
 
+# 配信専用キュー(#434 P1-b): telemetry_background_taskの受信ループから配信I/O
+# (broadcast_to_clients、低速/無応答クライアントで最大1秒/クライアントの遅延あり)を
+# 分離するためのバッファ。telemetry.py側の受信キュー(#434 P1予備調査(b)で確認済み)と
+# 同じ「最新優先」ポリシー(満杯時は最古を破棄して最新を積む)を踏襲する。
+BROADCAST_QUEUE_MAXSIZE = 16
+broadcast_queue = asyncio.Queue(maxsize=BROADCAST_QUEUE_MAXSIZE)
+
 # アプリケーション状態: テレメトリ監視タスク（on_cleanup でキャンセルするため保持）
 _telemetry_supervisor_task = None
 
@@ -296,6 +303,23 @@ async def _heartbeat_loop(client):
             await asyncio.sleep(interval)
 
 
+async def broadcast_consumer_task():
+    """配信キューを消費しWebSocketクライアントへ配信する専用タスク(#434 P1-b)。
+
+    telemetry_background_taskの受信ループから配信I/O(broadcast_to_clients)を
+    切り離すことで、低速/無応答クライアントによる配信遅延が受信ループ
+    (→telemetry.py内部キューの溢れ)へ波及しないようにする。
+    """
+    while True:
+        message = await broadcast_queue.get()
+        try:
+            await broadcast_to_clients(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Broadcast consumer error: {e}", exc_info=True)
+
+
 async def telemetry_background_task():
     """バックグラウンドでGT7からのテレメトリデータを受信し続けるタスク。
 
@@ -325,11 +349,16 @@ async def telemetry_background_task():
     packet_loss_count = 0
     # 周期的チェックポイント保存(#434 P1): 前回チェックポイントからの経過時間追跡。
     last_checkpoint_time = datetime.now()
+    # 配信キュー溢れ計測(#434 P1-b): telemetry.py側のパケットドロップ(packet_loss_count)
+    # とは別に、配信側の遅延蓄積(broadcast_queue満杯による最古メッセージ破棄)を計測する。
+    broadcast_drop_count = 0
 
     await client.connect()  # UDP エンドポイント作成（イベントループ上で必要）
 
     # ハートビート送信を独立タスクで駆動
     heartbeat_task = asyncio.create_task(_heartbeat_loop(client))
+    # 配信専用タスクを独立起動(#434 P1-b): 受信ループから配信I/Oを分離する
+    broadcast_task = asyncio.create_task(broadcast_consumer_task())
 
     try:
         while True:
@@ -409,6 +438,9 @@ async def telemetry_background_task():
                     await asyncio.to_thread(_save_checkpoint, current_lap_data, current_lap_number)
                     if packet_loss_count > 0:
                         logger.warning(f"Packet loss count (cumulative): {packet_loss_count}")
+                    if broadcast_drop_count > 0:
+                        # 配信キュー溢れ計測(#434 P1-b): packet_loss_countとは別指標として明示
+                        logger.warning(f"Broadcast queue full, dropped (cumulative): {broadcast_drop_count}")
                     last_checkpoint_time = current_time
 
                 # ラップ境界検出：lap_countが変化したら保存
@@ -422,8 +454,23 @@ async def telemetry_background_task():
                     last_checkpoint_time = current_time
                 current_lap_number = lap_count
 
-                # WebSocket配信
-                await broadcast_to_clients(json.dumps(parsed))
+                # WebSocket配信(#434 P1-b): 受信ループを配信I/Oから切り離すため、
+                # 直接awaitせず非ブロッキングでbroadcast_queueへ積む。実際の送信は
+                # broadcast_consumer_taskが独立して行う。満杯時は最古を破棄して
+                # 最新を積む(telemetry.py:50-55と同じ「最新優先」ポリシー)。
+                message = json.dumps(parsed)
+                try:
+                    broadcast_queue.put_nowait(message)
+                except asyncio.QueueFull:
+                    try:
+                        broadcast_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                    broadcast_drop_count += 1
+                    try:
+                        broadcast_queue.put_nowait(message)
+                    except asyncio.QueueFull:
+                        pass
 
     except Exception as e:
         logger.error(f"Telemetry task error: {e}", exc_info=True)
@@ -431,6 +478,11 @@ async def telemetry_background_task():
         heartbeat_task.cancel()
         try:
             await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        broadcast_task.cancel()
+        try:
+            await broadcast_task
         except asyncio.CancelledError:
             pass
         if current_lap_data:
