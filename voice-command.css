@@ -1,0 +1,18 @@
+/**
+ * GT7 Telemetry Dashboard - 音声コマンドビュー切替専用スタイル (#436 B3)
+ *
+ * styles.css には追記しない(新規ファイル隔離、replay.css/card-groups.css と同じ
+ * 流儀)。#vc-toolbar-btn の基本形は既存 .tb-btn(styles.css)を継承する。
+ */
+
+/* 聞き取り中の視覚フィードバック(点滅、押し忘れ・認識完了に気づきやすくする) */
+#vc-toolbar-btn.vc-listening {
+    background: var(--accent, #4da3ff);
+    color: #fff;
+    animation: vc-pulse 1s ease-in-out infinite;
+}
+
+@keyframes vc-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}

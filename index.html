@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/replay.css">
     <link rel="stylesheet" href="/race-metrics.css">
     <link rel="stylesheet" href="/card-groups.css">
+    <link rel="stylesheet" href="/voice-command.css">
 </head>
 <body>
     <div class="dashboard">
@@ -41,7 +42,11 @@
             <button id="replay-btn-step-f" type="button" aria-label="1フレーム進む" title="1フレーム進む">⏭</button>
             <select id="replay-speed" aria-label="再生速度"></select>
             <select id="replay-segment" aria-label="再生区間" style="display:none"></select>
-            <input id="replay-scrubber" type="range" min="0" max="100" value="0" step="1" aria-label="再生位置">
+            <!-- #436 B2: AIハイライト自動生成。マーカーはrace-metrics.jsがrm-hl-wrap内に注入する
+                 (rm-hl-wrap自体はレイアウト用のラッパーのみで、既存replay-scrubberの配線は無改変) -->
+            <div id="rm-hl-wrap" class="rm-hl-wrap">
+                <input id="replay-scrubber" type="range" min="0" max="100" value="0" step="1" aria-label="再生位置">
+            </div>
             <span id="replay-time">--</span>
             <button id="replay-btn-exit" type="button" aria-label="再生を終了" title="再生を終了しライブ表示へ戻る">✕ EXIT</button>
         </div>
@@ -680,5 +685,6 @@
     <script src="/menu.js"></script>
     <!-- card-groups.js は #app-toolbar(menu.js生成)へ CARDS ボタンを挿入するため menu.js より後 -->
     <script src="/card-groups.js"></script>
+    <script src="/voice-command.js"></script>
 </body>
 </html>

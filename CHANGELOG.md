@@ -7,6 +7,28 @@
 
 ---
 
+## 2026-08-02 — 音声コマンドビュー切替 B3（#436）
+
+### feat: SpeechRecognition Web APIによるハンズフリーのビュー/カード表示グループ切替を追加
+- **背景**: #436区分3「音声コマンドによるビュー切り替え: 音声認識でDRIVEビューから特定チャートへハンズフリー切り替え」。#434 P4で採用した`SpeechSynthesis`（読み上げ）と対になる、逆方向の`SpeechRecognition`（音声→操作）機能。
+- **予備調査での重要な発見**: `card-groups.js`（#149、カード表示グループ管理）は即時実行関数式（IIFE）でファイル全体がプライベートスコープに隠蔽されており、`cgApply`/`cgSave`等の既存関数を外部から一切呼び出せないことが判明。work order記載の「既存関数を読み取り専用で呼び出す」方針を字義通り実現するのは不可能だったため、計との協議の上、既存プライベート関数を呼ぶだけの最小限の新規公開関数`window.cgVoiceShowOnly(gid)`を1つだけ追加する対応とした（既存のプライベート関数自体は無改変、隔離設計の意図は維持）。
+- **実装（新規`voice-command.js`/`voice-command.css`、既存ファイルへの影響は`card-groups.js`への1関数追加・`index.html`のタグ追加のみ。`decoder.py`/`telemetry.py`/`main.py`/`websocket.js`本体は無変更）**: `window.SpeechRecognition || window.webkitSpeechRecognition`の機能検出で非対応ブラウザ（Firefox既定等）ではツールバーへのVOICEボタン自体を生成しない（優雅な縮退）。ボタン押下時のみ`recognition.start()`を呼ぶワンショット方式（`continuous=false`）。発話が検出されないまま5秒経過で自動キャンセル。認識結果はキーワード配列との部分一致で判定し（日本語音声認識の表記ゆれを考慮）、「ドライブ」「アナリシス」で`applyViewMode()`（既存`drive-view.js`関数、再利用）を、「チャート」「ペダル」等6種で`window.cgVoiceShowOnly(g1〜g6)`を呼ぶ。未認識・エラー時は既存`pushNotification()`で簡潔に通知。
+- **検証**: 実際の音声認識エンジンはブラウザ依存でヘッドレス検証不可能なため、`SpeechRecognition`をPlaywright経由でテスト用スタブに差し替え、「認識結果の文字列→コマンド実行」のディスパッチロジックのみを検証する方式を採用（予備調査(c)で提案した方式）。スタブ経由で「ドライブ」→drive-modeクラス付与、「アナリシス」→解除、「チャート」→g1のみ`cg-hidden`が外れ他5グループは`cg-hidden`維持、を実測確認。非対応ブラウザの模擬（`SpeechRecognition`/`webkitSpeechRecognition`を明示的に未定義化。ChromiumはネイティブでwebkitSpeechRecognitionに対応済みのため、単に未注入なだけでは模擬できず明示的な削除が必要だった）でVOICEボタンが生成されないことも確認。P3(#434)のモバイル回帰確認（3viewport）・標準TEST MODEヘッドレス検証で`pageerror`0件。
+- **既知の制約**: 走行中の車内騒音下での認識精度は実車走行環境での検証手段が無いため未検証（実運用での評価が必要）。Chrome/Edgeはクラウド処理のためインターネット接続が必須（同一LAN内オフライン利用が前提の環境では要注意）。音声認識自体の精度向上（誤認識対策等）は本Phase対象外。
+
+---
+
+## 2026-08-02 — AIハイライト自動生成 B2（#436）
+
+### feat: 全カード再生でGフォース急変・タイムデルタ急変地点を自動検出しスクラバーへマーカー表示
+- **背景**: #436区分2「AIハイライト自動生成: リプレイモードで、Gフォース・タイムデルタの急変地点をAIが自動マークし、重要シーンを振り返り可能にする」。既存`replay-mode.js`のバッファ確定フック`rmOnReplayBuffer()`（#145導入）は、`replayState.frames`全体が確定済みの時点で1回呼ばれるため、B1（ライブ・移動窓方式）とは異なる「バッチ一括検出」を統合する自然な地点として利用した。
+- **検出ロジック（`race-metrics.js`のみ、`decoder.py`/`telemetry.py`/`main.py`/`websocket.js`本体は無変更）**: 新規`rmDetectHighlights(frames)`を`rmOnReplayBuffer()`から呼ぶ。(1) `rmDetectGHighlights`: 既存`rmGGOf()`（G-Gダイアグラム用、再利用）で全フレームの`|G|`（lat/lon合成）を算出し、ラップ全体の中央値+50%超かつ局所極大の地点を検出（主指標、常に算出可能）。(2) `rmSplitLaps`/`rmDetectDeltaHighlights`: `lap_count`変化点で複数ラップに分割できた場合のみ、最速ラップを基準に既存`resampleByDist()`（`telemetry-analysis.js`、再利用）で距離索引化し、区間タイム差の変化率が急変する地点を検出（副指標、単一ラップファイルではスキップ）。(3) `rmFilterHighlights`: 隣接ハイライトの間引き（`RM_HL_MIN_GAP_FRAMES`未満は値が大きい方を優先）と上限`RM_HL_MAX_MARKERS`件へのクランプ。
+- **UI（`index.html`/`replay.css`/`race-metrics.js`の`rmRenderHighlightMarkers()`）**: 既存`#replay-scrubber`を新規`#rm-hl-wrap`（レイアウト専用ラッパー、scrubber自体の配線は無改変）で囲み、検出地点ごとに小さな三角マーカー（G急変=既存アクセントカラー、タイムデルタ急変=青系で色分け）を絶対配置で重ねる。マーカークリックで既存`replaySeek()`/`replaySetPlaying()`（再利用）を呼び、該当フレームへ即座にジャンプする。
+- **検証**: aiohttp TestServer + Playwrightで実際のgt7dataラップファイル（529フレーム、単一ラップ）を再生し、6件のGフォース急変ハイライトが検出・マーカー描画され、マーカークリックで正しくシークされることを実測確認（`playIdx`が該当フレームへ変化）。narrow viewport（390×844/360×780/844×390）の回帰確認で、本追加によるスクロール幅の悪化がないことを確認（既存の`.header`要素起因の横スクロール自体は既にANALYSIS mode縦画面の既知の別問題として報告済みであり、本Phase追加前後でscrollWidthが同値=465pxであることから無関係と確認、本Phaseのスコープ外）。標準TEST MODEヘッドレス検証で`pageerror`0件。
+- **既知の制約**: タイムデルタ急変の検出は複数ラップを含む再生ファイルに限る（単一ラップ記録が一般的なため、実運用では主にGフォース急変のみが検出される見込み）。uPlotチャートへのマーカー重畳（uPlotプラグインAPI要、実装コスト高）は本Phaseでは見送り、スクラバー上のマーカーのみで完結させた。
+
+---
+
 ## 2026-08-02 — ドライバーレスポンスタップボタン T2（#436）
 
 ### feat: DRIVE ビューからエンジニアへ「OK / COPY / RE-PLAN」を返信できる応答ボタンを追加

@@ -96,10 +96,37 @@ body.replay-mode .engineer-feed {
     font-size: 12px;
 }
 
-#replay-scrubber {
+/* #436 B2: AIハイライト自動生成。旧#replay-scrubberのflex/min-widthをラッパーへ移し、
+   scrubber自体はラッパー内で全幅にする(配線・レイアウト挙動は従来と同一)。 */
+.rm-hl-wrap {
+    position: relative;
     flex: 1;
     min-width: 120px;
+    display: flex;
+    align-items: center;
+}
+
+#replay-scrubber {
+    width: 100%;
     accent-color: var(--accent-brand);
+}
+
+/* ハイライトマーカー: トラック直下に小さな三角を配置。クリックで該当地点へシーク。 */
+.rm-hl-marker {
+    position: absolute;
+    bottom: -2px;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 6px solid var(--accent-brand);
+    transform: translateX(-50%);
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.rm-hl-marker.rm-hl-delta {
+    border-bottom-color: #3D9BFF;
 }
 
 #replay-time {
