@@ -1,5 +1,12 @@
 aiohttp>=3.9.0
 pycryptodome>=3.19.0
 
+# ラップタイム予測MLパイプライン(train_laptime_model.py、#434 P5 Stage1)専用。
+# オフライン学習パイプラインのみで使用し、ライブ受信経路(main.py本体)は無依存のまま。
+scikit-learn>=1.3.0
+pandas>=2.0.0
+numpy>=1.24.0
+joblib>=1.3.0
+
 # 開発・テスト用（本番コンテナには不要だが requirements.txt で一元管理）
 pytest>=7.0.0
