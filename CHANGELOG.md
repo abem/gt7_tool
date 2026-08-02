@@ -7,6 +7,16 @@
 
 ---
 
+## 2026-08-02 — コース推定安定化（#436 B4フォローアップ）
+
+### fix: ライブ配信中のコースID頻繁切替を多数決ロックイン方式で解消
+- **背景**: 析(seki)の全数調査（`00_レビュー依頼/析から計への分析報告_コースID不安定性全数調査_436_20260802.md`）で、`decoder.py`の`CourseEstimator.estimate_course()`（bounds面積最小選択）が、`course_database.json`の特定コースペア（例: northern_isle↔spa、tokyo_expressway↔nurburgring等）のバウンディングボックス広範重複により、1ラップ中に生の推定値が最大26回も入れ替わる不安定性が判明。P5学習パイプライン（`build_dataset()`が先頭サンプルのみ採用）は無傷と確認されたが、ライブ配信（`main.py`が全パケットで`estimate_course()`を実行しWebSocket配信）・B4（仮想セクタータイム）・P5 Stage3（`lpFetchReferenceDistance`）等、走行中にcourse_idを都度参照する機能への影響リスクが残っていた（采指示によりdev→main昇格・本番反映を保留していた）。
+- **実装（`main.py`の`telemetry_background_task`のみ、`decoder.py`の`CourseEstimator.estimate_course()`自体・`telemetry.py`は無変更）**: 析調査で実績確認済みの「先頭サンプル=100%内部一貫」パターンをライブでも踏襲。新規`COURSE_LOCK_VOTE_WINDOW=10`（約60Hzで167ms相当）件の生推定値をラップ開始から多数決し、最頻出のcourse_idとその代表dictで確定・凍結する。以後そのラップ中は`estimate_course()`の呼び出し自体は継続するが、`parsed["course"]`へは凍結値を採用する。リセットは`lap_count`変化（増減とも）を契機とし、実際のコース変更（セッション再開始）にも対応する。既存の`course`辞書形状（`id`/`name`/`name_en`/`name_ja`/`confidence`/`verified`/`source`）は完全に維持し、`websocket.js`/`sector-time.js`（#436 B4）/`laptime-predict.js`（#434 P5 Stage3）等の既存消費者は無改修で動作する。
+- **検証**: 析が特定した最も不安定な実データ（`northern_isle__1427`・`nurburgring__1551`・`tokyo_expressway__3531`・`daytona__37`の各グループから複数ファイルを無作為抽出）に、実装したロックインアルゴリズムを適用したところ、いずれのファイルも生の推定値では8〜12種のcourse_idを最大124回切り替えていたのに対し、ロックイン後は**全ファイル例外なく1ラップ中1回の確定のみ**（unique=1、正しいグループ名のcourse_idに収束）となることを確認した。`decoder.py`/`telemetry.py`は無変更（`git diff`で確認）、`main.py`の`telemetry_background_task`/`broadcast_to_clients`/`broadcast_consumer_task`（P1/P1-b実装分）に削除・破壊的変更が無いことを確認。標準TEST MODEヘッドレス検証で`pageerror`0件。
+- **既知の制約**: ラップ開始直後の投票window中（約167ms相当）は、従来どおり生の推定値をそのまま表示するため、この短い区間のみ揺れが残り得る（既存動作からの後退ではない）。`course_database.json`自体のバウンディングボックス精度改善（データ側の是正）は本Phase対象外。
+
+---
+
 ## 2026-08-02 — 仮想セクタータイム算出 B4（#436）
 
 ### feat: 参照ラップの距離ベース進行度を流用した仮想セクタータイム(S1/S2/S3)を追加
