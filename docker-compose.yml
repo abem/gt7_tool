@@ -8,6 +8,9 @@ services:
       # Only mount data directories (excludes .git, node_modules, etc.)
       - ./gt7data:/app/gt7data
       - ./gt7data_imported:/app/gt7data_imported
+      # 学習済みモデル(#434 P5、train_laptime_model.pyの出力。.gitignore対象の生成物のため
+      # イメージへのCOPYではなくホストからのボリュームマウントとする(gt7dataと同じ方針))
+      - ./models:/app/models
     environment:
       # PS5 の実IPに合わせる(.env の PS5_IP でも上書き可)
       - PS5_IP=${PS5_IP:-192.168.1.128}
