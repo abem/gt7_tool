@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>GT7 Virtual Pit Wall - Engineer</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/engineer.css">
+</head>
+<body class="engineer-body">
+    <div class="engineer-page">
+        <div class="header">
+            <div class="header-row">
+                <span class="header-title">VIRTUAL PIT WALL — ENGINEER</span>
+                <div id="connection-status" class="disconnected">Connecting...</div>
+            </div>
+        </div>
+
+        <div class="card engineer-card">
+            <span class="card-title">クイック送信</span>
+            <div class="engineer-preset-row">
+                <button type="button" class="engineer-preset-btn" data-text="FUEL MAP 3">FUEL MAP 3</button>
+                <button type="button" class="engineer-preset-btn" data-text="LIFT &amp; COAST">LIFT &amp; COAST</button>
+            </div>
+        </div>
+
+        <div class="card engineer-card">
+            <span class="card-title">自由入力</span>
+            <div class="engineer-input-row">
+                <input type="text" id="engineer-text-input" maxlength="200" placeholder="メッセージを入力...">
+                <button type="button" id="engineer-send-btn">送信</button>
+            </div>
+        </div>
+
+        <div class="card engineer-card">
+            <span class="card-title">送信履歴</span>
+            <ul id="engineer-log" class="engineer-log"></ul>
+        </div>
+
+        <!-- #436 T2: ドライバーがDRIVE view上のタップボタンで送った応答(OK/COPY/RE-PLAN)。
+             送信履歴(自分が送った内容)とは別リストにして方向を混同しないようにする。 -->
+        <div class="card engineer-card">
+            <span class="card-title">ドライバーからの応答</span>
+            <ul id="driver-response-log" class="engineer-log"></ul>
+        </div>
+    </div>
+
+    <script src="/engineer.js"></script>
+</body>
+</html>

@@ -212,6 +212,20 @@
         cgSyncChecks();
     });
 
+    // #436 B3: 音声コマンドからの呼び出し専用の最小限public API。
+    // 既存のプライベート関数(cgSave/cgApply/cgSyncChecks)を呼ぶだけで、
+    // それ自体は無改変(#149の隔離設計を維持したまま、呼び出し口を1つだけ追加)。
+    window.cgVoiceShowOnly = function (gid) {
+        if (!CG_GROUPS.some(function (g) { return g.id === gid; })) {
+            return;
+        }
+        var state = {};
+        CG_GROUPS.forEach(function (g) { state[g.id] = (g.id === gid); });
+        cgSave(state);
+        cgApply(state);
+        cgSyncChecks();
+    };
+
     function cgInit() {
         cgApply(cgLoad());
         // menu.js のツールバーは DOMContentLoaded で生成される。本ファイルは

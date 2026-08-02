@@ -13,6 +13,10 @@ build/
 gt7data/
 *.log
 
+# 学習済みMLモデルアーティファクト(train_laptime_model.py、#434 P5 Stage1)。
+# gt7dataとは物理分離しつつ、再生成可能なバイナリのためGit管理対象外とする。
+models/
+
 # IDE
 .vscode/
 .idea/

@@ -7,6 +7,127 @@
 
 ---
 
+## 2026-08-02 — コース推定安定化（#436 B4フォローアップ）
+
+### fix: ライブ配信中のコースID頻繁切替を多数決ロックイン方式で解消
+- **背景**: 析(seki)の全数調査（`00_レビュー依頼/析から計への分析報告_コースID不安定性全数調査_436_20260802.md`）で、`decoder.py`の`CourseEstimator.estimate_course()`（bounds面積最小選択）が、`course_database.json`の特定コースペア（例: northern_isle↔spa、tokyo_expressway↔nurburgring等）のバウンディングボックス広範重複により、1ラップ中に生の推定値が最大26回も入れ替わる不安定性が判明。P5学習パイプライン（`build_dataset()`が先頭サンプルのみ採用）は無傷と確認されたが、ライブ配信（`main.py`が全パケットで`estimate_course()`を実行しWebSocket配信）・B4（仮想セクタータイム）・P5 Stage3（`lpFetchReferenceDistance`）等、走行中にcourse_idを都度参照する機能への影響リスクが残っていた（采指示によりdev→main昇格・本番反映を保留していた）。
+- **実装（`main.py`の`telemetry_background_task`のみ、`decoder.py`の`CourseEstimator.estimate_course()`自体・`telemetry.py`は無変更）**: 析調査で実績確認済みの「先頭サンプル=100%内部一貫」パターンをライブでも踏襲。新規`COURSE_LOCK_VOTE_WINDOW=10`（約60Hzで167ms相当）件の生推定値をラップ開始から多数決し、最頻出のcourse_idとその代表dictで確定・凍結する。以後そのラップ中は`estimate_course()`の呼び出し自体は継続するが、`parsed["course"]`へは凍結値を採用する。リセットは`lap_count`変化（増減とも）を契機とし、実際のコース変更（セッション再開始）にも対応する。既存の`course`辞書形状（`id`/`name`/`name_en`/`name_ja`/`confidence`/`verified`/`source`）は完全に維持し、`websocket.js`/`sector-time.js`（#436 B4）/`laptime-predict.js`（#434 P5 Stage3）等の既存消費者は無改修で動作する。
+- **検証**: 析が特定した最も不安定な実データ（`northern_isle__1427`・`nurburgring__1551`・`tokyo_expressway__3531`・`daytona__37`の各グループから複数ファイルを無作為抽出）に、実装したロックインアルゴリズムを適用したところ、いずれのファイルも生の推定値では8〜12種のcourse_idを最大124回切り替えていたのに対し、ロックイン後は**全ファイル例外なく1ラップ中1回の確定のみ**（unique=1、正しいグループ名のcourse_idに収束）となることを確認した。`decoder.py`/`telemetry.py`は無変更（`git diff`で確認）、`main.py`の`telemetry_background_task`/`broadcast_to_clients`/`broadcast_consumer_task`（P1/P1-b実装分）に削除・破壊的変更が無いことを確認。標準TEST MODEヘッドレス検証で`pageerror`0件。
+- **既知の制約**: ラップ開始直後の投票window中（約167ms相当）は、従来どおり生の推定値をそのまま表示するため、この短い区間のみ揺れが残り得る（既存動作からの後退ではない）。`course_database.json`自体のバウンディングボックス精度改善（データ側の是正）は本Phase対象外。
+
+---
+
+## 2026-08-02 — 仮想セクタータイム算出 B4（#436）
+
+### feat: 参照ラップの距離ベース進行度を流用した仮想セクタータイム(S1/S2/S3)を追加
+- **背景**: #436区分4「仮想セクタータイムの算出: GT7パケットにセクター情報が含まれないため非対応中。course_database.jsonのGPS座標を用いて仮想セクターラインを設定し、セクタータイム・区間最高速を動的算出」。
+- **予備調査での確認**: `gt7_tool/course_database.json`（アプリケーションが実際にロードする、`courses`19件+`known_courses`4件=全23件）をプログラム的に全数走査した結果、全エントリのキー和集合は`{bounds, name_ja, description, name_en, fallback, id, verified, name}`のみで、走行ライン形状（ポリライン・ウェイポイント）を保持するフィールドは1件も存在しないことを確認。バウンディングボックスのみでは幾何学的なセクターラインの設定は不可能なため、work order§3-1-2で示唆された代替案（#434 P5 Stage3の距離ベース進行度の応用）を採用した。
+- **実装（新規`sector-time.js`。既存`decoder.py`/`telemetry.py`/`main.py`/`websocket.js`本体・`laptime-predict.js`/`telemetry-analysis.js`本体は無変更、読み取り専用参照のみ）**: 参照ラップの総距離（既存`lpFetchReferenceDistance(courseId, carId)`、P5 Stage3で確立・キャッシュ済み）をN=3等分した仮想境界を設定。ライブの累積距離（既存`lpState.cumDistance`）が境界を跨いだ時点で、ライブのラップ内経過秒（既存`analysisState.lapClockS`）から区間タイムを算出・確定する1Hzティッカーを追加。最終区間（S3）はラップ完了時（`#current-lap`変化）に、完了ラップの総タイム（`#current-lap-time`のLAST表示）から逆算して確定させる。セッション内のコース×車種ごとの自己ベスト区間タイムをクライアント側状態のみで追跡し（バックエンド永続化なし、B1/P5と同方針）、更新時は該当セクターを紫色（`--session-best`）でハイライト。
+- **UI（`index.html`の`.lap-times-card`へS1/S2/S3行を追加、新規`sector-time.css`）**: 既存の`.lap-time-item`/`.lap-time-label`/`.lap-time-value`をそのまま再利用し、視覚言語を統一。
+- **検証**: 実データ(gt7dataの複数ラップファイル)での結合テストにおいて、`course_database.json`のバウンディングボックスのみに基づく既存のコース自動推定が、同一ファイル内で最大26回もコースIDを行き来する重大な不安定性（境界重複による誤検知の実例）を発見したため、この既知の不安定性から独立した決定論的検証（`lpFetchReferenceDistance`をスタブ化し、`lpState.cumDistance`/`analysisState.lapClockS`/ラップ番号を直接操作）を採用。境界跨ぎでのセクター確定・最終セクターのラップ完了時確定・セッションベスト更新とハイライト付与を実測確認（10項目のアサーション全PASS）。P3のモバイル回帰確認（3viewport）・標準TEST MODEヘッドレス検証で`pageerror`0件。
+- **既知の制約**: 参照ラップとの走行ラインの違いにより境界位置に微小な誤差が生じる。参照距離の見積もり誤差により、まれに最終セクター（S3）が確定しないままラップが終わることがある（curLapSectorsがnullのまま=表示は`--.---`のまま、既知の限界として予備調査報告に明記済み）。GT7公式のコースセクター境界とは異なる旨をユーザーガイドで明示。区間最高速の表示は本Phaseでは見送り（work order原文の言及事項だが、予備調査時点の設計協議でセクタータイムを主眼とし、実装規模を抑える判断）。
+
+---
+
+## 2026-08-02 — 音声コマンドビュー切替 B3（#436）
+
+### feat: SpeechRecognition Web APIによるハンズフリーのビュー/カード表示グループ切替を追加
+- **背景**: #436区分3「音声コマンドによるビュー切り替え: 音声認識でDRIVEビューから特定チャートへハンズフリー切り替え」。#434 P4で採用した`SpeechSynthesis`（読み上げ）と対になる、逆方向の`SpeechRecognition`（音声→操作）機能。
+- **予備調査での重要な発見**: `card-groups.js`（#149、カード表示グループ管理）は即時実行関数式（IIFE）でファイル全体がプライベートスコープに隠蔽されており、`cgApply`/`cgSave`等の既存関数を外部から一切呼び出せないことが判明。work order記載の「既存関数を読み取り専用で呼び出す」方針を字義通り実現するのは不可能だったため、計との協議の上、既存プライベート関数を呼ぶだけの最小限の新規公開関数`window.cgVoiceShowOnly(gid)`を1つだけ追加する対応とした（既存のプライベート関数自体は無改変、隔離設計の意図は維持）。
+- **実装（新規`voice-command.js`/`voice-command.css`、既存ファイルへの影響は`card-groups.js`への1関数追加・`index.html`のタグ追加のみ。`decoder.py`/`telemetry.py`/`main.py`/`websocket.js`本体は無変更）**: `window.SpeechRecognition || window.webkitSpeechRecognition`の機能検出で非対応ブラウザ（Firefox既定等）ではツールバーへのVOICEボタン自体を生成しない（優雅な縮退）。ボタン押下時のみ`recognition.start()`を呼ぶワンショット方式（`continuous=false`）。発話が検出されないまま5秒経過で自動キャンセル。認識結果はキーワード配列との部分一致で判定し（日本語音声認識の表記ゆれを考慮）、「ドライブ」「アナリシス」で`applyViewMode()`（既存`drive-view.js`関数、再利用）を、「チャート」「ペダル」等6種で`window.cgVoiceShowOnly(g1〜g6)`を呼ぶ。未認識・エラー時は既存`pushNotification()`で簡潔に通知。
+- **検証**: 実際の音声認識エンジンはブラウザ依存でヘッドレス検証不可能なため、`SpeechRecognition`をPlaywright経由でテスト用スタブに差し替え、「認識結果の文字列→コマンド実行」のディスパッチロジックのみを検証する方式を採用（予備調査(c)で提案した方式）。スタブ経由で「ドライブ」→drive-modeクラス付与、「アナリシス」→解除、「チャート」→g1のみ`cg-hidden`が外れ他5グループは`cg-hidden`維持、を実測確認。非対応ブラウザの模擬（`SpeechRecognition`/`webkitSpeechRecognition`を明示的に未定義化。ChromiumはネイティブでwebkitSpeechRecognitionに対応済みのため、単に未注入なだけでは模擬できず明示的な削除が必要だった）でVOICEボタンが生成されないことも確認。P3(#434)のモバイル回帰確認（3viewport）・標準TEST MODEヘッドレス検証で`pageerror`0件。
+- **既知の制約**: 走行中の車内騒音下での認識精度は実車走行環境での検証手段が無いため未検証（実運用での評価が必要）。Chrome/Edgeはクラウド処理のためインターネット接続が必須（同一LAN内オフライン利用が前提の環境では要注意）。音声認識自体の精度向上（誤認識対策等）は本Phase対象外。
+
+---
+
+## 2026-08-02 — AIハイライト自動生成 B2（#436）
+
+### feat: 全カード再生でGフォース急変・タイムデルタ急変地点を自動検出しスクラバーへマーカー表示
+- **背景**: #436区分2「AIハイライト自動生成: リプレイモードで、Gフォース・タイムデルタの急変地点をAIが自動マークし、重要シーンを振り返り可能にする」。既存`replay-mode.js`のバッファ確定フック`rmOnReplayBuffer()`（#145導入）は、`replayState.frames`全体が確定済みの時点で1回呼ばれるため、B1（ライブ・移動窓方式）とは異なる「バッチ一括検出」を統合する自然な地点として利用した。
+- **検出ロジック（`race-metrics.js`のみ、`decoder.py`/`telemetry.py`/`main.py`/`websocket.js`本体は無変更）**: 新規`rmDetectHighlights(frames)`を`rmOnReplayBuffer()`から呼ぶ。(1) `rmDetectGHighlights`: 既存`rmGGOf()`（G-Gダイアグラム用、再利用）で全フレームの`|G|`（lat/lon合成）を算出し、ラップ全体の中央値+50%超かつ局所極大の地点を検出（主指標、常に算出可能）。(2) `rmSplitLaps`/`rmDetectDeltaHighlights`: `lap_count`変化点で複数ラップに分割できた場合のみ、最速ラップを基準に既存`resampleByDist()`（`telemetry-analysis.js`、再利用）で距離索引化し、区間タイム差の変化率が急変する地点を検出（副指標、単一ラップファイルではスキップ）。(3) `rmFilterHighlights`: 隣接ハイライトの間引き（`RM_HL_MIN_GAP_FRAMES`未満は値が大きい方を優先）と上限`RM_HL_MAX_MARKERS`件へのクランプ。
+- **UI（`index.html`/`replay.css`/`race-metrics.js`の`rmRenderHighlightMarkers()`）**: 既存`#replay-scrubber`を新規`#rm-hl-wrap`（レイアウト専用ラッパー、scrubber自体の配線は無改変）で囲み、検出地点ごとに小さな三角マーカー（G急変=既存アクセントカラー、タイムデルタ急変=青系で色分け）を絶対配置で重ねる。マーカークリックで既存`replaySeek()`/`replaySetPlaying()`（再利用）を呼び、該当フレームへ即座にジャンプする。
+- **検証**: aiohttp TestServer + Playwrightで実際のgt7dataラップファイル（529フレーム、単一ラップ）を再生し、6件のGフォース急変ハイライトが検出・マーカー描画され、マーカークリックで正しくシークされることを実測確認（`playIdx`が該当フレームへ変化）。narrow viewport（390×844/360×780/844×390）の回帰確認で、本追加によるスクロール幅の悪化がないことを確認（既存の`.header`要素起因の横スクロール自体は既にANALYSIS mode縦画面の既知の別問題として報告済みであり、本Phase追加前後でscrollWidthが同値=465pxであることから無関係と確認、本Phaseのスコープ外）。標準TEST MODEヘッドレス検証で`pageerror`0件。
+- **既知の制約**: タイムデルタ急変の検出は複数ラップを含む再生ファイルに限る（単一ラップ記録が一般的なため、実運用では主にGフォース急変のみが検出される見込み）。uPlotチャートへのマーカー重畳（uPlotプラグインAPI要、実装コスト高）は本Phaseでは見送り、スクラバー上のマーカーのみで完結させた。
+
+---
+
+## 2026-08-02 — ドライバーレスポンスタップボタン T2（#436）
+
+### feat: DRIVE ビューからエンジニアへ「OK / COPY / RE-PLAN」を返信できる応答ボタンを追加
+- **背景**: #436区分3「擬似的双方向テレメトリ」の応答経路。P4（バーチャルピットウォール）はエンジニア→ドライバーの一方向通知のみで、ドライバー側からの応答手段がなかった。GT7パケットにはコントローラーのボタン状態フィールドが存在しない（Nenkai/PDTools `SimulatorPacket.cs`で確認済み、F1調査で報告済み）ため、応答は固定の3値（OK/COPY/RE-PLAN）のタップボタンとして実装。
+- **バックエンド（`main.py`のみ、`decoder.py`/`telemetry.py`・既存の`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`は無変更）**: `websocket_handler`の受信ディスパッチへ`{"type":"driver_response","response":...}`の分岐を追加。`DRIVER_RESPONSE_VALUES = frozenset(("OK", "COPY", "RE-PLAN"))`の許可リストに無い値・欠落値は無視。既存の`engineer_message`と同様、低頻度・欠落厳禁のメッセージとして`broadcast_queue`（P1-bの「最新優先」破棄ポリシー）を経由せず`broadcast_to_clients`を直接使用。
+- **ドライバー側UI（`index.html`/`styles.css`/新規`drive-view.js`の`initDriveResponseButtons()`）**: DRIVE ビュー（`.drive-strip`直下）に「OK / COPY / RE-PLAN」の3つの大型タップボタン（`min-height: 56px`、誤操作防止）を配置。`body.drive-mode`時のみ表示（ANALYSIS では非表示）。クリックで`wsState`（`websocket.js`のグローバル、プレーンscript共有スコープ）経由で送信し、送信直後は`.sent`クラスで視覚フィードバック（600ms）。
+- **エンジニア側UI（`engineer.html`/`engineer.js`）**: 新規カード「ドライバーからの応答」を追加し、既存の「送信履歴」（自分が送った内容）とは別リスト（`#driver-response-log`）に表示して方向の混同を防止。`engineerLog()`を`listId`引数付きに一般化（既存呼び出し箇所は後方互換）。
+- **検証**: aiohttp TestServer + Playwrightで、ドライバー側DRIVE mode切替→3ボタン全てのタップ→エンジニア側`#driver-response-log`への実際のWebSocket経由の反映をエンドツーエンドで実測（ANALYSIS mode復帰でボタン非表示になることも確認）。バックエンド側の入力検証（不正response値・欠落値の無視、`engineer_message`との混在時も両方正しく処理されること）を単体テストで確認（送信6件中、期待どおり有効な4件のみ配信）。P3で修正した縦画面（390×844等）でのCSS Grid横スクロール回帰がないことを`mobile_check_p3.py`で再確認（3viewport全てで`scrollWidth`=`clientWidth`）。標準TEST MODEヘッドレス検証で`pageerror`0件。`decoder.py`/`telemetry.py`無改変、`main.py`の`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`に差分なし（`git diff`で確認）。
+
+---
+
+## 2026-08-02 — アウトライヤー検出自動化 B1（#436）
+
+### feat: マシントラブル警告の自動検知をSTRATEGYカードへ追加
+- **背景**: #436区分1「アウトライヤー検出の自動化」。既存`race-metrics.js`のM-4（#146）`rmDegRate`が持つ「中央値±8%超を外れ値としてラップ回帰から除外する」ロジックを土台に、除外ではなく**検出・警告**する方向へ拡張。
+- **実装（`race-metrics.js`のみ、`decoder.py`/`telemetry.py`/`websocket.js`本体は無変更）**: 新規`rmOutlierTick()`を`rmStrategyTick()`（既存1Hzポーリング）に統合。(1) ラップタイム異常悪化: 既存`RM_DEG_LAPS`/`RM_DEG_OUTLIER_FRAC`（中央値±8%）を転用し、直近ラップが外れ値なら`LAP ANOMALY`を通知（ラップ番号ごとに1回のみ、重複通知なし）。(2) タイヤ温度急変: 直近5サンプルでの上昇量が15℃超で`TYRE TEMP`を通知。(3) 油圧異常低下: 直近平均比30%超の低下で`OIL PRESSURE`を通知（severity=serious）。(4) 燃料消費率急増: 直近平均比50%超の上昇で`FUEL RATE`を通知（誤検知リスクが高いため緩めの閾値・severity=notice）。いずれも既存の`pushNotification()`（レースエンジニア通知パネル）を再利用し、新規UI要素は追加していない。
+- **検証**: ヘッドレスPlaywrightで、4指標それぞれを直接DOM操作＋`rmOutlierTick()`呼び出しで人工的にトリガーし、正しいラベル・値・severityで通知されることを実測確認（ラップ異常悪化は重複通知されないことも確認）。TEST MODEの継続的なデモデータ生成が手動注入したDOM値を非同期に上書きし得るため、`ensureAnalysisInit()`直接呼び出しによる決定的な検証手順を採用。既存`rmDegRate`/`rmStrategyTick`本体に削除・破壊的変更が無いことを`git diff`で確認（119追加/1変更のみ、既存ロジックの機能自体は不変）。標準TEST MODEヘッドレス検証で`pageerror`0件。
+
+---
+
+## 2026-08-02 — バーチャルピットウォール P4（#434）
+
+### feat: エンジニア役端末からの指示通知・音声読み上げを追加
+- **背景**: #434区分3「バーチャル・ピットウォール機能（擬似的双方向テレメトリ）」。既存`websocket_handler`の`async for msg in ws`受信ループは存在したが、`ERROR`型以外のメッセージ（`TEXT`型）は一切処理せず破棄していた（ディスパッチ未実装）。
+- **バックエンド（`main.py`のみ、`decoder.py`/`telemetry.py`・P1/P1-b実装分の`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`は無変更）**: `websocket_handler`へ`{"type":"engineer_message","text":...,"severity":...}`形式のメッセージディスパッチを追加。長さ上限（`MAX_ENGINEER_MESSAGE_LEN=200`）・severity値の許可リスト（`notice`/`good`/`warning`/`serious`/`critical`、不正値は`notice`へフォールバック）・不正JSON/空文字の無視を実装。配信は`broadcast_queue`（P1-b、テレメトリ向けの「最新優先」破棄ポリシー）を経由せず`broadcast_to_clients`を直接使用（低頻度・欠落厳禁のメッセージのため）。新規`GET /engineer`ルート・`engineer_handler`でエンジニア役ページを配信。
+- **エンジニア役UI（新規`engineer.html`/`engineer.js`/`engineer.css`）**: メインダッシュボードとは独立した軽量ページ。プリセットボタン（FUEL MAP 3 / LIFT & COAST）・自由入力・送信履歴ログを備える。既存の「ドライバー表示/エンジニア解析の分離ドクトリン」（`drive-view.js`）を踏襲し、別端末向けの専用ページとして分離。
+- **ドライバー側受信（新規`pit-wall.js`）**: `websocket.js`の受信フレーム処理へ`data.type === 'engineer_message'`の分岐を1箇所追加し（テレメトリ処理とは別経路）、既存の`pushNotification()`（レースエンジニア通知パネル）で表示、ブラウザ標準`SpeechSynthesis` Web APIで読み上げ（新規外部依存なし）。
+- **検証**: aiohttp TestServer + Playwrightで、エンジニア役ページ→ドライバー側ダッシュボードへの実際のWebSocket経由のメッセージ配信をエンドツーエンドで実測（プリセット送信・自由入力送信、通知表示・TTS呼び出しの両方を確認）。バックエンド側の入力検証（不正JSON・不正severityのフォールバック・長さ超過の切り詰め・空文字の無視）を単体テストで確認。`decoder.py`/`telemetry.py`無改変、`main.py`の`telemetry_background_task`/`broadcast_to_clients`本体/`broadcast_consumer_task`に差分なし。ヘッドレスTEST MODE実機検証で`pageerror`0件。
+- **既知の制約**: 認証・アクセス制御は本Phaseの対象外（同一ネットワーク内利用が前提）。TEST MODE/REPLAY中は既存の`processTelemetryFrame`のガードにより、エンジニアメッセージを含む全WS受信メッセージの処理が停止する（既存仕様どおりの挙動であり、実運用では影響しない）。
+
+---
+
+## 2026-08-02 — モバイルUI最適化 P3（DRIVE mode縦画面対応、#434）
+
+### fix: DRIVE mode縦画面(スマホホルダー想定)での横スクロール・要素不可視化を解消
+- **背景**: #434「モバイル専用ダッシュボードの最適化」。予備調査でDRIVE modeを縦画面（390×844等のスマホ相当幅）で実機検証したところ、横スクロールが発生し、THROTTLE/BRAKEの%数値・TYRES欄のタイヤ状態インジケータが画面外で完全に不可視になっていることを発見（既存の`@media (max-width: 999px)`ブレークポイントは、DRIVE mode専用の`body.drive-mode .racing-top-bar`ルールがメディアクエリ外で定義されCSS詳細度が高いため、実質的に無効化されていた）。
+- **修正（`styles.css`のみ、JS・バックエンドは無改変）**: (1) `body.drive-mode .dashboard`の`grid-template-columns`を`1fr`→`minmax(0, 1fr)`（暗黙のmin-width:autoによるCSS Grid縮小阻害の解消、実装中に追加特定）。(2) `body.drive-mode .racing-top-bar`へ`@media (max-width: 999px)`内で単一カラム化の上書きを追加。(3) `body.drive-mode .drive-strip`（LAP/LAST/BEST/EST/FUEL/TYRES）を3列×2行へ折返し。(4) `body.drive-mode .header-row`へ`flex-wrap: wrap`を追加（実装中に追加発見、接続状態表示の不可視化を解消）。
+- **検証**: ヘッドレスTEST MODE実機検証（縦画面390×844・360×780、横画面844×390）で修正前後を比較。修正前は縦画面2種で横スクロール発生（`scrollWidth`444px）、修正後はいずれも解消（`scrollWidth`=`clientWidth`）。スクリーンショットでTHROTTLE/BRAKE%・TYRES表示が正常に見えることを視覚確認。回帰確認: ANALYSIS mode・通常デスクトップ幅（1920×1080）ではDRIVE mode含め横スクロールなし（回帰なし、既存のANALYSIS mode縦画面の別問題は本修正のスコープ外として計へ報告済み）。`pageerror`は全ケース0件。
+
+---
+
+## 2026-08-02 — ラップタイム予測 P5（Stage1〜3、#434）
+
+### feat: 機械学習によるライブラップタイム予測をSTRATEGYカードへ追加
+- **背景**: #434区分2「AIを活用したリアルタイム予測」。当初案の車両3D物理モデル（Physical AI）はテレメトリに車両質量・タイヤコンパウンド・空力係数等が含まれず実現不可と判明（Stage1予備調査）、機械学習ベース回帰（コース×車種別）へ方針変更（采承認）。
+- **Stage1（オフライン学習パイプライン）**: `train_laptime_model.py`新設。`gt7data/`のラップ単位JSONから、距離進行度25/50/75%のチェックポイントごとに特徴量（速度・スロットル/ブレーキ・タイヤ温度等）を抽出し、コース×車種別にRidge回帰/RandomForestを学習・MAE/RMSE検証。学習データ量不足の組み合わせは対象外。析(seki)調査で判明した2026-02-11〜13の旧保存形式（30秒固定間隔スナップショット）由来の重複stale-labelを排除するフィルタ、および品質ゲート境界値の丸め誤差バグ（査sa指摘）を是正済み。
+- **Stage2（バックエンド推論API）**: `GET /api/predict/laptime`新設。**品質ゲート（オフライン検証MAE≤3%のグループのみ、采指示厳守）**を`models/gated_groups.json`（学習パイプラインが生成する許可リスト）で判定し、対象外は404。既存の受信〜配信経路（`decoder.py`/`telemetry.py`/`telemetry_background_task`/`broadcast_to_clients`/`broadcast_consumer_task`）は無改変。
+- **Stage3（フロント統合）**: 新規`laptime-predict.js`が、既存DOM表示値（`#speed`/`#throttle-value`/`#brake-value`/`#fl-temp`等）を独自タイマー（250ms）でサンプリングし、ラップ内累積平均・距離を自前算出（ライブ経路JSは無改変の方針を踏襲、race-metrics.js M-4と同じ設計）。進行度は距離ベース（同コース×車種の参照ラップ総距離を`/api/laps`から一度だけ取得しキャッシュ、采指示）。STRATEGYカードに**PRED**表示を追加し、品質ゲート対象外時は`--`（中立表示）、表示時はMAE%・学習ラップ数(n)を併記して前提条件を明示。
+- **検証**: Stage1は実データ（1452ファイル走査、25グループ学習→データ品質是正後20グループ）でMAE実測・単体テスト（品質ゲート境界値の再現確認含む）。Stage2はaiohttp TestClientによる実HTTPリクエスト（200/404/400の各シナリオ）。Stage3はPlaywrightヘッドレス検証（TEST MODE、`pageerror`0件）およびAPIモックによる表示ロジック確認（品質ゲート適合時のMAE%/n表示・対象外時の中立表示、両方実測）。
+
+---
+
+## 2026-08-02 — 高度解析エクスポート P2（#434）
+
+### feat: FastF1互換CSVエクスポート（`format=fastf1`）を追加、MoTeC .ld出力は見送り
+- **背景**: Redmine #434区分1に基づく。予備調査（`00_レビュー依頼/作から計への予備調査完了報告_高度解析エクスポート_20260802.md`）で、MoTeC .ld形式はMoTeC社が公式仕様を非公開にしており、本チーム内にMoTeC i2の実機・ライセンスも無く出力の実機検証ができないことを確認。指示書の判断基準（実現性が確認できたフォーマットのみ実装）に基づき、MoTeC出力は本Phaseで見送った（計・査確認済み）。FastF1ライブラリは汎用インポート機能を持たないため、「FastF1のDataFrame列規約と互換なCSV出力」として実装した。
+- **実装（`main.py`のみ、`decoder.py`/`telemetry.py`は無改変）**: 新規`output_format`値`fastf1`を既存の`_load_lap_file`・`api_lap_detail_handler`の分岐へ追加（既存`csv`/`json`分岐は無改変）。`FASTF1_FIELDS`（対応済みフィールド集合）・`_samples_to_fastf1_csv`（列名改名・単位変換）を新設。対応列: `Speed`/`RPM`/`nGear`/`Throttle`/`Brake`（bool変換）/`X`/`Y`/`Z`（1/10m単位変換）/`Date`/`Status`/`LapNumber`/`LapTime`。複数ドライバー前提の`DRS`/`Compound`/`TyreLife`/`Stint`/`DriverAhead`はGT7の単一車両テレメトリに構造的に存在せず非対応（部分互換）。ダウンロードファイル名は`_fastf1.csv`接尾辞で既存`format=csv`出力と区別。フロントエンドのダウンロードUI追加は行わず、APIパラメータのみで提供。
+- **検証**: `git diff --exit-code --name-only -- decoder.py telemetry.py` exit 0（受信・デコード経路無改変）。`grep -n "output_format =="`で新設分岐が既存csv分岐と同一関数内にあることを確認。既存`format=csv`/`format=json`の行が削除されていないことを確認（diff上`^-`行に該当パターンなし）。新規関数（`_fastf1_columns`/`_fastf1_row`/`_samples_to_fastf1_csv`）を直接呼び出して列名・単位変換・bool変換を実測確認、全PASS。aiohttp TestClientによるHTTPエンドポイント実測で`format=fastf1`（200・text/csv・ファイル名`_fastf1.csv`）・既存`format=csv`/`format=json`/不正format（無回帰）を確認、全PASS。ヘッドレスTEST MODE実機検証（Playwright）で`pageerror`0件。新規トップレベルシンボル（`FASTF1_FIELDS`/`FASTF1_POSITION_UNIT_SCALE`/`_FASTF1_COLUMN_NAMES`/`_fastf1_columns`/`_fastf1_row`/`_samples_to_fastf1_csv`）は既存シンボルとの名前衝突なしをgrep事前確認済み。
+- **ドキュメント**: README.md（更新履歴）・docs/API.md（`format=fastf1`セクション新設・列マッピング表）・docs/USER_GUIDE.md（上級者向け利用方法を追記）を更新。
+
+---
+
+## 2026-08-02 — バックエンド堅牢化・データ損失防止 P1（#434）
+
+### feat: パケットロス計測・周期チェックポイント保存・ラップ保存失敗時のretry/退避を追加
+- **背景**: Redmine #434区分4に基づく。`telemetry_background_task`はSIGKILL/OOM等で`finally`節を経ずに終了すると進行中ラップの未保存分を全損し、`save_lap_to_file`は書込み失敗時にログのみでデータを破棄していた。予備調査（`00_レビュー依頼/作から計への予備調査完了報告_バックエンド堅牢化データ損失防止_20260802.md`）で、作業指示書背景記載の「OS UDP受信バッファ溢れ」は`telemetry.py`が既にasyncio.Queue(maxsize256)+DatagramProtocolで疎結合済みのため発生しないこと、実リスクは同キューの溢れである点を確認した上で着手。
+- **実装（`main.py`のみ、`decoder.py`/`telemetry.py`は無改変）**:
+  - パケットロス計測: 復号失敗・解析失敗・受理されなかったパケット（重複/順序逆転）・単調増加区間の欠番(gap)を`packet_loss_count`として累積カウントし、周期チェックポイントと同じタイミングで0超過時にWARNINGログへ反映。
+  - 周期的チェックポイント保存: ラップ境界を待たず5秒間隔で進行中`current_lap_data`を固定ファイル（`gt7data/.checkpoint_current_lap.json`）へ上書き保存（`asyncio.to_thread`オフロード、既存のラップ保存オフロードと同方式）。ラップ境界での正規保存成功時・正常シャットダウン時に削除。
+  - `save_lap_to_file`書込み失敗時: 規定回数（3回）まで再試行後、退避ディレクトリ`gt7data_failed/`へ保存（単純破棄からの変更）。
+  - チェックポイント・退避ファイルの命名は`LAP_FILE_RE`と一致しない固定名/接尾辞のため、`/api/laps`一覧・詳細取得には現れない（追加の除外ロジック不要）。
+  - DB導入は不要と判断し実装せず（根拠は予備調査完了報告§(e)参照）。
+- **検証**: `git diff --exit-code --name-only -- decoder.py telemetry.py` exit 0（受信・デコード経路無改変）。新規関数（`save_lap_to_file`の正常系/全リトライ失敗時のフォールバック/`_save_checkpoint`/`_clear_checkpoint`/`_scan_lap_files`によるチェックポイント・退避ファイルの一覧除外）を一時ディレクトリ上で直接呼び出し実測確認、全PASS。ヘッドレスTEST MODE実機検証（Playwright）で`pageerror`0件、speed/rpm/gear表示が正常に変化することを確認。新規トップレベルシンボル（`LOG_DIR_FAILED`/`CHECKPOINT_FILE`/`CHECKPOINT_INTERVAL_SEC`/`SAVE_RETRY_COUNT`/`SAVE_RETRY_DELAY_SEC`/`_save_checkpoint`/`_clear_checkpoint`/`packet_loss_count`/`last_checkpoint_time`）は既存シンボルとの名前衝突なしをgrep事前確認済み。
+- **UI/操作手順への影響**: なし（バックエンド内部処理のみ。パケットロス数はログのみでUI配信メッセージへは反映していない）。
+
+---
+
 ## 2026-07-19 — CAR ATTITUDE 路面勾配表示（#202）
 
 ### feat: 路面法線ベクトルから縦断勾配・カントを算出しCAR ATTITUDEカードへ追加表示

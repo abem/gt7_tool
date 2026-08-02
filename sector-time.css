@@ -1,0 +1,15 @@
+/**
+ * GT7 Telemetry Dashboard - 仮想セクタータイム専用スタイル (#436 B4)
+ *
+ * styles.css には追記しない(新規ファイル隔離、replay.css/card-groups.css等と同じ流儀)。
+ * .lap-time-item/.lap-time-label/.lap-time-value(既存)をそのまま再利用し、
+ * セッションベスト時のみ .sector-best を追加で切り替える。
+ */
+
+.sector-time-row {
+    margin-top: var(--sp-2, 6px);
+}
+
+.lap-time-value.sector-best {
+    color: var(--session-best);
+}

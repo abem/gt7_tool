@@ -445,6 +445,9 @@ function updatePositionText(data) {
     // コース名（COURSE MAP 廃止で #course-name は無い。要素があるときだけ更新）
     if (elements.courseName && data.course && data.course.name && data.course.id !== 'unknown') {
         elements.courseName.textContent = data.course.name;
+        // ラップタイム予測(#434 P5 Stage3)用にcourse.idもdata属性として保持する。
+        // 新規の受信経路ではなく、この既存ブロック(要素がある時のみ動作)への追加。
+        elements.courseName.dataset.courseId = data.course.id;
     }
 }
 
@@ -643,6 +646,17 @@ function processTelemetryFrame(now) {
     try {
         const data = JSON.parse(raw);
         wsState.parseErrorCount = 0;  // 成功時はリセット
+
+        // バーチャルピットウォール(#434 P4): エンジニア役端末からのメッセージは
+        // テレメトリとは別経路で処理する(handleTelemetryMessageへは渡さない。
+        // typeフィールドを持たない従来のテレメトリJSONとの後方互換を維持)。
+        if (data && data.type === 'engineer_message') {
+            if (typeof handleEngineerMessage === 'function') {
+                handleEngineerMessage(data);
+            }
+            return;
+        }
+
         // 接続ピルの段階表示: 最初のテレメトリ処理時に一度だけ 'Connected' へ昇格
         if (!wsState.liveDataSeen) {
             wsState.liveDataSeen = true;

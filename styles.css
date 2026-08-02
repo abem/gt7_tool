@@ -1693,6 +1693,44 @@ body {
 .drive-tyre.warm    { background: var(--tyre-warm); }
 .drive-tyre.hot     { background: var(--tyre-hot); }
 
+/* --- Driver response tap buttons (#436 T2) ------------------------------ */
+/* DRIVE mode時のみ表示(body.drive-mode .drive-response-rowで切替)。
+   走行中の誤操作防止のため大きめのタップ領域(min-height 56px、
+   #434 P4 engineer.cssの.engineer-preset-btnと同水準)を確保する。 */
+.drive-response-row {
+    display: none;
+    gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-6);
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-lg);
+}
+
+.drive-response-btn {
+    flex: 1 1 auto;
+    min-width: 100px;
+    min-height: 56px;
+    padding: var(--sp-4);
+    background: var(--surface-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-md);
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+
+.drive-response-btn:active {
+    background: var(--accent-wash);
+    border-color: var(--accent-brand);
+}
+
+.drive-response-btn.sent {
+    border-color: var(--good);
+    color: var(--good);
+}
+
 /* --- DRIVE mode layout switches ------------------------------------------ */
 /* Tier-3 (解析専用) を非表示にし、中央 1 カラム + ヒーロー拡大に再構成 */
 body.drive-mode .left-panel,
@@ -1704,7 +1742,12 @@ body.drive-mode .tyres-card {
 }
 
 body.drive-mode .dashboard {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr): 単なる1frだと暗黙のmin-width:autoにより、内包する
+       .racing-top-bar/.drive-strip等の実コンテンツの最小幅(min-content)まで
+       しか縮まらず、縦画面スマホ幅で横スクロールが発生していた(#434 P3是正、
+       2026-08-02、実機ヘッドレス検証で特定)。minmax(0, 1fr)で列がコンテナ幅まで
+       縮めるようにする(古典的なCSS Gridオーバーフロー対策)。 */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
         "header"
         "hero"
@@ -1722,6 +1765,10 @@ body.drive-mode .racing-delta-section {
 
 body.drive-mode .drive-strip {
     display: grid;
+}
+
+body.drive-mode .drive-response-row {
+    display: flex;
 }
 
 /* DRIVE 中はヒーローの主要素を拡大 (Tier-1: ギアは最大グリフ) */
@@ -1744,6 +1791,51 @@ body.drive-mode .center-split {
 
 body.drive-mode .steer-response-card {
     min-height: clamp(240px, 40vh, 560px);
+}
+
+/* ============================================================================
+ * DRIVE mode: 縦画面(スマホホルダー等)向け調整(#434 P3是正、2026-08-02)
+ *
+ * body.drive-mode .racing-top-bar(上記)は4カラムグリッド(minmax最小幅合計580px超)を
+ * メディアクエリの外(常時適用)で定義しており、CSS詳細度が
+ * @media(max-width:999px)内の素の.racing-top-bar(ANALYSISモード用の縦画面調整)より
+ * 高いため、999pxブレークポイントがDRIVE modeでは実質無効化されていた
+ * (#434 P3予備調査で実機検証により特定。ペダル値・タイヤ状態が画面外に出て不可視化)。
+ * 同一セレクタ(body.drive-mode .racing-top-bar/.drive-strip)をメディアクエリ内へ
+ * 再定義し、詳細度を揃えた上でソース順(後勝ち)で上書きする。
+ * ========================================================================== */
+
+@media (max-width: 999px) {
+    body.drive-mode .racing-top-bar {
+        grid-template-columns: 1fr;
+        row-gap: var(--sp-4);
+        min-height: 0;
+    }
+
+    /* LAP/LAST/BEST/EST/FUEL/TYRESの6項目を3列×2行へ折返し(既存の1行6列だと
+       各項目の最小幅の合計が画面幅を超え、TYRES欄が画面外に出て不可視だった)。
+       minmax(0, 1fr): 単なる1frの暗黙min-width:autoによる縮小阻害を回避する
+       (body.drive-mode .dashboardと同じ対策)。 */
+    body.drive-mode .drive-strip {
+        grid-auto-flow: row;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(2, auto);
+    }
+
+    /* ヘッダー行(タイトル+TURBO/接続状態バッジ)がnowrap+space-betweenで
+       折り返さず、縦画面スマホ幅で#connection-status("TEST MODE"等)が
+       画面外に出ていたため、折返しを許可する(DRIVE mode限定、ANALYSIS/REVIEW
+       モードの見た目は変更しない)。 */
+    body.drive-mode .header-row {
+        flex-wrap: wrap;
+        row-gap: var(--sp-2);
+    }
+
+    /* #436 T2: 縦画面スマホ幅(360px等)でも3ボタンが折返しなく収まるよう、
+       min-widthを狭める(P3の教訓を踏まえた予防的対応)。 */
+    .drive-response-btn {
+        min-width: 80px;
+    }
 }
 
 /* ============================================================================
@@ -1883,6 +1975,9 @@ body.drive-mode .steer-response-card {
 .engineer-alert.serious  { border-left-color: var(--serious); }
 .engineer-alert.critical { border-left-color: var(--critical); }
 .engineer-alert.pb       { border-left-color: var(--session-best); }
+/* バーチャルピットウォール(#434 P4): エンジニア役からの通常の指示メッセージ用
+   (good/warning/serious/criticalのいずれにも該当しない中立な通知)。 */
+.engineer-alert.notice   { border-left-color: var(--accent-brand); }
 
 /* --- Optional grip / consistency --------------------------------------- */
 .grip-status {

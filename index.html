@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="/replay.css">
     <link rel="stylesheet" href="/race-metrics.css">
     <link rel="stylesheet" href="/card-groups.css">
+    <link rel="stylesheet" href="/voice-command.css">
+    <link rel="stylesheet" href="/sector-time.css">
 </head>
 <body>
     <div class="dashboard">
@@ -41,7 +43,11 @@
             <button id="replay-btn-step-f" type="button" aria-label="1フレーム進む" title="1フレーム進む">⏭</button>
             <select id="replay-speed" aria-label="再生速度"></select>
             <select id="replay-segment" aria-label="再生区間" style="display:none"></select>
-            <input id="replay-scrubber" type="range" min="0" max="100" value="0" step="1" aria-label="再生位置">
+            <!-- #436 B2: AIハイライト自動生成。マーカーはrace-metrics.jsがrm-hl-wrap内に注入する
+                 (rm-hl-wrap自体はレイアウト用のラッパーのみで、既存replay-scrubberの配線は無改変) -->
+            <div id="rm-hl-wrap" class="rm-hl-wrap">
+                <input id="replay-scrubber" type="range" min="0" max="100" value="0" step="1" aria-label="再生位置">
+            </div>
             <span id="replay-time">--</span>
             <button id="replay-btn-exit" type="button" aria-label="再生を終了" title="再生を終了しライブ表示へ戻る">✕ EXIT</button>
         </div>
@@ -287,6 +293,14 @@
                 </div>
             </div>
 
+            <!-- #436 T2: ドライバーレスポンスタップボタン(DRIVE mode時のみ表示)。
+                 エンジニアへOK/COPY/RE-PLANを送信する。誤操作防止のため大きめのタップ領域。 -->
+            <div class="drive-response-row" id="drive-response-row">
+                <button type="button" class="drive-response-btn" data-response="OK">OK</button>
+                <button type="button" class="drive-response-btn" data-response="COPY">COPY</button>
+                <button type="button" class="drive-response-btn" data-response="RE-PLAN">RE-PLAN</button>
+            </div>
+
             <div class="charts-container">
                 <div class="chart-wrapper" data-cardgroup="g1">
                     <div class="chart-title">SPEED</div>
@@ -504,6 +518,22 @@
                         <span class="lap-time-value" id="est-lap-time">--:--.---</span>
                     </div>
                 </div>
+                <!-- #436 B4: 仮想セクタータイム。GT7パケットに実セクター情報が無いため、
+                     参照ラップの走行距離をN=3等分した仮想境界での区間タイム(sector-time.js)。 -->
+                <div class="lap-times-row sector-time-row" id="sector-time-row">
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">S1</span>
+                        <span class="lap-time-value" id="sector-1-value">--.---</span>
+                    </div>
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">S2</span>
+                        <span class="lap-time-value" id="sector-2-value">--.---</span>
+                    </div>
+                    <div class="lap-time-item">
+                        <span class="lap-time-label">S3</span>
+                        <span class="lap-time-value" id="sector-3-value">--.---</span>
+                    </div>
+                </div>
             </div>
 
             <div class="card delta-card" data-cardgroup="g5">
@@ -640,7 +670,14 @@
             <span class="card-title rm-title">STRATEGY</span>
             <span class="rm-strategy-item">DEG <b id="rm-deg-value">--</b></span>
             <span class="rm-strategy-item">PIT <b id="rm-pit-value">--</b></span>
+            <!-- #434 P5 Stage3: ラップタイム予測(品質ゲートMAE<=3%のみ、対象外は既存パターンに
+                 倣い'--'表示)。前提条件(MAE%/n_laps)をサブテキストで併記(采指示2026-08-02)。 -->
+            <span class="rm-strategy-item">PRED <b id="rm-predict-value">--</b><span class="rm-strategy-sub" id="rm-predict-meta"></span></span>
         </div>
+        <!-- #434 P5 Stage3: course.idをlaptime-predict.js用に保持するための非表示要素。
+             websocket.js既存のcourse.name書込み条件ブロック(要素があるときのみ動作)を
+             有効化する(新規受信経路ではない)。 -->
+        <span id="course-name" style="display:none"></span>
     </div>
 
     <!-- Three.js 廃止: CAR ATTITUDE は car-3d.js の Canvas2D 実装（WebGL不要）に置換 -->
@@ -657,11 +694,15 @@
     <script src="/replay-mode.js"></script>
     <script src="/race-metrics.js"></script>
     <script src="/websocket.js"></script>
+    <script src="/pit-wall.js"></script>
+    <script src="/laptime-predict.js"></script>
+    <script src="/sector-time.js"></script>
     <script src="/test-mode.js"></script>
     <script src="/app.js"></script>
     <script src="/card-drag.js"></script>
     <script src="/menu.js"></script>
     <!-- card-groups.js は #app-toolbar(menu.js生成)へ CARDS ボタンを挿入するため menu.js より後 -->
     <script src="/card-groups.js"></script>
+    <script src="/voice-command.js"></script>
 </body>
 </html>
