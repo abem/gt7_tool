@@ -123,6 +123,9 @@ CHECKPOINT_INTERVAL_SEC = 5.0
 SAVE_RETRY_COUNT = 3
 SAVE_RETRY_DELAY_SEC = 0.5
 
+# コース推定ロックインの多数決window件数(#436 B4フォローアップ)。約60Hzで167ms相当。
+COURSE_LOCK_VOTE_WINDOW = 10
+
 
 def ensure_log_dir():
     if not os.path.exists(LOG_DIR):
@@ -346,6 +349,17 @@ async def telemetry_background_task():
     last_time = datetime.now()
     current_lap_data = []
     current_lap_number = 0
+    # コース推定ロックイン(#436 B4フォローアップ): course_estimator.estimate_course()
+    # 自体(bounds面積最小選択)は無改変。course_database.jsonの特定コースペアの
+    # バウンディングボックス重複により、1ラップ中に生の推定値が頻繁に入れ替わる
+    # 不安定性が判明した(析の全数調査)ため、ラップ開始からCOURSE_LOCK_VOTE_WINDOW件の
+    # 生推定値を多数決し、以後そのラップ中は確定値に凍結する。lap_count変化(増減とも)で
+    # リセットする(析調査で実績のある「先頭サンプル=100%内部一貫」のラップ単位の粒度を踏襲)。
+    course_lock_id = None       # 確定済みcourse_id(未確定はNone)
+    course_lock_result = None   # 確定済みcourse dict(id/name/name_en/name_ja/confidence/verified/source)
+    course_vote_counts = {}     # id -> 出現回数(投票window中のみ)
+    course_vote_samples = {}    # id -> そのidを得た最初のcourse dict(確定時の代表値)
+    course_vote_count = 0       # 投票windowに入れた生サンプル数
     # パケットロス計測(#434 P1): 受理されなかった/破棄されたパケットの累積カウント。
     packet_loss_count = 0
     # 周期的チェックポイント保存(#434 P1): 前回チェックポイントからの経過時間追跡。
@@ -412,12 +426,37 @@ async def telemetry_background_task():
                 last_speed_kmh = parsed["speed_kmh"]
                 last_time = current_time
 
-                # コース推定
-                course_info = course_estimator.estimate_course(
+                # ラップ境界検知(コース推定ロックインの判定にも使うため、lap_count
+                # 変化検知より前に前倒しで取得する。値自体は従来どおり)
+                lap_count = parsed.get("lap_count", 1)
+
+                # コース推定(#436 B4フォローアップ: ロックイン方式で安定化)
+                # estimate_course()自体(bounds面積最小選択)は無改変。ラップ変化
+                # (増減とも)でロックをリセットし、開始からCOURSE_LOCK_VOTE_WINDOW件の
+                # 生推定値を多数決、以後そのラップ中は確定値に凍結する(析調査で実績の
+                # ある「先頭サンプル=100%内部一貫」をラップ単位の粒度で拡張する設計)。
+                if lap_count != current_lap_number:
+                    course_lock_id = None
+                    course_lock_result = None
+                    course_vote_counts = {}
+                    course_vote_samples = {}
+                    course_vote_count = 0
+
+                raw_course = course_estimator.estimate_course(
                     parsed.get("position_x", 0),
                     parsed.get("position_z", 0)
                 )
-                parsed["course"] = course_info
+                if course_lock_id is None:
+                    cid = raw_course.get("id", "unknown")
+                    course_vote_counts[cid] = course_vote_counts.get(cid, 0) + 1
+                    course_vote_samples.setdefault(cid, raw_course)
+                    course_vote_count += 1
+                    if course_vote_count >= COURSE_LOCK_VOTE_WINDOW:
+                        course_lock_id = max(course_vote_counts, key=course_vote_counts.get)
+                        course_lock_result = course_vote_samples[course_lock_id]
+                    parsed["course"] = raw_course
+                else:
+                    parsed["course"] = course_lock_result
 
                 # 燃料計算
                 fuel_data = fuel_tracker.update(
@@ -428,7 +467,6 @@ async def telemetry_background_task():
                 parsed.update(fuel_data)
 
                 # ラップデータ蓄積・保存（lap_count変化検知）
-                lap_count = parsed.get("lap_count", 1)
                 current_lap_data.append(parsed)
 
                 # 周期的チェックポイント保存(#434 P1): ラップ境界を待たず一定間隔で
@@ -499,6 +537,10 @@ MAX_ENGINEER_MESSAGE_LEN = 200
 # noticeで揃える(フロント側のクラス名と1対1対応させ、表示側で追加の変換をしない)。
 ENGINEER_MESSAGE_SEVERITIES = frozenset(("notice", "good", "warning", "serious", "critical"))
 
+# ドライバーレスポンスタップボタン(#436 T2): DRIVE view上のタップボタンから送る
+# 許可された応答値(#436原文の例に準拠、3種固定)。
+DRIVER_RESPONSE_VALUES = frozenset(("OK", "COPY", "RE-PLAN"))
+
 
 async def websocket_handler(request):
     """WebSocket接続を処理"""
@@ -511,27 +553,38 @@ async def websocket_handler(request):
     try:
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
-                # バーチャルピットウォール(#434 P4): エンジニア役端末からのメッセージ受信。
-                # テレメトリ配信(broadcast_queue、P1-b)とは別経路で直接配信する
-                # (低頻度・欠落厳禁のため、高頻度テレメトリ向けの「最新優先」破棄
-                # ポリシーを持つbroadcast_queueは経由しない)。
+                # バーチャルピットウォール(#434 P4 / #436 T2): エンジニア↔ドライバーの
+                # メッセージ受信。テレメトリ配信(broadcast_queue、P1-b)とは別経路で
+                # 直接配信する(低頻度・欠落厳禁のため、高頻度テレメトリ向けの
+                # 「最新優先」破棄ポリシーを持つbroadcast_queueは経由しない)。
                 try:
                     data = json.loads(msg.data)
                 except json.JSONDecodeError:
                     continue
-                if not isinstance(data, dict) or data.get("type") != "engineer_message":
+                if not isinstance(data, dict):
                     continue
-                text = str(data.get("text", "")).strip()[:MAX_ENGINEER_MESSAGE_LEN]
-                if not text:
-                    continue
-                severity = data.get("severity")
-                if severity not in ENGINEER_MESSAGE_SEVERITIES:
-                    severity = "notice"
-                await broadcast_to_clients(json.dumps({
-                    "type": "engineer_message",
-                    "text": text,
-                    "severity": severity,
-                }))
+                msg_type = data.get("type")
+                if msg_type == "engineer_message":
+                    text = str(data.get("text", "")).strip()[:MAX_ENGINEER_MESSAGE_LEN]
+                    if not text:
+                        continue
+                    severity = data.get("severity")
+                    if severity not in ENGINEER_MESSAGE_SEVERITIES:
+                        severity = "notice"
+                    await broadcast_to_clients(json.dumps({
+                        "type": "engineer_message",
+                        "text": text,
+                        "severity": severity,
+                    }))
+                elif msg_type == "driver_response":
+                    # #436 T2: ドライバー→エンジニアの応答(OK/COPY/RE-PLANの3種固定)。
+                    response = data.get("response")
+                    if response not in DRIVER_RESPONSE_VALUES:
+                        continue
+                    await broadcast_to_clients(json.dumps({
+                        "type": "driver_response",
+                        "response": response,
+                    }))
             elif msg.type == aiohttp.WSMsgType.ERROR:
                 logger.warning(f"WebSocket error: {ws.exception()}")
                 break

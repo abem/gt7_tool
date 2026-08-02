@@ -21,8 +21,8 @@ function engineerSetStatus(text, cls) {
     }
 }
 
-function engineerLog(text, failed) {
-    const list = document.getElementById('engineer-log');
+function engineerLog(text, failed, listId) {
+    const list = document.getElementById(listId || 'engineer-log');
     if (!list) {
         return;
     }
@@ -86,8 +86,19 @@ function engineerConnect() {
         engineerSetStatus('Error', 'error');
     };
 
-    // 受信メッセージ(テレメトリ・他エンジニア端末からの送信echo等)は本ページでは処理不要
-    engineerState.ws.onmessage = function() {};
+    // #436 T2: ドライバー側からのdriver_response(OK/COPY/RE-PLAN)のみ処理する。
+    // テレメトリ・他エンジニア端末からのengineer_message echo等は本ページでは処理不要。
+    engineerState.ws.onmessage = function(event) {
+        let data;
+        try {
+            data = JSON.parse(event.data);
+        } catch (e) {
+            return;
+        }
+        if (data && data.type === 'driver_response' && typeof data.response === 'string') {
+            engineerLog(data.response, false, 'driver-response-log');
+        }
+    };
 }
 
 function scheduleEngineerReconnect() {

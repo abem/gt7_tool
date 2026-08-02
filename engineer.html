@@ -37,6 +37,13 @@
             <span class="card-title">送信履歴</span>
             <ul id="engineer-log" class="engineer-log"></ul>
         </div>
+
+        <!-- #436 T2: ドライバーがDRIVE view上のタップボタンで送った応答(OK/COPY/RE-PLAN)。
+             送信履歴(自分が送った内容)とは別リストにして方向を混同しないようにする。 -->
+        <div class="card engineer-card">
+            <span class="card-title">ドライバーからの応答</span>
+            <ul id="driver-response-log" class="engineer-log"></ul>
+        </div>
     </div>
 
     <script src="/engineer.js"></script>

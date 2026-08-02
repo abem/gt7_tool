@@ -93,6 +93,30 @@ function initDriveView() {
     if (saved === 'drive') {
         applyViewMode(true);
     }
+
+    initDriveResponseButtons();
+}
+
+/**
+ * ドライバーレスポンスタップボタン(#436 T2)を配線する。
+ * websocket.js の wsState.ws(グローバル、プレーンscript)を直接使って送信する
+ * (新規の受信・接続経路は作らず、既存の/wsコネクションを共用する)。
+ */
+function initDriveResponseButtons() {
+    const SENT_FEEDBACK_MS = 600;
+    document.querySelectorAll('.drive-response-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const response = btn.dataset.response;
+            if (typeof wsState === 'undefined' || !wsState.ws || wsState.ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            wsState.ws.send(JSON.stringify({ type: 'driver_response', response: response }));
+            btn.classList.add('sent');
+            setTimeout(function() {
+                btn.classList.remove('sent');
+            }, SENT_FEEDBACK_MS);
+        });
+    });
 }
 
 /**

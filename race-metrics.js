@@ -49,6 +49,23 @@ const RM_STRATEGY_TICK_MS = 1000;         // M-4 ライブポーリング周期(
 const RM_DEG_LAPS = 5;                    // デグ回帰に使う直近ラップ数
 const RM_DEG_OUTLIER_FRAC = 0.08;         // 中央値±8%超を外れ値(ピット/ミス周)として除外
 
+/* ---- B1(#436) アウトライヤー検出自動化 定数 ---- */
+// ラップタイム異常悪化: RM_DEG_LAPS/RM_DEG_OUTLIER_FRAC(既存rmDegRateと同じ中央値±8%)を転用。
+// タイヤ温度・油圧・燃料消費率(ライブ連続値)は方式2(移動窓・変化率ベース)を用いる。
+const RM_TYRE_TEMP_HISTORY_LEN = 5;       // 直近5サンプル(1Hzサンプリングで概ね5秒)
+const RM_TYRE_TEMP_RATE_THRESHOLD = 15;   // 直近5サンプルでの上昇量がこれ超で警告(℃)
+const RM_OIL_PRESSURE_HISTORY_LEN = 5;
+const RM_OIL_PRESSURE_DROP_FRAC = 0.3;    // 直近平均比でこの割合超の低下で警告
+const RM_FUEL_PER_LAP_HISTORY_LEN = 5;
+const RM_FUEL_PER_LAP_RISE_FRAC = 0.5;    // 誤検知リスクが高いため緩めの閾値(直近平均比+50%)
+
+/* ---- B2(#436) AIハイライト自動生成 定数 ---- */
+// バッチ処理(replayState.frames全体が確定済みのrmOnReplayBuffer時点)向けの検出方式。
+// B1のライブ移動窓方式(直近N件との比較)とは異なり、ラップ全体の中央値を基準にする。
+const RM_HL_G_OUTLIER_FRAC = 0.5;         // |G|が中央値の1.5倍(+50%)超で急変候補
+const RM_HL_MAX_MARKERS = 12;             // マーカー過多による視認性低下を防ぐ上限(値が大きい順に採用)
+const RM_HL_MIN_GAP_FRAMES = 15;          // 隣接ハイライトの最小フレーム間隔(同一コーナーの重複検出防止)
+
 /* ---- P3(#147) 定数 ---- */
 // M-5 滑らかさ raw 指標の重み(低いほど滑らか)。各成分は無次元化してから合成:
 //   スロットル一階差分std[%/サンプル] / 舵角修正頻度[反転回数/km] / 舵角一階差分std[rad]
@@ -70,7 +87,14 @@ const rmState = {
     replayGGBase: null,  // 再生G-Gの事前描画(offscreen canvas)
     smoothPool: {},      // P3 M-5: file -> {raw, laptime} 較正プール
     replayEtSupport: null, // P3 M-6: 現バッファの回生/トルク対応判定
-    strategyLast: null   // P2 M-4: 直近パース値(検証用)
+    strategyLast: null,  // P2 M-4: 直近パース値(検証用)
+    outlier: {            // B1(#436): アウトライヤー検出自動化の移動窓状態
+        tyreTempHistory: [[], [], [], []], // FL/FR/RL/RRそれぞれの直近サンプル配列
+        oilPressureHistory: [],
+        fuelPerLapHistory: [],
+        notifiedLapNumbers: new Set()       // 既に警告済みのラップ番号(重複通知防止)
+    },
+    highlights: []        // B2(#436): 直近rmOnReplayBuffer時点で検出したハイライト一覧
 };
 
 function rmEnsureEls() {
@@ -90,7 +114,8 @@ function rmEnsureEls() {
         degValue: document.getElementById('rm-deg-value'),
         pitValue: document.getElementById('rm-pit-value'),
         energyBox: document.getElementById('rm-energy-box'),
-        smoothReplay: document.getElementById('rm-smooth-replay')
+        smoothReplay: document.getElementById('rm-smooth-replay'),
+        hlWrap: document.getElementById('rm-hl-wrap')
     };
     return rmState.els;
 }
@@ -185,6 +210,11 @@ function rmOnReplayBuffer() {
     }
     const frames = replayState.frames || [];
 
+    // B2(#436): AIハイライト自動生成。バッファ確定時(高レート差替時も再実行)に
+    // 全フレームを一括走査し、Gフォース急変・タイムデルタ急変を検出する。
+    rmState.highlights = rmDetectHighlights(frames);
+    rmRenderHighlightMarkers();
+
     // P2 M-3: 再生ラップのサスヒストグラム(単一系列)
     if (els.suspReplay) {
         rmDrawSuspHisto(els.suspReplay, rmSuspSeries(frames), null);
@@ -249,6 +279,199 @@ function rmReplayHighlightTick() {
     }
     // P3 M-6: 再生位置のフレームで回生/トルク表示を更新
     rmUpdateEnergyTorque(replayState.frames[i]);
+}
+
+/* ================================================================
+ *  AIハイライト自動生成 B2(#436、予備調査(a)〜(c)承認済み設計)
+ *  バッチ処理(rmOnReplayBuffer時点でreplayState.frames全体が確定済み)向け。
+ *  B1のライブ移動窓方式とは異なり、ラップ全体の中央値を基準にした
+ *  「局所極大値かつ閾値超過」判定で1シーンにつき1点へ絞り込む。
+ * ================================================================ */
+
+/**
+ * Gフォース急変(主指標): 全フレームの|G|(rmGGOfのlat/lon合成)系列から、
+ * ラップ全体の中央値+RM_HL_G_OUTLIER_FRAC超かつ局所極大の地点を検出する。
+ * 加速度データがないファイル(v1等)はnonZeroが閾値未満で空配列を返す。
+ */
+function rmDetectGHighlights(frames) {
+    const mags = new Array(frames.length);
+    for (let i = 0; i < frames.length; i++) {
+        const p = rmGGOf(frames[i]);
+        mags[i] = p ? Math.hypot(p.lat, p.lon) : 0;
+    }
+    const nonZero = mags.filter(function(v) { return v > 0; });
+    if (nonZero.length < 10) {
+        return [];
+    }
+    const sorted = nonZero.slice().sort(function(a, b) { return a - b; });
+    const median = sorted[Math.floor(sorted.length / 2)];
+    if (!(median > 0)) {
+        return [];
+    }
+    const threshold = median * (1 + RM_HL_G_OUTLIER_FRAC);
+    const highlights = [];
+    for (let i = 1; i < mags.length - 1; i++) {
+        if (mags[i] > threshold && mags[i] >= mags[i - 1] && mags[i] >= mags[i + 1]) {
+            highlights.push({ idx: i, type: 'g', value: mags[i], label: 'Gフォース急変 ' + mags[i].toFixed(2) + 'G' });
+        }
+    }
+    return highlights;
+}
+
+/**
+ * フレーム列をラップ単位に分割する(lap_countの変化点、last_laptimeが正の
+ * 完走ラップのみを対象。lap_count=0のコース開始前は対象外)。
+ */
+function rmSplitLaps(frames) {
+    const laps = [];
+    let start = 0;
+    for (let i = 1; i <= frames.length; i++) {
+        const changed = (i === frames.length) || (frames[i].lap_count !== frames[i - 1].lap_count);
+        if (changed) {
+            const lapNum = frames[i - 1].lap_count || 0;
+            const timeMs = (i < frames.length) ? frames[i].last_laptime : 0;
+            if (lapNum >= 1 && timeMs > 0 && i - 1 > start) {
+                laps.push({ number: lapNum, start: start, end: i - 1, timeMs: timeMs });
+            }
+            start = i;
+        }
+    }
+    return laps;
+}
+
+/** resampleByDist向けのサンプル形状へ変換する(dist/tはラップ先頭基準に正規化)。 */
+function rmSamplesForLap(frames, tArr, dArr, start, end) {
+    const t0 = tArr[start];
+    const d0 = dArr[start];
+    const out = [];
+    for (let i = start; i <= end; i++) {
+        const f = frames[i];
+        out.push({
+            dist: dArr[i] - d0,
+            t: tArr[i] - t0,
+            speed: f.speed_kmh || 0,
+            throttle: f.throttle_pct || 0,
+            brake: f.brake_pct || 0,
+            x: f.position_x,
+            z: f.position_z
+        });
+    }
+    return out;
+}
+
+/**
+ * タイムデルタ急変(副指標、複数ラップファイル限定): 同一バッファ内の最速ラップを
+ * 基準に、他ラップとの距離索引デルタ(resampleByDist、既存関数を再利用)を算出し、
+ * 隣接距離点間のデルタ変化量が中央値+RM_HL_G_OUTLIER_FRAC超かつ局所極大の地点を検出する。
+ * ラップが1本以下(単一ラップファイル)の場合は比較対象が無いため空配列を返す
+ * (P3 M-6の「非対応はN/A」と同型の優雅な縮退)。
+ */
+function rmDetectDeltaHighlights(frames, tArr, dArr, laps) {
+    if (!Array.isArray(laps) || laps.length < 2 || typeof resampleByDist !== 'function') {
+        return [];
+    }
+    let fastest = laps[0];
+    laps.forEach(function(l) {
+        if (l.timeMs < fastest.timeMs) {
+            fastest = l;
+        }
+    });
+    const step = rmStepM();
+    const ref = resampleByDist(rmSamplesForLap(frames, tArr, dArr, fastest.start, fastest.end), step);
+    const highlights = [];
+    laps.forEach(function(lap) {
+        if (lap === fastest) {
+            return;
+        }
+        const comp = resampleByDist(rmSamplesForLap(frames, tArr, dArr, lap.start, lap.end), step);
+        const N = Math.min(ref.N, comp.N);
+        if (N < 5) {
+            return;
+        }
+        const chg = new Array(N);
+        chg[0] = 0;
+        for (let i = 1; i < N; i++) {
+            chg[i] = Math.abs((comp.time[i] - ref.time[i]) - (comp.time[i - 1] - ref.time[i - 1]));
+        }
+        const sorted = chg.slice().sort(function(a, b) { return a - b; });
+        const median = sorted[Math.floor(sorted.length / 2)] || 0;
+        const threshold = median * (1 + RM_HL_G_OUTLIER_FRAC) + 0.02;
+        for (let i = 1; i < N - 1; i++) {
+            if (chg[i] > threshold && chg[i] >= chg[i - 1] && chg[i] >= chg[i + 1] &&
+                typeof replayIdxForDist === 'function') {
+                const frameIdx = replayIdxForDist(dArr[lap.start] + comp.dist[i]);
+                highlights.push({
+                    idx: frameIdx, type: 'delta', value: chg[i],
+                    label: 'タイムデルタ急変(L' + lap.number + ') ' + chg[i].toFixed(2) + 's'
+                });
+            }
+        }
+    });
+    return highlights;
+}
+
+/**
+ * 隣接ハイライトの間引き(RM_HL_MIN_GAP_FRAMES未満は値が大きい方を優先)・
+ * 上限RM_HL_MAX_MARKERS件へのクランプ。最終的にフレームindex昇順で返す。
+ */
+function rmFilterHighlights(list) {
+    const sorted = list.slice().sort(function(a, b) { return b.value - a.value; });
+    const accepted = [];
+    sorted.forEach(function(h) {
+        if (accepted.length >= RM_HL_MAX_MARKERS) {
+            return;
+        }
+        const tooClose = accepted.some(function(a) { return Math.abs(a.idx - h.idx) < RM_HL_MIN_GAP_FRAMES; });
+        if (!tooClose) {
+            accepted.push(h);
+        }
+    });
+    accepted.sort(function(a, b) { return a.idx - b.idx; });
+    return accepted;
+}
+
+/** ハイライト検出の統括入口。rmOnReplayBufferから呼ばれる。 */
+function rmDetectHighlights(frames) {
+    if (!Array.isArray(frames) || frames.length < 20 || typeof replayState === 'undefined') {
+        return [];
+    }
+    const gHl = rmDetectGHighlights(frames);
+    const laps = rmSplitLaps(frames);
+    const deltaHl = rmDetectDeltaHighlights(frames, replayState.t, replayState.d, laps);
+    return rmFilterHighlights(gHl.concat(deltaHl));
+}
+
+/** スクラバー上のハイライトマーカーを再描画する(#rm-hl-wrap、既存replay-scrubberは無改変)。 */
+function rmRenderHighlightMarkers() {
+    const els = rmEnsureEls();
+    if (!els.hlWrap) {
+        return;
+    }
+    els.hlWrap.querySelectorAll('.rm-hl-marker').forEach(function(el) { el.remove(); });
+    if (typeof replayState === 'undefined' || !replayState.frames.length) {
+        return;
+    }
+    const n = replayState.frames.length;
+    const total = replayState.t[n - 1] || 0;
+    if (!(total > 0)) {
+        return;
+    }
+    rmState.highlights.forEach(function(h) {
+        const marker = document.createElement('div');
+        marker.className = 'rm-hl-marker' + (h.type === 'delta' ? ' rm-hl-delta' : '');
+        marker.style.left = (replayState.t[h.idx] / total * 100).toFixed(2) + '%';
+        marker.title = h.label;
+        marker.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (typeof replaySetPlaying === 'function') {
+                replaySetPlaying(false);
+            }
+            if (typeof replaySeek === 'function') {
+                replaySeek(h.idx);
+            }
+        });
+        els.hlWrap.appendChild(marker);
+    });
 }
 
 /* ================================================================
@@ -570,6 +793,105 @@ function rmDegRate(lapTimes) {
     return (n * sxy - sx * sy) / denom;   // [s/lap]
 }
 
+/**
+ * アウトライヤー検出自動化(B1、#436)。マシントラブルの未然防止を狙い、
+ * 「除外」ではなく「検出・警告」する方向でrmDegRateと同じ中央値±8%方式(ラップタイム)、
+ * および移動窓・変化率ベースの新方式(タイヤ温度・油圧・燃料消費率のライブ値)を用いる。
+ * 検出時は既存pushNotification()(トースト通知、既存の#race-engineer-feed)を再利用する。
+ * ライブ経路JS(websocket.js本体)は無改変、既存カードのDOM表示値を厳格パースする
+ * M-4と同じ設計方針を踏襲する。
+ */
+function rmOutlierTick() {
+    // 1. ラップタイム異常悪化(方式1: 既存rmDegRateと同じ中央値±8%を転用)
+    if (typeof lapState !== 'undefined' && Array.isArray(lapState.lapTimes) && lapState.lapTimes.length >= 3) {
+        const recent = lapState.lapTimes.slice(-RM_DEG_LAPS);
+        const latest = recent[recent.length - 1];
+        if (!rmState.outlier.notifiedLapNumbers.has(latest.number)) {
+            const times = recent.map(function(l) { return l.time; });
+            const sorted = times.slice().sort(function(a, b) { return a - b; });
+            const median = sorted[Math.floor(sorted.length / 2)];
+            if (median > 0) {
+                const deviation = (latest.time - median) / median;
+                if (deviation > RM_DEG_OUTLIER_FRAC) {
+                    rmState.outlier.notifiedLapNumbers.add(latest.number);
+                    if (typeof pushNotification === 'function') {
+                        pushNotification(
+                            'LAP ANOMALY',
+                            'L' + latest.number + ' +' + (deviation * 100).toFixed(0) + '%',
+                            'warning'
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. タイヤ温度急変(方式2: 直近RM_TYRE_TEMP_HISTORY_LENサンプルの変化量)
+    const tyreIds = ['fl-temp', 'fr-temp', 'rl-temp', 'rr-temp'];
+    const tyreLabels = ['FL', 'FR', 'RL', 'RR'];
+    tyreIds.forEach(function(id, i) {
+        const el = document.getElementById(id);
+        const v = el ? rmParseFloatStrict(el.textContent) : null;
+        if (v == null) {
+            return;
+        }
+        const hist = rmState.outlier.tyreTempHistory[i];
+        if (hist.length >= RM_TYRE_TEMP_HISTORY_LEN) {
+            const delta = v - hist[0];
+            if (delta > RM_TYRE_TEMP_RATE_THRESHOLD) {
+                if (typeof pushNotification === 'function') {
+                    pushNotification('TYRE TEMP', tyreLabels[i] + ' +' + delta.toFixed(0) + '°C/5s', 'warning');
+                }
+                hist.length = 0; // 連続通知を避けるためリセット
+            }
+        }
+        hist.push(v);
+        while (hist.length > RM_TYRE_TEMP_HISTORY_LEN) {
+            hist.shift();
+        }
+    });
+
+    // 3. 油圧異常低下(方式2: 直近平均比RM_OIL_PRESSURE_DROP_FRAC超の低下)
+    const oilEl = document.getElementById('oil-pressure');
+    const oilV = oilEl ? rmParseFloatStrict(oilEl.textContent) : null;
+    if (oilV != null) {
+        const hist = rmState.outlier.oilPressureHistory;
+        if (hist.length >= RM_OIL_PRESSURE_HISTORY_LEN) {
+            const baseline = hist.reduce(function(a, b) { return a + b; }, 0) / hist.length;
+            if (baseline > 0 && (baseline - oilV) / baseline > RM_OIL_PRESSURE_DROP_FRAC) {
+                if (typeof pushNotification === 'function') {
+                    pushNotification('OIL PRESSURE', oilV.toFixed(1) + ' bar', 'serious');
+                }
+                hist.length = 0;
+            }
+        }
+        hist.push(oilV);
+        while (hist.length > RM_OIL_PRESSURE_HISTORY_LEN) {
+            hist.shift();
+        }
+    }
+
+    // 4. 燃料消費率急増(方式2、誤検知リスクが高いため緩めの閾値・低severity)
+    const fuelEl = document.getElementById('fuel-per-lap');
+    const fuelV = fuelEl ? rmParseFloatStrict(fuelEl.textContent) : null;
+    if (fuelV != null) {
+        const hist = rmState.outlier.fuelPerLapHistory;
+        if (hist.length >= RM_FUEL_PER_LAP_HISTORY_LEN) {
+            const baseline = hist.reduce(function(a, b) { return a + b; }, 0) / hist.length;
+            if (baseline > 0 && (fuelV - baseline) / baseline > RM_FUEL_PER_LAP_RISE_FRAC) {
+                if (typeof pushNotification === 'function') {
+                    pushNotification('FUEL RATE', fuelV.toFixed(2) + ' L/lap', 'notice');
+                }
+                hist.length = 0;
+            }
+        }
+        hist.push(fuelV);
+        while (hist.length > RM_FUEL_PER_LAP_HISTORY_LEN) {
+            hist.shift();
+        }
+    }
+}
+
 /** M-4 の1Hz更新本体。 */
 function rmStrategyTick() {
     const els = rmEnsureEls();
@@ -607,6 +929,9 @@ function rmStrategyTick() {
 
     // 検証用に最終パース値を保持(rm接頭辞の自前状態のみに書込)
     rmState.strategyLast = { deg: deg, fuelLaps: fuelLaps, lap: lap };
+
+    // B1(#436): アウトライヤー検出自動化。同じ1Hzティックに統合(新規タイマーは追加しない)。
+    rmOutlierTick();
 }
 
 /* ================================================================
