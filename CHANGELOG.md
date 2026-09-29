@@ -7,6 +7,20 @@
 
 ---
 
+## 2026-09-30 — ANALYSIS/REVIEW モードの縦画面レイアウト崩れ是正（#435）
+
+### fix: 縦画面（390px/360px）でのANALYSIS/REVIEWの横スクロール・画面外はみ出しを解消
+- **背景**: #434 P3-UI（DRIVE mode縦画面是正）の回帰確認中に発見された、ANALYSIS/REVIEWモードでの同種の問題（#434スコープ外としてバックログ化）。
+- **原因**: DRIVE modeと同じく、CSS Gridの`1fr`が暗黙の`min-width: auto`により内包コンテンツの最小幅（実測432px）までしか縮まなかった。加えて、(a) ヘッダー行（`.header-row`）がnowrapで接続状態バッジ（`#connection-status`）が画面外へ出る、(b) REVIEWのRACE METRICSカード（`#rm-review-grid`）が`260px 1fr`の2列固定のため、固定240pxのcanvas（`#rm-susp-review`）が画面外へはみ出す、という原因が重なっていた。
+- **修正（CSSのみ。JS・`index.html`・バックエンドは無変更）**:
+  - `styles.css` `@media (max-width: 999px)`: `.dashboard`を`minmax(0, 1fr)`へ、`.racing-top-bar`を`minmax(0, 1fr) minmax(0, 1fr)`へ変更し、`.header-row`に`flex-wrap: wrap`を追加。
+  - `review.css` `@media (max-width: 900px)`: `#review-root`を`minmax(0, 1fr)`へ変更。
+  - `race-metrics.css`: `@media (max-width: 900px)`で`#rm-review-grid`を1列（`minmax(0, 1fr)`）へ変更。
+- **検証（ヘッドレスChromium、TEST MODE）**: 修正前（HEAD）は390px/360pxのANALYSIS・REVIEWとも`scrollWidth`444px（横スクロールあり）、画面外要素10件。修正後は全ケース`scrollWidth`=画面幅、画面外要素0件、`pageerror`0件。DRIVE modeは修正前後とも画面外要素0件で回帰なし。1000px以上（1000/1300/1920px）はid付き172要素の位置・サイズが修正前後で完全一致（変更は999px以下にのみ作用）。既存の`auto_verify.py`は10/10 PASS。
+- **既知の事項**: ANALYSIS縦画面で右上の「TOP SPEED」フローティング表示がヒーロー領域と重なる現象は本修正前から存在する別事象で、本件の対象外。`visual_regression_test.py`は7/7がFAILだが、修正前のHEADでも同一の差分率でFAILする（ベースラインが2026-07-16撮影のため陳腐化）ことを確認済みで、本修正による劣化ではない。
+
+---
+
 ## 2026-08-02 — コース推定安定化（#436 B4フォローアップ）
 
 ### fix: ライブ配信中のコースID頻繁切替を多数決ロックイン方式で解消

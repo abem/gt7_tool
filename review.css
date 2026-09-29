@@ -258,7 +258,8 @@ body.review-mode #review-root {
 /* 狭幅: 縦積み */
 @media (max-width: 900px) {
     body.review-mode #review-root {
-        grid-template-columns: 1fr;
+        /* minmax(0, 1fr): 暗黙のmin-width:autoによる横スクロール対策(#435) */
+        grid-template-columns: minmax(0, 1fr);
     }
     #review-sidebar {
         max-height: 40vh;
