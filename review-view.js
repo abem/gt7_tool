@@ -842,6 +842,49 @@ function reviewNotifyExtras(a, b) {
 }
 
 /**
+ * 走行距離の差がこの割合を超える A/B は、距離で区間を対応づけられないため比較しない(#552)。
+ * 同一コースの周回は通常 1% 未満。理論ベスト・区間レポート・ラップ推移が共有する。
+ */
+const REVIEW_DIST_TOLERANCE = 0.03;
+
+/**
+ * 詳細(entry)のコース識別子。コース情報が無い(旧形式・CSVインポート等)場合は null。
+ * @param {Object|null} entry - {meta, res}
+ * @returns {string|null}
+ */
+function reviewCourseId(entry) {
+    const c = entry && entry.meta && entry.meta.course;
+    return c ? (c.id || c.name_ja || c.name_en || null) : null;
+}
+
+/**
+ * A/B が「同一コースで、走行距離が近く、距離で区間を対応づけられる」組かを判定する。
+ * コース情報が片方でも無い場合は「同一と確認できない」として不可とする
+ * (旧形式・インポートのラップで別コースを誤って合成しないため。#552 のレビュー指摘)。
+ * @returns {{ok: boolean, reason: string, da: number, db: number}}
+ *   reason: '' | 'no-data' | 'course-unknown' | 'course-diff' | 'dist-diff'
+ */
+function reviewComparable(a, b) {
+    const da = a && a.res ? a.res.totalDist : 0;
+    const db = b && b.res ? b.res.totalDist : 0;
+    if (!a || !b || !a.res || !b.res) {
+        return { ok: false, reason: 'no-data', da: da, db: db };
+    }
+    const ca = reviewCourseId(a);
+    const cb = reviewCourseId(b);
+    if (!ca || !cb) {
+        return { ok: false, reason: 'course-unknown', da: da, db: db };
+    }
+    if (ca !== cb) {
+        return { ok: false, reason: 'course-diff', da: da, db: db };
+    }
+    if (da && db && Math.abs(da - db) / Math.max(da, db) > REVIEW_DIST_TOLERANCE) {
+        return { ok: false, reason: 'dist-diff', da: da, db: db };
+    }
+    return { ok: true, reason: '', da: da, db: db };
+}
+
+/**
  * 選択(A/B)の変化に応じて詳細取得→サマリ・チャートを更新する。
  * 取得は非同期のため、更新途中に選択が変わった場合は古い結果を破棄する
  * (compareToken による世代ガード)。

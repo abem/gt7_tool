@@ -20,7 +20,6 @@
     'use strict';
 
     const SEGMENTS = 20;
-    const DIST_TOLERANCE = 0.03;   // theory-best.js と同じ判定
 
     const state = { pinned: -1 };
 
@@ -28,27 +27,12 @@
         return document.getElementById(id);
     }
 
-    function courseId(entry) {
-        const c = entry && entry.meta && entry.meta.course;
-        return c ? (c.id || c.name_ja || c.name_en || null) : null;
-    }
-
-    /** A/B が同一コースで距離が近く、区間を対応づけられるか。 */
+    /**
+     * A/B が同一コースで距離が近く、区間を対応づけられるか。
+     * 判定は review-view.js の共通関数(コース情報が片方でも無い場合は不可)。
+     */
     function comparable(a, b) {
-        if (!a || !b || !a.res || !b.res) {
-            return false;
-        }
-        const ca = courseId(a);
-        const cb = courseId(b);
-        if (ca && cb && ca !== cb) {
-            return false;
-        }
-        const da = a.res.totalDist;
-        const db = b.res.totalDist;
-        if (da && db && Math.abs(da - db) / Math.max(da, db) > DIST_TOLERANCE) {
-            return false;
-        }
-        return true;
+        return typeof reviewComparable === 'function' ? reviewComparable(a, b).ok : false;
     }
 
     /**
@@ -205,8 +189,8 @@
                 '区間は距離の ' + SEGMENTS + ' 等分で、実際のコーナーとは無関係です。'
             );
         } else if (both) {
-            setSummary('コースまたは走行距離が異なるため、差分(Δ)は表示しません。各ラップを自身の距離で ' +
-                SEGMENTS + ' 等分した値を並べています。');
+            setSummary('コース・走行距離が同一と確認できないため(異なる、またはコース情報が無い)、' +
+                '差分(Δ)は表示しません。各ラップを自身の距離で ' + SEGMENTS + ' 等分した値を並べています。');
         } else {
             setSummary('片方のラップのみ選択中です。A/B の両方を選ぶと差分を表示します。');
         }
