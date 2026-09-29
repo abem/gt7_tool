@@ -23,7 +23,8 @@
     const MAX_LAPS = 40;           // 取得する最大ラップ数(直近から)
     const CONCURRENCY = 3;         // 同時取得数
     const FETCH_EVERY = 60;        // サンプル間引き(距離の概算には十分)
-    const DIST_TOLERANCE = 0.03;   // 距離差の許容(theory-best.js と同じ)
+    // 距離差の許容は review-view.js の REVIEW_DIST_TOLERANCE を使う(未読込時の既定)
+    const DIST_TOLERANCE_FALLBACK = 0.03;
     const DISCONTINUITY_M = 120;   // これを超える点間距離は位置の飛びとして距離加算しない
     const CHART_H = 220;
     const OUTLIER_RATIO = 1.3;     // 中央値のこの倍率を超える周回を外れ値とする
@@ -37,6 +38,7 @@
         token: 0,         // 読み込みの世代ガード
         loading: false,
         yRange: null,     // 縦軸の範囲 [min, max](外れ値を除いた範囲。null=自動)
+        ro: null,         // チャート幅の追随用 ResizeObserver(clearChart で disconnect)
         chart: null,
         points: []        // 描画中の {file, t(ms), lapMs}
     };
@@ -45,9 +47,9 @@
         return document.getElementById(id);
     }
 
+    /** コース識別子(review-view.js の共通関数。無い場合 null)。 */
     function courseId(entry) {
-        const c = entry && entry.meta && entry.meta.course;
-        return c ? (c.id || c.name_ja || c.name_en || null) : null;
+        return typeof reviewCourseId === 'function' ? reviewCourseId(entry) : null;
     }
 
     function fmt(ms) {
@@ -90,6 +92,10 @@
     }
 
     function clearChart() {
+        if (state.ro) {
+            state.ro.disconnect();
+            state.ro = null;
+        }
         if (state.chart) {
             state.chart.destroy();
             state.chart = null;
@@ -258,12 +264,15 @@
             state.chart = null;
         }
         if (state.chart && typeof ResizeObserver === 'function') {
-            new ResizeObserver(function() {
+            // clearChart() で disconnect できるよう保持する(車種・コースを切り替えるたびに
+            // 観測が積み上がらないように)
+            state.ro = new ResizeObserver(function() {
                 const w = Math.floor(host.clientWidth);
                 if (state.chart && w > 0) {
                     state.chart.setSize({ width: w, height: CHART_H });
                 }
-            }).observe(host);
+            });
+            state.ro.observe(host);
         }
         return state.chart;
     }
@@ -315,12 +324,18 @@
         const key = groupKey(base);
         const car = base.meta.car_id;
         const course = courseId(base);
-        const baseDist = base.res.totalDist;
+        if (!course) {
+            // コース情報が無い(旧形式・インポート等)と、同一コースの周回を特定できない
+            clearChart();
+            setStatus('コース情報が無いため(旧形式・インポート等)、推移を描けません');
+            return;
+        }
         const token = ++state.token;
         state.loading = true;
         setButton(false, '読み込み中…');
 
-        const lapsAll = (typeof reviewState !== 'undefined' && reviewState.laps) ? reviewState.laps : [];
+        const sel = typeof reviewState !== 'undefined' ? reviewState : {};
+        const lapsAll = sel.laps || [];
         const target = lapsAll
             .filter(function(l) { return l.car_id === car; })
             .sort(function(x, y) { return (y.recorded_at || '') < (x.recorded_at || '') ? -1 : 1; })
@@ -342,9 +357,16 @@
             }
             state.loading = false;
             setButton(true, '再読み込み');
+            // 距離の基準: 完了時点の基準ラップ(読み込み中に同一グループ内で A を差し替えた場合に追随)の
+            // 詳細表示の距離(every=6 相当)。every=60 の距離は、間引きによる弦長の縮み(実測0.3〜1.3%)が
+            // 周回ごとに異なり、基準ラップ自身を every=60 で測って比べると、縮み方の差だけで許容(3%)の
+            // 境界の周回が入れ替わる(実データで確認)ため、精度の高い詳細表示の距離を基準にする。
+            const cur = baseEntry();
+            const baseDist = (cur && cur.res && cur.res.totalDist) ? cur.res.totalDist : base.res.totalDist;
+            const tol = typeof REVIEW_DIST_TOLERANCE === 'number' ? REVIEW_DIST_TOLERANCE : DIST_TOLERANCE_FALLBACK;
             const ok = rows.filter(function(r) {
                 return r.lapMs > 0 && r.course === course && baseDist &&
-                    Math.abs(r.dist - baseDist) / Math.max(r.dist, baseDist) <= DIST_TOLERANCE;
+                    Math.abs(r.dist - baseDist) / Math.max(r.dist, baseDist) <= tol;
             }).sort(function(x, y) { return x.recordedAt - y.recordedAt; });
             const excluded = rows.length - ok.length;
             if (ok.length < 2) {
