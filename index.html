@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="/uplot.min.css">
     <link rel="stylesheet" href="/review.css">
     <link rel="stylesheet" href="/track-map.css">
+    <link rel="stylesheet" href="/segment-report.css">
+    <link rel="stylesheet" href="/lap-trend.css">
     <link rel="stylesheet" href="/replay.css">
     <link rel="stylesheet" href="/race-metrics.css">
     <link rel="stylesheet" href="/card-groups.css">
@@ -91,20 +93,43 @@
                     <div class="review-chart-title">THROTTLE / BRAKE (A/B)</div>
                     <div id="review-inputs-chart" class="review-chart"></div>
                 </div>
-                <!-- #552 T1: トラックマップ(A=色分け / B=白の細線)。track-map.js が描画 -->
-                <div id="tm-review-card" class="card">
-                    <div id="tm-head">
-                        <div class="card-title review-chart-title">TRACK MAP (A=色分け / B=白の破線)</div>
-                        <div class="tm-modes" role="group" aria-label="色分けの指標">
-                            <button type="button" class="tm-mode-btn" data-tm-mode="speed" aria-pressed="true">SPEED</button>
-                            <button type="button" class="tm-mode-btn" data-tm-mode="brake" aria-pressed="false">BRAKE</button>
-                            <button type="button" class="tm-mode-btn" data-tm-mode="throttle" aria-pressed="false">THROTTLE</button>
+                <!-- #552: トラックマップと区間レポートを1組にする。1400px以上は左右に並べ、
+                     表の行ホバーで地図の該当区間を同時に見られるようにする(狭幅は縦積み) -->
+                <div id="tm-sr-row">
+                    <!-- #552 T1: トラックマップ(A=色分け / B=白の細線)。track-map.js が描画 -->
+                    <div id="tm-review-card" class="card">
+                        <div id="tm-head">
+                            <div class="card-title review-chart-title">TRACK MAP (A=色分け / B=白の破線)</div>
+                            <div class="tm-modes" role="group" aria-label="色分けの指標">
+                                <button type="button" class="tm-mode-btn" data-tm-mode="speed" aria-pressed="true">SPEED</button>
+                                <button type="button" class="tm-mode-btn" data-tm-mode="brake" aria-pressed="false">BRAKE</button>
+                                <button type="button" class="tm-mode-btn" data-tm-mode="throttle" aria-pressed="false">THROTTLE</button>
+                            </div>
+                        </div>
+                        <div id="tm-canvas-wrap">
+                            <canvas id="tm-canvas" aria-label="走行ラインのトラックマップ"></canvas>
+                        </div>
+                        <div id="tm-readout" aria-live="polite"></div>
+                    </div>
+                    <!-- #552 T5: 区間レポート(A/B の20等分区間ごとの数値表)。segment-report.js が描画 -->
+                    <div id="sr-review-card" class="card">
+                        <div class="card-title review-chart-title">SEGMENT REPORT (A/B ・ 距離20等分)</div>
+                        <div id="sr-summary" aria-live="polite"></div>
+                        <div id="sr-scroll">
+                            <table id="sr-table" aria-label="区間ごとの比較表"></table>
                         </div>
                     </div>
-                    <div id="tm-canvas-wrap">
-                        <canvas id="tm-canvas" aria-label="走行ラインのトラックマップ"></canvas>
+                </div>
+                <!-- #552 T3: ラップタイム推移(同一コース・同一車種)。lap-trend.js が描画 -->
+                <div id="lt-review-card" class="card">
+                    <div id="lt-head">
+                        <div class="card-title review-chart-title">LAP TIME TREND (同コース・同車種)</div>
+                        <button type="button" id="lt-load">推移を読み込む</button>
                     </div>
-                    <div id="tm-readout" aria-live="polite"></div>
+                    <div id="lt-status" aria-live="polite"></div>
+                    <div id="lt-chart"></div>
+                    <div id="lt-stats"></div>
+                    <div id="lt-readout"></div>
                 </div>
                 <!-- 実レース由来メトリクス P1 (#145): 下部追加行(既存ブロックの差し替えなし) -->
                 <div id="rm-review-card" class="card race-metrics-review-card">
@@ -713,6 +738,8 @@
     <script src="/race-metrics.js"></script>
     <script src="/track-map.js"></script>
     <script src="/theory-best.js"></script>
+    <script src="/segment-report.js"></script>
+    <script src="/lap-trend.js"></script>
     <script src="/websocket.js"></script>
     <script src="/pit-wall.js"></script>
     <script src="/laptime-predict.js"></script>

@@ -828,7 +828,7 @@ function reviewRenderCharts(a, b) {
 }
 
 /**
- * A/B の比較確定データを、REVIEW 追加ビュー(#552: トラックマップ・理論ベスト)へ渡す。
+ * A/B の比較確定データを、REVIEW 追加ビュー(#552: トラックマップ・理論ベスト・区間レポート・ラップ推移)へ渡す。
  * 各モジュールは未読込でも動作するよう typeof で守る(race-metrics.js のフックと同作法)。
  * 選択解除時は (null, null) で呼び、各ビューを初期表示へ戻す。
  * @param {Object|null} a
@@ -837,6 +837,8 @@ function reviewRenderCharts(a, b) {
 function reviewNotifyExtras(a, b) {
     if (typeof tmOnReviewCompare === 'function') tmOnReviewCompare(a, b);
     if (typeof tbOnReviewCompare === 'function') tbOnReviewCompare(a, b);
+    if (typeof srOnReviewCompare === 'function') srOnReviewCompare(a, b);
+    if (typeof ltOnReviewCompare === 'function') ltOnReviewCompare(a, b);
 }
 
 /**

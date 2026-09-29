@@ -1,0 +1,81 @@
+/**
+ * GT7 Telemetry Dashboard - REVIEW ラップタイム推移 スタイル (#552 T3)
+ *
+ * 新規ファイル隔離。表示制御は id 直接ルール(#157 の教訓)。
+ */
+
+#lt-review-card {
+    display: none;
+}
+
+body.review-mode #lt-review-card {
+    display: block;
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-width: 0;
+}
+
+#lt-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+#lt-head .review-chart-title {
+    margin-bottom: 0;
+}
+
+#lt-load {
+    background: var(--surface-3);
+    color: var(--accent-brand);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+
+#lt-load:hover:not(:disabled) {
+    background: var(--surface-4);
+}
+
+#lt-load:disabled {
+    color: var(--text-muted);
+    cursor: default;
+    opacity: 0.6;
+}
+
+#lt-status,
+#lt-stats,
+#lt-readout {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+#lt-status {
+    margin-bottom: 4px;
+}
+
+#lt-chart {
+    min-width: 0;
+    min-height: 0;
+    margin: 4px 0;
+}
+
+#lt-stats {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+#lt-readout {
+    min-height: 1.4em;
+    margin-top: 2px;
+}
