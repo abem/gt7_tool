@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/uplot.min.css">
     <link rel="stylesheet" href="/review.css">
+    <link rel="stylesheet" href="/track-map.css">
     <link rel="stylesheet" href="/replay.css">
     <link rel="stylesheet" href="/race-metrics.css">
     <link rel="stylesheet" href="/card-groups.css">
@@ -75,6 +76,8 @@
                     <span class="review-sum-item" id="review-sum-b">B: 未選択</span>
                     <span class="review-sum-item" id="review-sum-delta">Δ: --</span>
                     <span class="review-sum-item" id="review-sum-course">コース: --</span>
+                    <!-- #552 T2: 理論上のベストラップ(theory-best.js が設定) -->
+                    <span class="review-sum-item" id="review-sum-theory">理論ベスト: A/B両方を選択</span>
                 </div>
                 <div class="review-chart-block">
                     <div class="review-chart-title">SPEED vs DISTANCE (A/B)</div>
@@ -87,6 +90,21 @@
                 <div class="review-chart-block">
                     <div class="review-chart-title">THROTTLE / BRAKE (A/B)</div>
                     <div id="review-inputs-chart" class="review-chart"></div>
+                </div>
+                <!-- #552 T1: トラックマップ(A=色分け / B=白の細線)。track-map.js が描画 -->
+                <div id="tm-review-card" class="card">
+                    <div id="tm-head">
+                        <div class="card-title review-chart-title">TRACK MAP (A=色分け / B=白の破線)</div>
+                        <div class="tm-modes" role="group" aria-label="色分けの指標">
+                            <button type="button" class="tm-mode-btn" data-tm-mode="speed" aria-pressed="true">SPEED</button>
+                            <button type="button" class="tm-mode-btn" data-tm-mode="brake" aria-pressed="false">BRAKE</button>
+                            <button type="button" class="tm-mode-btn" data-tm-mode="throttle" aria-pressed="false">THROTTLE</button>
+                        </div>
+                    </div>
+                    <div id="tm-canvas-wrap">
+                        <canvas id="tm-canvas" aria-label="走行ラインのトラックマップ"></canvas>
+                    </div>
+                    <div id="tm-readout" aria-live="polite"></div>
                 </div>
                 <!-- 実レース由来メトリクス P1 (#145): 下部追加行(既存ブロックの差し替えなし) -->
                 <div id="rm-review-card" class="card race-metrics-review-card">
@@ -693,6 +711,8 @@
     <script src="/review-view.js"></script>
     <script src="/replay-mode.js"></script>
     <script src="/race-metrics.js"></script>
+    <script src="/track-map.js"></script>
+    <script src="/theory-best.js"></script>
     <script src="/websocket.js"></script>
     <script src="/pit-wall.js"></script>
     <script src="/laptime-predict.js"></script>
