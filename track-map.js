@@ -10,8 +10,9 @@
  *    brake[], throttle[], dist[]} (reviewFetchDetail の res)。新規のテレメトリ取得・
  *    API・バックエンド変更は無い。
  *  - review-view.js からは reviewNotifyExtras() 経由で tmOnReviewCompare(a, b) が
- *    呼ばれる唯一のフック(race-metrics.js の rmOnReviewCompare と同型)。
- *  - 全体を IIFE で隔離し、公開するグローバルは tmOnReviewCompare のみ
+ *    呼ばれる(race-metrics.js の rmOnReviewCompare と同型)。segment-report.js の表の行から
+ *    tmHighlightRange(i0, i1) で区間を強調する。
+ *  - 全体を IIFE で隔離し、公開するグローバルは tmOnReviewCompare と tmHighlightRange のみ
  *    (プレーン <script>・単一グローバルスコープの制約、名前衝突の回避)。
  */
 (function() {
@@ -38,6 +39,7 @@
         b: null,
         mode: 'speed',
         hover: -1,                 // 主ライン上のホバー中サンプル index
+        range: null,               // 強調する区間 [i0, i1](segment-report.js から。null=なし)
         geom: null,                // 直近描画の幾何(ホバー判定用)
         lastW: 0
     };
@@ -228,6 +230,24 @@
         for (let i = 0; i < main.x.length; i++) {
             pts.push({ x: toX(main.x[i]), y: toY(main.z[i]) });
         }
+        // 区間の強調(表の行ホバー時): 主ラインの下に太い半透明の白を敷く
+        if (state.range && state.range[0] >= 0) {
+            const r0 = Math.max(0, state.range[0]);
+            const r1 = Math.min(pts.length - 1, state.range[1]);
+            const prevWidth = ctx.lineWidth;
+            ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+            ctx.lineWidth = LINE_A + 8;
+            ctx.beginPath();
+            for (let i = r0; i <= r1; i++) {
+                if (i === r0 || Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) > gapPx) {
+                    ctx.moveTo(pts[i].x, pts[i].y);
+                } else {
+                    ctx.lineTo(pts[i].x, pts[i].y);
+                }
+            }
+            ctx.stroke();
+            ctx.lineWidth = prevWidth;
+        }
         for (let i = 1; i < pts.length; i++) {
             if (Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) > gapPx) {
                 continue;
@@ -394,6 +414,15 @@
         state.hover = -1;
         render();
         updateReadout();
+    };
+
+    /**
+     * 区間 [i0, i1] を地図上で強調する(segment-report.js の表の行から)。
+     * i0 < 0 で解除。インデックスは res の距離グリッド index(A 優先の主ラインと同一)。
+     */
+    window.tmHighlightRange = function(i0, i1) {
+        state.range = (i0 >= 0 && i1 >= i0) ? [i0, i1] : null;
+        render();
     };
 
     if (document.readyState === 'loading') {

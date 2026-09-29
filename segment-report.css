@@ -1,0 +1,106 @@
+/**
+ * GT7 Telemetry Dashboard - REVIEW 区間レポート スタイル (#552 T5)
+ *
+ * 新規ファイル隔離。表示制御は id 直接ルール(#157 の教訓)。
+ * 表は幅が広いため、カード内の横スクロール領域(#sr-scroll)に収める:
+ * ページ全体の横スクロールを起こさない(#435 の教訓)。
+ */
+
+#sr-review-card {
+    display: none;
+}
+
+body.review-mode #sr-review-card {
+    display: block;
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-width: 0;
+}
+
+#sr-summary {
+    margin: 4px 0 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+#sr-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#sr-table {
+    width: 100%;
+    min-width: 640px;
+    border-collapse: collapse;
+    font-size: 12px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+#sr-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--border-hairline);
+    white-space: nowrap;
+}
+
+#sr-table td {
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    white-space: nowrap;
+}
+
+#sr-table th:first-child,
+#sr-table td:first-child {
+    text-align: left;
+    padding-left: 4px;
+}
+
+#sr-table tbody tr {
+    cursor: pointer;
+}
+
+#sr-table tbody tr:hover,
+#sr-table tbody tr:focus,
+#sr-table tbody tr.sr-pinned {
+    background: var(--surface-3);
+    outline: none;
+}
+
+#sr-table tbody tr.sr-pinned {
+    box-shadow: inset 2px 0 0 var(--accent-brand);
+}
+
+/* トラックマップ(#tm-review-card)と区間レポート(#sr-review-card)の組。
+   1400px以上は左右に並べ、表の行ホバーで地図の該当区間を同時に見られるようにする。
+   狭幅は縦積み(タップで強調を固定し、地図側へスクロールして確認できる)。 */
+#tm-sr-row {
+    display: none;
+}
+
+body.review-mode #tm-sr-row {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+@media (min-width: 1400px) {
+    body.review-mode #tm-sr-row {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    body.review-mode #tm-sr-row > #tm-review-card {
+        flex: 0 0 44%;
+    }
+
+    body.review-mode #tm-sr-row > #sr-review-card {
+        flex: 1 1 0;
+    }
+}
