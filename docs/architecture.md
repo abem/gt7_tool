@@ -126,6 +126,8 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `review-view.js` + `review.css` | REVIEW ビュー | 過去ラップの一覧（日付グループ・フィルタ）・A/B選択・距離基準チャート3種（速度重畳/タイムデルタ/スロットル・ブレーキ）・比較サマリ。読み出しAPI `/api/laps` を使用 |
 | `replay-mode.js` + `replay.css` | 全カード再生モード | 記録済みラップを既存の単一入口 `handleTelemetryMessage` へ供給し、走行中と同一の全カードで時間/距離スクラバー再生。2段ロード（10Hz先行→60Hz背景差替）・倍速・シーク対応 |
 | `race-metrics.js` + `race-metrics.css` | RACE METRICS | G-Gダイアグラム・コーナーフェーズ別デルタ・サスペンション変位ヒストグラム・タイヤデグ率+ピットウィンドウ・滑らかさスコア・回生エネルギー/トルク配分。REVIEW/全カード再生下部とライブ（STRATEGYミニカード）に表示 |
+| `track-map.js` + `track-map.css` | REVIEW トラックマップ（#552） | A/B の走行ラインを速度・ブレーキ・スロットルで色分け（Bは白の破線）して描く Canvas2D。`review-view.js` の `reviewNotifyExtras()` から `tmOnReviewCompare` が呼ばれる唯一のフック。IIFE で隔離 |
+| `theory-best.js` | REVIEW 理論ベスト（#552） | 距離を20等分した仮想区間ごとに A/B の速い方を合成した近似値と、実ベストとの差を要約帯へ表示。コース不一致・走行距離差3%超は算出しない。`tbOnReviewCompare` が唯一のフック |
 | `websocket.js` | WebSocket通信 | 接続管理、テレメトリデータ処理 |
 | `test-mode.js` | テストモード | デモデータ生成、PS5なしの動作確認 |
 | `app.js` | エントリーポイント | テストモード・DRIVE/ANALYSIS ビューの初期化（メイン初期化は websocket.js の DOMContentLoaded。`card-drag.js` / `menu.js` は各自 DOMContentLoaded で自己初期化） |

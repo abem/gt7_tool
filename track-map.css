@@ -1,0 +1,78 @@
+/**
+ * GT7 Telemetry Dashboard - REVIEW トラックマップ スタイル (#552 T1)
+ *
+ * 新規ファイル隔離(styles.css非追記)。カラーは styles.css のトークン参照。
+ * 表示制御は祖先依存でなく id 直接ルール(#157 の教訓、race-metrics.css の
+ * #rm-review-card と同型): REVIEW 以外のモードでは確実に隠す。
+ */
+
+#tm-review-card {
+    display: none;
+}
+
+body.review-mode #tm-review-card {
+    display: block;
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    padding: 8px 10px;
+    /* #165/#435 の教訓: 子の固定幅が親グリッドの最小幅へ伝播しないよう解除 */
+    min-width: 0;
+}
+
+#tm-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+#tm-head .review-chart-title {
+    margin-bottom: 0;
+}
+
+.tm-modes {
+    display: flex;
+    gap: 4px;
+}
+
+.tm-mode-btn {
+    background: var(--surface-3);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+}
+
+.tm-mode-btn:hover {
+    background: var(--surface-4);
+}
+
+.tm-mode-btn[aria-pressed="true"] {
+    color: var(--accent-brand);
+    border-color: var(--accent-brand);
+}
+
+#tm-canvas-wrap {
+    min-width: 0;
+}
+
+#tm-canvas {
+    display: block;
+    /* 縦スクロールは通し、横方向のポインタ移動でホバー読み取りを行う */
+    touch-action: pan-y;
+}
+
+#tm-readout {
+    margin-top: 6px;
+    min-height: 1.4em;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}

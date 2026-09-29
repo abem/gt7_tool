@@ -828,6 +828,18 @@ function reviewRenderCharts(a, b) {
 }
 
 /**
+ * A/B の比較確定データを、REVIEW 追加ビュー(#552: トラックマップ・理論ベスト)へ渡す。
+ * 各モジュールは未読込でも動作するよう typeof で守る(race-metrics.js のフックと同作法)。
+ * 選択解除時は (null, null) で呼び、各ビューを初期表示へ戻す。
+ * @param {Object|null} a
+ * @param {Object|null} b
+ */
+function reviewNotifyExtras(a, b) {
+    if (typeof tmOnReviewCompare === 'function') tmOnReviewCompare(a, b);
+    if (typeof tbOnReviewCompare === 'function') tbOnReviewCompare(a, b);
+}
+
+/**
  * 選択(A/B)の変化に応じて詳細取得→サマリ・チャートを更新する。
  * 取得は非同期のため、更新途中に選択が変わった場合は古い結果を破棄する
  * (compareToken による世代ガード)。
@@ -862,6 +874,7 @@ function reviewUpdateComparison() {
             els.sumCourse.textContent = 'コース: --';
         }
         reviewRenderCharts(null, null);
+        reviewNotifyExtras(null, null);
         return;
     }
 
@@ -898,6 +911,7 @@ function reviewUpdateComparison() {
         reviewRenderCharts(a, b);
         // 実レース由来メトリクス P1 (#145): 比較確定データを race-metrics.js へ(唯一のフック)
         if (typeof rmOnReviewCompare === 'function') rmOnReviewCompare(a, b);
+        reviewNotifyExtras(a, b);
     }).catch(function(err) {
         if (token !== reviewState._compareToken) {
             return;
