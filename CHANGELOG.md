@@ -7,6 +7,16 @@
 
 ---
 
+## 2026-09-30 — 縦画面ANALYSISでの通知トーストとヒーロー表示の重なり是正（#551）
+
+### fix: 通知トースト(TOP SPEED/FUEL/PB等)を、ANALYSIS/REVIEWの縦画面では画面下部へ表示
+- **背景**: #435の実機確認中に発見。ANALYSISを縦画面（390px/360px）で表示すると、通知トースト（`#race-engineer-feed`）が、ヒーロー領域中央のギア・RPM表示に重なり、走行中に最重要の表示が繰り返し隠れていた。
+- **原因**: `.engineer-feed`は`position: fixed`で右上に固定され、`positionEngineerFeed()`（telemetry-analysis.js）が`top`をヘッダー実高＋8pxに設定する。PC幅ではヘッダー右の空き領域に出るが、縦画面ではヘッダーが折り返して高くなり、ヒーロー領域の上に載る（実測: トースト矩形 x178〜378・y149〜235 に対しギア x253〜309・y202〜238）。
+- **修正（`styles.css`のみ。JS・HTML・バックエンドは無変更）**: `@media (max-width: 999px)`内で、`body:not(.drive-mode) .engineer-feed`を画面下部の左右いっぱい（`bottom`/`left`/`right`指定、`top: auto !important`）へ移す。JSがinline styleで`top`を設定するため`!important`で上書きする。DRIVE modeは、ヒーロー右上の空き領域に出て重ならず、応答ボタン（OK/COPY/RE-PLAN）と対になる重要な通知のため対象外。
+- **検証（ヘッドレスChromium、通知3件同時表示）**: 修正前は390px・360px・768pxのANALYSISでギアと重なり、修正後は速度・ギア・RPMのいずれとも重ならない。DRIVE（390/360/1920px）、REVIEW、1000/1300/1920pxのANALYSISは通知位置が修正前と完全一致。全ケースで横スクロールなし・`pageerror`0件。
+
+---
+
 ## 2026-09-30 — ANALYSIS/REVIEW モードの縦画面レイアウト崩れ是正（#435）
 
 ### fix: 縦画面（390px/360px）でのANALYSIS/REVIEWの横スクロール・画面外はみ出しを解消

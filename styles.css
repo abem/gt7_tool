@@ -1563,6 +1563,19 @@ body {
         row-gap: var(--sp-2);
     }
 
+    /* 通知トースト(#race-engineer-feed)を画面下部へ(#551)。既定の右上固定
+       (top=ヘッダー実高+8px、telemetry-analysis.jsがinlineで設定)は、縦画面では
+       ヒーロー領域のギア/RPM表示に重なるため、ANALYSIS/REVIEWでは下部の左右いっぱいへ移す。
+       inline styleのtopを上書きするため!importantが必要。DRIVE modeは対象外
+       (右上の空き領域に出て重ならず、応答ボタンと対になる通知のため現状維持)。 */
+    body:not(.drive-mode) .engineer-feed {
+        top: auto !important;
+        bottom: var(--sp-4);
+        left: var(--sp-4);
+        right: var(--sp-4);
+        width: auto;
+    }
+
     .center-split {
         grid-template-columns: 1fr;
     }
