@@ -412,6 +412,7 @@
         state.a = a || null;
         state.b = b || null;
         state.hover = -1;
+        state.range = null;   // 区間の強調も解除(segment-report.js の呼び出し順に依存しない)
         render();
         updateReadout();
     };

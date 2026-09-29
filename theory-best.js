@@ -20,8 +20,6 @@
     'use strict';
 
     const SEGMENTS = 20;
-    // A/B の走行距離差がこの割合を超えたら算出しない(同一コースの周回は通常 1% 未満)
-    const DIST_TOLERANCE = 0.03;
 
     function fmtLap(ms) {
         if (typeof formatLapTime === 'function') {
@@ -58,9 +56,11 @@
         return { gainS: Math.max(0, best - theory), bestS: best };
     }
 
-    function courseId(entry) {
-        const c = entry && entry.meta && entry.meta.course;
-        return c ? (c.id || c.name_ja || c.name_en || null) : null;
+    /** review-view.js の共通判定(未読込なら、算出しない側に倒す)。 */
+    function comparable(a, b) {
+        return typeof reviewComparable === 'function'
+            ? reviewComparable(a, b)
+            : { ok: false, reason: 'no-data', da: 0, db: 0 };
     }
 
     function setText(text, title) {
@@ -77,23 +77,26 @@
             setText('理論ベスト: A/B両方を選択', '');
             return;
         }
-        const ca = courseId(a);
-        const cb = courseId(b);
-        if (ca && cb && ca !== cb) {
-            setText('理論ベスト: コースが異なるため算出しません', '');
-            return;
-        }
-        // 走行距離が大きく違う組(途中で切れた記録・別ルート等)は、距離で対応づける
-        // 合成が成り立たないため算出しない(区間の意味がずれ、非現実的な値になる)。
-        const da = a.res && a.res.totalDist;
-        const db = b.res && b.res.totalDist;
-        if (da && db && Math.abs(da - db) / Math.max(da, db) > DIST_TOLERANCE) {
-            setText(
-                '理論ベスト: 走行距離が異なるため算出しません (A ' + Math.round(da) +
-                ' m / B ' + Math.round(db) + ' m)',
-                '距離の差が ' + Math.round(DIST_TOLERANCE * 100) + '% を超える組は、' +
-                '仮想区間が対応しないため合成できません。'
-            );
+        // 同一コース・距離が近い組だけ算出する(判定は review-view.js の共通関数。
+        // コース情報が片方でも無い場合は「同一と確認できない」として算出しない)。
+        const cmp = comparable(a, b);
+        if (!cmp.ok) {
+            if (cmp.reason === 'course-diff') {
+                setText('理論ベスト: コースが異なるため算出しません', '');
+            } else if (cmp.reason === 'course-unknown') {
+                setText('理論ベスト: コース情報が無いため算出しません（旧形式・インポート等）',
+                    '同一コースと確認できない組は、別コースを誤って合成しないよう算出しません。');
+            } else if (cmp.reason === 'dist-diff') {
+                // 途中で切れた記録・別ルート等は、距離で対応づける合成が成り立たず、
+                // 区間の意味がずれて非現実的な値になるため算出しない。
+                setText(
+                    '理論ベスト: 走行距離が異なるため算出しません (A ' + Math.round(cmp.da) +
+                    ' m / B ' + Math.round(cmp.db) + ' m)',
+                    '距離の差が 3% を超える組は、仮想区間が対応しないため合成できません。'
+                );
+            } else {
+                setText('理論ベスト: --', '');
+            }
             return;
         }
         const r = compute(a, b);
