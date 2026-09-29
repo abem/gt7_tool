@@ -35,6 +35,15 @@ body.review-mode #rm-review-card {
     gap: 12px;
 }
 
+/* #435: 狭幅(REVIEWが縦積みになる900px以下)では2列固定(260px+1fr)だと2列目に
+   カードの残り幅(縦画面で約136px)しか残らず、固定240pxのcanvasが画面外へはみ出す。
+   1列に積み、暗黙のmin-width:autoも解除する(minmax(0, 1fr))。 */
+@media (max-width: 900px) {
+    #rm-review-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 #rm-gg-review {
     width: 240px;
     height: 240px;
