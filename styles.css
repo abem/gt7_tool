@@ -1534,7 +1534,10 @@ body {
 /* Phone / small: single column, center content first, hero wraps. */
 @media (max-width: 999px) {
     .dashboard {
-        grid-template-columns: 1fr;
+        /* minmax(0, 1fr): 単なる1frは暗黙のmin-width:autoにより内包コンテンツの
+           最小幅(実測432px)までしか縮まず、縦画面スマホ幅で横スクロールが発生していた
+           (#435、DRIVE mode の #434 P3 是正と同じ原因)。 */
+        grid-template-columns: minmax(0, 1fr);
         grid-template-areas:
             "header"
             "hero"
@@ -1544,12 +1547,20 @@ body {
     }
 
     .racing-top-bar {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         row-gap: var(--sp-4);
     }
 
     .racing-pedals-section {
         grid-column: 1 / -1;
+    }
+
+    /* ヘッダー行(タイトル+TURBO/接続状態バッジ)がnowrapで折り返さず、縦画面幅で
+       #connection-status が画面外に出るため折返しを許可する(#435。DRIVE modeの
+       body.drive-mode .header-row と同じ対策をANALYSIS/REVIEWにも適用)。 */
+    .header-row {
+        flex-wrap: wrap;
+        row-gap: var(--sp-2);
     }
 
     .center-split {
