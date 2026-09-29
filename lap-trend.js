@@ -6,6 +6,10 @@
  * 走行距離が近い(±3%)ラップだけを、記録の古い順に並べる。途中で切れた記録や別ルートの
  * 走行は距離で除外する(理論ベスト・区間レポートと同じ判定)。
  *
+ * 外れ値(#553): 距離は揃っていてもタイムが極端に遅い周回(コースアウト・スピン・ピットイン等)は、
+ * 中央値の OUTLIER_RATIO 倍を超えるものを外れ値として、平均・ばらつきから除外する。グラフの
+ * 縦軸は外れ値を除いた範囲に合わせ、外れ値はグラフ上端に○で表示する(実際のタイムはホバーで確認)。
+ *
  * 設計:
  *  - 新規 API・バックエンド変更なし。既存の /api/laps/{file}?every=60(約 20KB・軽量)を
  *    最大 40 本、3 並列で取得する。ラップタイム(meta.laptime_ms_approx)は every に依存しない。
@@ -22,6 +26,9 @@
     const DIST_TOLERANCE = 0.03;   // 距離差の許容(theory-best.js と同じ)
     const DISCONTINUITY_M = 120;   // これを超える点間距離は位置の飛びとして距離加算しない
     const CHART_H = 220;
+    const OUTLIER_RATIO = 1.3;     // 中央値のこの倍率を超える周回を外れ値とする
+    const OUTLIER_MIN_LAPS = 4;    // これ未満の本数では中央値が不安定なので判定しない
+    const Y_PAD_RATIO = 0.08;      // 縦軸の上下余白(外れ値を除いた範囲に対する割合)
 
     const state = {
         a: null,
@@ -29,6 +36,7 @@
         key: null,        // 直近に描画したグループ(車種|コース)
         token: 0,         // 読み込みの世代ガード
         loading: false,
+        yRange: null,     // 縦軸の範囲 [min, max](外れ値を除いた範囲。null=自動)
         chart: null,
         points: []        // 描画中の {file, t(ms), lapMs}
     };
@@ -87,6 +95,7 @@
             state.chart = null;
         }
         state.points = [];
+        state.yRange = null;
         setStats('');
         const ro = byId('lt-readout');
         if (ro) {
@@ -164,6 +173,28 @@
         });
     }
 
+    /**
+     * 中央値の OUTLIER_RATIO 倍を超えるラップに outlier=true を付ける(本数が少ない場合は付けない)。
+     * @returns {number} 外れ値の本数
+     */
+    function markOutliers(rows) {
+        rows.forEach(function(r) { r.outlier = false; });
+        if (rows.length < OUTLIER_MIN_LAPS) {
+            return 0;
+        }
+        const sorted = rows.map(function(r) { return r.lapMs; }).sort(function(a, b) { return a - b; });
+        const mid = sorted.length >> 1;
+        const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        let n = 0;
+        rows.forEach(function(r) {
+            if (r.lapMs > median * OUTLIER_RATIO) {
+                r.outlier = true;
+                n++;
+            }
+        });
+        return n;
+    }
+
     function computeStats(ms) {
         const n = ms.length;
         const mean = ms.reduce(function(s, v) { return s + v; }, 0) / n;
@@ -185,7 +216,10 @@
             width: Math.max(200, Math.floor(host.clientWidth)),
             height: CHART_H,
             pxAlign: 0,
-            scales: { x: { time: false }, y: { auto: true } },
+            scales: {
+                x: { time: false },
+                y: { auto: true, range: function(u, dmin, dmax) { return state.yRange ? state.yRange : [dmin, dmax]; } }
+            },
             axes: [
                 { stroke: axisStroke, grid: grid, ticks: { show: false }, size: 26,
                   values: function(u, vals) { return vals.map(function(v) { return Number.isInteger(v) ? '#' + v : ''; }); } },
@@ -196,9 +230,11 @@
             cursor: { drag: { x: false, y: false } },
             series: [
                 {},
-                { stroke: 'rgba(194,201,212,0.7)', width: 1.25, points: { show: true, size: 6, fill: '#c2c9d4' } },
+                { stroke: 'rgba(194,201,212,0.7)', width: 1.25, spanGaps: true, points: { show: true, size: 6, fill: '#c2c9d4' } },
                 { stroke: C.a, paths: function() { return null; }, points: { show: true, size: 11, fill: C.a, stroke: '#ffffff' } },
-                { stroke: C.b, paths: function() { return null; }, points: { show: true, size: 11, fill: C.b, stroke: '#ffffff' } }
+                { stroke: C.b, paths: function() { return null; }, points: { show: true, size: 11, fill: C.b, stroke: '#ffffff' } },
+                // 外れ値: 縦軸の上端に○で表示(実際のタイムはホバーで確認)
+                { stroke: '#E8A13D', paths: function() { return null; }, points: { show: true, size: 9, fill: 'transparent', stroke: '#E8A13D', width: 2 } }
             ],
             hooks: {
                 setCursor: [function(u) {
@@ -209,13 +245,14 @@
                     const i = u.cursor.idx;
                     const p = i != null ? state.points[i] : null;
                     ro.textContent = p
-                        ? '#' + (i + 1) + ' ／ ' + new Date(p.recordedAt).toLocaleString() + ' ／ ' + fmt(p.lapMs)
+                        ? '#' + (i + 1) + ' ／ ' + new Date(p.recordedAt).toLocaleString() + ' ／ ' + fmt(p.lapMs) +
+                          (p.outlier ? ' ／ 外れ値(統計から除外)' : '')
                         : '';
                 }]
             }
         };
         try {
-            state.chart = new uPlot(opts, [[0], [null], [null], [null]], host);
+            state.chart = new uPlot(opts, [[0], [null], [null], [null], [null]], host);
         } catch (e) {
             console.error('[LAP_TREND]', e);
             state.chart = null;
@@ -246,11 +283,28 @@
         const aFile = state.a ? sel.selA : null;
         const bFile = state.b ? sel.selB : null;
         const xs = points.map(function(_, i) { return i + 1; });
-        const ys = points.map(function(p) { return p.lapMs / 1000; });
-        const markFor = function(file) {
-            return points.map(function(p, i) { return file && p.file === file ? ys[i] : null; });
+        const inl = points.filter(function(p) { return !p.outlier; }).map(function(p) { return p.lapMs / 1000; });
+        let yMax = null;
+        if (inl.length) {
+            const lo = Math.min.apply(null, inl);
+            const hi = Math.max.apply(null, inl);
+            const pad = Math.max((hi - lo) * Y_PAD_RATIO, 0.5);
+            state.yRange = [lo - pad, hi + pad];
+            yMax = hi + pad;
+        } else {
+            state.yRange = null;
+        }
+        // 外れ値は縦軸の上端へ寄せて描く(範囲外で消えないように)
+        const yOf = function(p) {
+            const v = p.lapMs / 1000;
+            return (yMax !== null && v > yMax) ? yMax : v;
         };
-        chart.setData([xs, ys, markFor(aFile), markFor(bFile)]);
+        const line = points.map(function(p) { return p.outlier ? null : p.lapMs / 1000; });
+        const markFor = function(file) {
+            return points.map(function(p) { return file && p.file === file ? yOf(p) : null; });
+        };
+        const outMarks = points.map(function(p) { return p.outlier ? yOf(p) : null; });
+        chart.setData([xs, line, markFor(aFile), markFor(bFile), outMarks]);
     }
 
     function load() {
@@ -300,13 +354,18 @@
                     ' 本のため、推移を描けません（取得 ' + rows.length + ' 本）');
                 return;
             }
+            const outliers = markOutliers(ok);
             draw(ok);
             state.key = key;
-            const st = computeStats(ok.map(function(r) { return r.lapMs; }));
+            const inliers = ok.filter(function(r) { return !r.outlier; });
+            const st = computeStats(inliers.map(function(r) { return r.lapMs; }));
             setStats('n=' + st.n + ' ／ ベスト ' + fmt(st.best) + ' ／ 平均 ' + fmt(st.mean) +
-                ' ／ ばらつき σ=' + (st.sigma / 1000).toFixed(2) + 's');
+                ' ／ ばらつき σ=' + (st.sigma / 1000).toFixed(2) + 's' +
+                (outliers ? ' ／ 外れ値 ' + outliers + ' 本を除外' : ''));
             setStatus('同一コース・同一車種の直近 ' + rows.length + ' 本のうち ' + ok.length +
-                ' 本を表示（距離が揃わない ' + excluded + ' 本を除外）。青=A、緑=B。');
+                ' 本を表示（距離が揃わない ' + excluded + ' 本を除外）。青=A、緑=B。' +
+                (outliers ? ' 中央値の' + OUTLIER_RATIO + '倍を超える外れ値 ' + outliers +
+                    ' 本（○、グラフ上端）は、平均・ばらつきから除外しています。' : ''));
         });
     }
 
