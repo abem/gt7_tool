@@ -30,6 +30,18 @@ body.review-mode #review-root {
     min-height: calc(100vh - 120px);
 }
 
+/* #552: 1400px以上では body{overflow:hidden;height:100vh} と .dashboard{overflow:hidden}
+   によりライブ表示は画面固定だが、REVIEW は内容(チャート3本・トラックマップ・
+   RACE METRICS)が画面高を超えると下部へ到達できず、RACE METRICS が以前から半分切れて
+   いた(トラックマップ追加でさらに押し出される)。REVIEW 中だけ縦スクロールを許可する。
+   1399px以下は body 側がスクロールする(styles.css)ため対象外。 */
+@media (min-width: 1400px) {
+    body.review-mode .dashboard {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+}
+
 /* ---- 左ペイン: ラップ一覧 ------------------------------------------- */
 
 #review-sidebar {
