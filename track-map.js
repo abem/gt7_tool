@@ -12,7 +12,7 @@
  *  - review-view.js からは reviewNotifyExtras() 経由で tmOnReviewCompare(a, b) が
  *    呼ばれる(race-metrics.js の rmOnReviewCompare と同型)。segment-report.js の表の行から
  *    tmHighlightRange(i0, i1) で区間を強調する。
- *  - 全体を IIFE で隔離し、公開するグローバルは tmOnReviewCompare と tmHighlightRange のみ
+ *  - 全体を IIFE で隔離し、公開するグローバルは tmOnReviewCompare・tmHighlightRange・tmSetStability のみ
  *    (プレーン <script>・単一グローバルスコープの制約、名前衝突の回避)。
  */
 (function() {
@@ -21,7 +21,9 @@
     const MODES = {
         speed:    { label: 'SPEED',    unit: 'km/h', key: 'speed' },
         brake:    { label: 'BRAKE',    unit: '%',    key: 'brake' },
-        throttle: { label: 'THROTTLE', unit: '%',    key: 'throttle' }
+        throttle: { label: 'THROTTLE', unit: '%',    key: 'throttle' },
+        // #562: コーナーごとのばらつき(corner-report.js が tmSetStability で与える)。0=安定〜1=ばらつき大
+        stability: { label: 'STABILITY', unit: '', key: null }
     };
 
     const GAP_FACTOR = 4;          // 隣接点の距離が grid の何倍を超えたら線を切るか(データ欠落・ワープ対策)
@@ -40,6 +42,7 @@
         mode: 'speed',
         hover: -1,                 // 主ライン上のホバー中サンプル index
         range: null,               // 強調する区間 [i0, i1](segment-report.js から。null=なし)
+        stability: null,           // #562: 距離グリッド index ごとの不安定度(0〜1、コーナー外は null)。null=未算出
         geom: null,                // 直近描画の幾何(ホバー判定用)
         lastW: 0
     };
@@ -73,7 +76,16 @@
         return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
     }
 
+    /** ばらつき: 緑(安定)→黄→赤(ばらつき大)。 */
+    function stabilityColor(t) {
+        const clamped = Math.max(0, Math.min(1, t));
+        return 'hsl(' + Math.round(120 - 120 * clamped) + ',80%,50%)';
+    }
+
     function colorFor(mode, t) {
+        if (mode === 'stability') {
+            return stabilityColor(t);
+        }
         if (mode === 'brake') {
             return blendColor(t, [239, 68, 68]);
         }
@@ -85,6 +97,9 @@
 
     /** 凡例に使う min/max。ブレーキ/スロットルは 0〜100% 固定、速度は主ラインの実測範囲。 */
     function metricRange(mode, r) {
+        if (mode === 'stability') {
+            return { min: 0, max: 1 };
+        }
         if (mode !== 'speed') {
             return { min: 0, max: 100 };
         }
@@ -138,8 +153,11 @@
     function drawLegend(ctx, w, h, mode, range) {
         // 「最小値 ▬▬(色バー)▬▬ 最大値」の並び。文字幅を実測して重ならないよう配置する。
         const unit = MODES[mode].unit;
-        const minText = Math.round(range.min) + ' ' + unit;
-        const maxText = Math.round(range.max) + ' ' + unit;
+        const stab = mode === 'stability';
+        const minText = stab ? '安定' : Math.round(range.min) + ' ' + unit;
+        const maxText = stab
+            ? (state.stability ? 'ばらつき大' : 'ばらつき大(未算出: CORNER REPORT で読み込む)')
+            : Math.round(range.max) + ' ' + unit;
         const y0 = h - LEGEND_H + 10;
         ctx.font = '11px sans-serif';
         const minW = ctx.measureText(minText).width;
@@ -252,8 +270,15 @@
             if (Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) > gapPx) {
                 continue;
             }
-            const v = (main[key][i] + main[key][i - 1]) / 2;
-            ctx.strokeStyle = colorFor(mode, (v - range.min) / (range.max - range.min));
+            if (mode === 'stability') {
+                // コーナー外・未算出の区間は、中立のグレー
+                const s0 = state.stability ? state.stability[i - 1] : null;
+                const s1 = state.stability ? state.stability[i] : null;
+                ctx.strokeStyle = (s0 == null || s1 == null) ? 'rgb(75,85,99)' : stabilityColor((s0 + s1) / 2);
+            } else {
+                const v = (main[key][i] + main[key][i - 1]) / 2;
+                ctx.strokeStyle = colorFor(mode, (v - range.min) / (range.max - range.min));
+            }
             ctx.beginPath();
             ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
             ctx.lineTo(pts[i].x, pts[i].y);
@@ -424,6 +449,20 @@
     window.tmHighlightRange = function(i0, i1) {
         state.range = (i0 >= 0 && i1 >= i0) ? [i0, i1] : null;
         render();
+    };
+
+    /**
+     * コーナーごとのばらつき(#562)を、走行ラインの色分けに使う。
+     * @param {Array<number|null>|null} levels - 距離グリッド index ごとの 0〜1(コーナー外は null)。null で解除
+     * @param {boolean} [activate] - true なら STABILITY の色分けへ切り替える
+     */
+    window.tmSetStability = function(levels, activate) {
+        state.stability = levels || null;
+        if (activate && levels) {
+            setMode('stability');
+        } else {
+            render();
+        }
     };
 
     if (document.readyState === 'loading') {

@@ -108,6 +108,7 @@
                                 <button type="button" class="tm-mode-btn" data-tm-mode="speed" aria-pressed="true">SPEED</button>
                                 <button type="button" class="tm-mode-btn" data-tm-mode="brake" aria-pressed="false">BRAKE</button>
                                 <button type="button" class="tm-mode-btn" data-tm-mode="throttle" aria-pressed="false">THROTTLE</button>
+                                <button type="button" class="tm-mode-btn" data-tm-mode="stability" aria-pressed="false" title="コーナーごとのばらつき(CORNER REPORT の「ばらつきを読み込む」で算出)">STABILITY</button>
                             </div>
                         </div>
                         <div id="tm-canvas-wrap">
@@ -131,6 +132,18 @@
                     <ul id="cr-advice"></ul>
                     <div id="cr-scroll">
                         <table id="cr-table" aria-label="コーナーごとの操作の比較表"></table>
+                    </div>
+                    <!-- #562: 同じコース・車種の直近の周回による、コーナーごとのばらつき -->
+                    <div id="cr-cons">
+                        <div id="cr-cons-head">
+                            <div class="card-title review-chart-title">CONSISTENCY (同コース・同車種の直近の周回のばらつき)</div>
+                            <button type="button" id="cr-cons-load" disabled>ばらつきを読み込む</button>
+                        </div>
+                        <div id="cr-cons-status" aria-live="polite"></div>
+                        <ul id="cr-cons-advice"></ul>
+                        <div id="cr-cons-scroll">
+                            <table id="cr-cons-table" aria-label="コーナーごとのばらつきの表"></table>
+                        </div>
                     </div>
                 </div>
                 <!-- #555 T6/T7: 散布図(任意の2チャンネル)とチャンネル分布(ヒストグラム)。channel-plots.js が描画 -->

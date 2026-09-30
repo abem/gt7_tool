@@ -94,3 +94,112 @@ body.review-mode #cr-review-card {
 #cr-table tbody tr.cr-pinned {
     box-shadow: inset 2px 0 0 var(--accent-brand);
 }
+
+/* ---- CONSISTENCY(#562) ---- */
+#cr-cons {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-hairline);
+}
+
+#cr-cons-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+#cr-cons-head .review-chart-title {
+    margin-bottom: 0;
+}
+
+#cr-cons-load {
+    background: var(--surface-3);
+    color: var(--accent-brand);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 10px;
+    cursor: pointer;
+}
+
+#cr-cons-load:hover:not(:disabled) {
+    background: var(--surface-4);
+}
+
+#cr-cons-load:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+#cr-cons-status {
+    margin: 4px 0 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+#cr-cons-advice {
+    margin: 0 0 8px;
+    padding-left: 18px;
+    font-size: 13px;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+#cr-cons-advice li.cr-loss::marker {
+    color: var(--critical);
+}
+
+#cr-cons-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#cr-cons-table {
+    width: 100%;
+    min-width: 560px;
+    border-collapse: collapse;
+    font-size: 12px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+#cr-cons-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--border-hairline);
+    white-space: nowrap;
+}
+
+#cr-cons-table td {
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    white-space: nowrap;
+}
+
+#cr-cons-table th:first-child,
+#cr-cons-table td:first-child {
+    text-align: left;
+    padding-left: 4px;
+}
+
+#cr-cons-table tbody tr {
+    cursor: pointer;
+}
+
+#cr-cons-table tbody tr:hover,
+#cr-cons-table tbody tr:focus,
+#cr-cons-table tbody tr.cr-pinned {
+    background: var(--surface-3);
+    outline: none;
+}
+
+#cr-cons-table tbody tr.cr-pinned {
+    box-shadow: inset 2px 0 0 var(--accent-brand);
+}
