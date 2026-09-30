@@ -81,8 +81,10 @@
                     <!-- #552 T2: 理論上のベストラップ(theory-best.js が設定) -->
                     <span class="review-sum-item" id="review-sum-theory">理論ベスト: A/B両方を選択</span>
                 </div>
+                <!-- #554 重ね書き凡例(review-view.js が設定。行の＋で追加した最大5本) -->
+                <div id="review-overlay-legend" role="list" aria-label="重ね書きしているラップ" hidden></div>
                 <div class="review-chart-block">
-                    <div class="review-chart-title">SPEED vs DISTANCE (A/B)</div>
+                    <div class="review-chart-title">SPEED vs DISTANCE (A/B ＋重ね書き)</div>
                     <div id="review-speed-chart" class="review-chart"></div>
                 </div>
                 <div class="review-chart-block">
@@ -90,7 +92,7 @@
                     <div id="review-delta-chart" class="review-chart"></div>
                 </div>
                 <div class="review-chart-block">
-                    <div class="review-chart-title">THROTTLE / BRAKE (A/B)</div>
+                    <div class="review-chart-title">THROTTLE / BRAKE (A/B ＋重ね書き)</div>
                     <div id="review-inputs-chart" class="review-chart"></div>
                 </div>
                 <!-- #552: トラックマップと区間レポートを1組にする。1400px以上は左右に並べ、

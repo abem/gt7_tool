@@ -144,7 +144,8 @@ body.review-mode #review-root {
 .review-lap-item {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    flex-wrap: wrap;        /* 狭いサイドバーで CSV/＋/▶ がはみ出さないよう折り返す(#554) */
+    gap: 4px 8px;
     padding: 5px 6px;
     border-radius: 6px;
     cursor: pointer;
@@ -213,6 +214,35 @@ body.review-mode #review-root {
     white-space: nowrap;
 }
 
+/* 重ね書き(#554): 行の＋/番号ボタンと、選択中の行の色帯 */
+.review-lap-ov {
+    background: var(--surface-3);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 22px;
+    padding: 0 6px;
+    cursor: pointer;
+    line-height: 1.5;
+}
+
+.review-lap-ov:hover {
+    background: var(--surface-4);
+}
+
+.review-lap-ov[aria-pressed="true"] {
+    background: var(--ov-color, var(--surface-4));
+    color: #101418;
+    border-color: var(--ov-color, var(--border-strong));
+}
+
+.review-lap-item.sel-ov {
+    border-left: 3px solid var(--ov-color);
+    color: var(--text-primary);
+}
+
 /* ---- 右ペイン: サマリ + チャート ------------------------------------- */
 
 #review-main {
@@ -236,6 +266,54 @@ body.review-mode #review-root {
 
 .review-sum-item {
     font-variant-numeric: tabular-nums;
+}
+
+/* 重ね書き凡例(#554) */
+#review-overlay-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+#review-overlay-legend[hidden] {
+    display: none;
+}
+
+.review-ov-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 4px 1px 8px;
+    border: 1px solid var(--border-strong);
+    border-left: 4px solid var(--ov-color);
+    border-radius: 4px;
+    background: var(--surface-1);
+    font-variant-numeric: tabular-nums;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.review-ov-chip.excluded {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    text-decoration-color: transparent;
+    border-style: dashed;
+}
+
+.review-ov-remove {
+    background: none;
+    border: 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 2px 4px;
+}
+
+.review-ov-remove:hover {
+    color: var(--text-primary);
 }
 
 .review-chart-block {
