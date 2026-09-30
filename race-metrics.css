@@ -224,3 +224,55 @@ body.review-mode #rm-strategy-card {
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
+
+/* ---- T9(#555): FUEL カードの目標燃費と差分 ---- */
+.fuel-target-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.fuel-target-input {
+    width: 72px;
+    background: var(--surface-3);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-family: var(--font-num);
+    font-size: 12px;
+    padding: 2px 6px;
+}
+
+.fuel-target-diff {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 700;
+    margin-left: auto;
+    color: var(--text-muted);
+}
+
+.fuel-target-diff.over  { color: var(--critical); }   /* 目標より使っている */
+.fuel-target-diff.under { color: var(--good); }       /* 目標より節約できている */
+.fuel-target-diff.on    { color: var(--text-primary); }
+
+/* ---- T8(#555): 警告の1枠(確認で消去)。フィードは pointer-events:none のため、この枠だけ操作可能にする ---- */
+.engineer-alert.rm-alert-slot {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.engineer-alert.rm-alert-slot:focus-visible {
+    outline: 2px solid var(--accent-brand);
+    outline-offset: 2px;
+}
+
+.rm-alert-more {
+    font-family: var(--font-num);
+    font-size: 10px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--surface-4);
+    color: var(--text-secondary);
+}
