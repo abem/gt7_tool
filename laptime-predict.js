@@ -26,6 +26,8 @@ const LP_SAMPLE_INTERVAL_MS = 250;   // ラップ内累積平均のサンプリ�
 const LP_PREDICT_TICK_MS = 1000;     // API呼び出し周期(race-metrics.js M-4と同じ1Hz)
 const LP_DISCONTINUITY_M = 120;      // review-view.js/telemetry-analysis.js等と同じ瞬間移動閾値
 const LP_REFERENCE_CANDIDATE_LIMIT = 30; // 参照距離探索時の候補ラップ上限(car_id絞り込み後)
+const LP_REFERENCE_SAMPLE_COUNT = 6;    // 参照距離に使う同コース周回の本数(距離の塊の中央値を取る。#559)
+const LP_REFERENCE_DIST_TOLERANCE = 0.03; // 同じ周回とみなす距離の許容差(review-view.jsのREVIEW_DIST_TOLERANCEと同じ考え方)
 const LP_NO_MODEL_RETRY_MS = 5 * 60 * 1000; // モデル無し(404)の組み合わせを再問い合わせするまでの間隔(#558)
 
 const lpState = {
@@ -157,15 +159,48 @@ function lpComputeDistanceFromSamples(samples) {
 }
 
 /**
- * 同一コース×車種の参照ラップ総距離を取得する(セッション内キャッシュ、1回のみ検索)。
+ * 同一コース×車種の参照ラップ総距離を、複数周回の距離から頑健に決める(#559)。
  *
- * /api/laps一覧にコースIDでの絞り込みが無いため、car_idで絞った候補
- * (直近最大LP_REFERENCE_CANDIDATE_LIMIT件)を順に、position_x/position_zのみを
- * fields射影で軽量取得し、meta.course.idが一致する最初の1件を採用する。
- * 「ベストラップ」ではなく「最初に見つかった同コースのラップ」を採用する簡略化を
- * 行っている(コース周長はペースに依存せずほぼ一定のため、代表性への影響は小さいと
- * 判断。完了報告に明記)。
+ * 記録には、途中でセッションが再開された・複数周回を含む・途中で切れたものがあり、
+ * 1本だけを採用すると参照距離が1周の距離からずれ、進捗(progress)が歪む
+ * (実データ: 1周約5,140mのコースで、最新の記録が8,345mや9,547m)。
+ * そのため、同コースの周回を最大LP_REFERENCE_SAMPLE_COUNT本集め、距離が
+ * ±LP_REFERENCE_DIST_TOLERANCE以内で最も多く集まる塊(=単独周回)の中央値を採用する。
+ * 塊が作れない(全て食い違う)場合は全体の中央値。
  */
+function lpMedian(values) {
+    const a = values.slice().sort(function(x, y) { return x - y; });
+    const n = a.length;
+    return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+}
+
+/** 距離の配列から参照距離を決める(純関数)。最大の塊の中央値。同数なら先に現れた(=新しい)塊。 */
+function lpPickReferenceDistance(dists) {
+    if (!dists.length) {
+        return 0;
+    }
+    let best = [];
+    dists.forEach(function(anchor) {
+        const members = dists.filter(function(d) {
+            return Math.abs(d - anchor) <= anchor * LP_REFERENCE_DIST_TOLERANCE;
+        });
+        if (members.length > best.length) {
+            best = members;
+        }
+    });
+    return best.length > 1 ? lpMedian(best) : lpMedian(dists);
+}
+
+/**
+ * 候補の並べ替え: 記録の周回番号が2以上のものを先に(新しい順は保つ)。
+ * 周回番号1の記録は、セッション開始からの複数周回を含みやすいため。
+ */
+function lpOrderReferenceCandidates(candidates) {
+    const single = candidates.filter(function(c) { return (c.lap_number || 0) >= 2; });
+    const rest = candidates.filter(function(c) { return (c.lap_number || 0) < 2; });
+    return single.concat(rest);
+}
+
 async function lpFetchReferenceDistance(courseId, carId) {
     const key = courseId + '__' + carId;
     if (lpState.referenceDistanceCache[key]) {
@@ -183,8 +218,12 @@ async function lpFetchReferenceDistance(courseId, carId) {
             return null;
         }
         const listData = await listResp.json();
-        const candidates = listData.laps || [];
+        const candidates = lpOrderReferenceCandidates(listData.laps || []);
+        const dists = [];
         for (const cand of candidates) {
+            if (dists.length >= LP_REFERENCE_SAMPLE_COUNT) {
+                break;
+            }
             const detailResp = await fetch(
                 '/api/laps/' + encodeURIComponent(cand.file) + '?fields=position_x,position_z'
             );
@@ -197,11 +236,15 @@ async function lpFetchReferenceDistance(courseId, carId) {
             }
             const dist = lpComputeDistanceFromSamples(detail.samples || []);
             if (dist > 0) {
-                lpState.referenceDistanceCache[key] = dist;
-                return dist;
+                dists.push(dist);
             }
         }
-        return null;
+        if (!dists.length) {
+            return null;
+        }
+        const ref = lpPickReferenceDistance(dists);
+        lpState.referenceDistanceCache[key] = ref;
+        return ref;
     } catch (e) {
         console.error('lpFetchReferenceDistance failed:', e);
         return null;
