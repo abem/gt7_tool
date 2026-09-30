@@ -294,8 +294,8 @@
         if (!c) {
             return;
         }
-        const ea = state.a && state.a.raw;
-        const eb = state.b && state.b.raw;
+        const ea = state.a && state.a.raw && state.a.raw.length ? state.a.raw : null;
+        const eb = state.b && state.b.raw && state.b.raw.length ? state.b.raw : null;
         if (!ea && !eb) {
             message(c, 'A/B のラップを選択してください');
             setReadout('');

@@ -20,6 +20,7 @@
 - **内容**: 既存のアウトライヤー検出4種（油圧の低下=serious、ラップタイム悪化・タイヤ温度の急上昇=warning、燃料消費率の急増=notice）を、トーストの連打ではなく、1つの枠にまとめる。**同時に出たら最重要の1件だけ**（serious > warning > notice、同じなら新しい方）を表示し、他の件数を「+N」で示す。**枠をタップ／Enter で確認すると消え**、次に重要な警告が出る。確認されなくても期限で消える（notice 30秒・warning 60秒・serious 5分）。同じラベルは新しいもので置き換える。
 - **規則を決めた理由（一次情報なし）**: MoTeC C127 の優先度規則は一次情報を取得できなかった（#556）。そのため、既存の severity をそのまま優先度にし、走行中の注視時間を増やさないよう、常に1枠・1件だけにした。
 - **DRIVE・REVIEW は現状維持**: `drive-mode` / `review-mode` のときは従来どおりトースト（`pushNotification`）。変更は `race-metrics.js` の集約関数（`rmRaiseAlert` ほか）と `race-metrics.css`。ライブの受信経路は無変更。
+- **独立レビュー指摘への対応**: 集約枠の警告が、セッション切替（`resetAnalysis()`）や DRIVE・REVIEW への切替後も残らないよう、消去処理（`rmClearAlerts`）を追加（切替は1Hzで検知）。
 - **検証**: 優先順位、「+N」、確認（タップ・Enter）で次の警告、置換、期限（61秒で notice/warning が消え serious は残り、5分で消える）、実際の検出経路（油圧が5.0→2.0 の急低下で serious）、DRIVE・REVIEW でのトースト、390px・1920px で横スクロールなし（29項目、TEST MODE でも pageerror 0件）。
 
 ### feat(ANALYSIS): 燃料の目標消費との差分（T9）

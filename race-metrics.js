@@ -830,6 +830,12 @@ function rmRaiseAlert(label, value, severity) {
     rmRenderAlerts();
 }
 
+/** 表示待ちの警告を全て消し、枠も撤去する(セッション切替・DRIVE/REVIEW への切替で古い警告を残さない)。 */
+function rmClearAlerts() {
+    rmState.alerts.active = [];
+    rmRenderAlerts();
+}
+
 /** 期限切れを除き、最重要の1件を返す(無ければ null)。 */
 function rmTopAlert() {
     const now = performance.now();
@@ -1071,6 +1077,11 @@ function rmInitFuelTarget() {
 
 /** M-4 の1Hz更新本体。 */
 function rmStrategyTick() {
+    // T8: ANALYSIS 以外(DRIVE・REVIEW)へ切り替わったら、集約枠の警告を残さない(1Hz)
+    if (rmState.alerts.active.length && document.body &&
+        (document.body.classList.contains('drive-mode') || document.body.classList.contains('review-mode'))) {
+        rmClearAlerts();
+    }
     const els = rmEnsureEls();
     if (!els.degValue || !els.pitValue) {
         return;

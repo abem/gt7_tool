@@ -150,6 +150,9 @@ function resetAnalysis() {
         }
     });
     analysisState.notif.queue = [];
+    if (typeof rmClearAlerts === 'function') {
+        rmClearAlerts();     // 警告の1枠集約(race-metrics.js #555 T8)も、セッション切替で消す
+    }
     analysisState.notif.topSpeed = 0;
     analysisState.notif.topSpeedFired = false;
     analysisState.notif.prevFuelPct = 100;
