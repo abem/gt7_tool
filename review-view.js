@@ -43,6 +43,11 @@ const REVIEW_FETCH_EVERY = 6;
 
 const REVIEW_VIEW_STORAGE_VALUE = 'review';
 
+// 重ね書き(#554): A/B に加えて、速度とペダル入力のチャートへ重ねるラップの最大本数と系列色。
+// A=青・B=緑・差分=橙・ブレーキ=赤と区別できる色にする(uPlot は CSS 変数を解決しないため実値)
+const REVIEW_OVERLAY_MAX = 5;
+const REVIEW_OVERLAY_COLORS = ['#B48CFF', '#2EC4B6', '#E6D84A', '#FF8FB8', '#9AA5B1'];
+
 /* ================================================================
  *  状態(単一オブジェクト)
  * ================================================================ */
@@ -55,6 +60,7 @@ const reviewState = {
     detailCache: {},        // file -> {meta, resampled} (取得済み詳細)
     selA: null,             // 比較対象ファイル名
     selB: null,             // 基準ファイル名
+    overlay: [],            // 重ね書きするファイル名(選択順、最大 REVIEW_OVERLAY_MAX。A/B とは別枠)
     charts: null            // {speed, delta, inputs} uPlot インスタンス(A-5)
 };
 
@@ -80,7 +86,8 @@ function ensureReviewEls() {
         sumA: document.getElementById('review-sum-a'),
         sumB: document.getElementById('review-sum-b'),
         sumDelta: document.getElementById('review-sum-delta'),
-        sumCourse: document.getElementById('review-sum-course')
+        sumCourse: document.getElementById('review-sum-course'),
+        ovLegend: document.getElementById('review-overlay-legend')
     };
     return reviewState.els;
 }
@@ -453,6 +460,11 @@ function reviewBuildLapItem(lap) {
     } else if (lap.file === reviewState.selB) {
         item.classList.add('sel-b');
     }
+    const ovIdx = reviewState.overlay.indexOf(lap.file);
+    if (ovIdx >= 0) {
+        item.classList.add('sel-ov');
+        item.style.setProperty('--ov-color', REVIEW_OVERLAY_COLORS[ovIdx]);
+    }
 
     const badge = document.createElement('span');
     badge.className = 'review-lap-badge';
@@ -490,6 +502,24 @@ function reviewBuildLapItem(lap) {
     item.appendChild(time);
     item.appendChild(label);
     item.appendChild(meta);
+
+    // 重ね書き(#554): A/B とは別に、速度・ペダル入力のチャートへ重ねるラップを選ぶ。
+    // A/B に選ばれている行は、すでに描かれているため出さない。行クリック(A/B選択)とは分離。
+    if (lap.file !== reviewState.selA && lap.file !== reviewState.selB) {
+        const ov = document.createElement('button');
+        ov.type = 'button';
+        ov.className = 'review-lap-ov';
+        ov.setAttribute('aria-pressed', ovIdx >= 0 ? 'true' : 'false');
+        ov.textContent = ovIdx >= 0 ? String(ovIdx + 1) : '＋';
+        ov.title = ovIdx >= 0
+            ? '重ね書きから外す'
+            : '速度・ペダル入力のチャートに重ねて表示(最大' + REVIEW_OVERLAY_MAX + '本)';
+        ov.addEventListener('click', function(e) {
+            e.stopPropagation();
+            reviewToggleOverlay(lap.file);
+        });
+        item.appendChild(ov);
+    }
 
     // 全カード再生の入口(#133/#134 采決裁#2)。行クリック(A/B選択)とは分離。
     // replay-mode.js 不在環境ではボタンを出さない(既存の縮退作法)
@@ -543,6 +573,33 @@ function reviewToggleSelect(file) {
         // 両方埋まっている場合は A を置き換える(直近の関心が比較対象)
         reviewState.selA = file;
     }
+    // A/B に選ばれたラップは重ね書きから外す(二重に描かない)
+    reviewState.overlay = reviewState.overlay.filter(function(f) {
+        return f !== reviewState.selA && f !== reviewState.selB;
+    });
+    reviewRenderList();
+    reviewUpdateComparison();
+}
+
+/**
+ * 重ね書き(#554)の追加/解除。A/B に選ばれているラップ・上限超過は追加しない。
+ * @param {string} file
+ */
+function reviewToggleOverlay(file) {
+    const els = ensureReviewEls();
+    const i = reviewState.overlay.indexOf(file);
+    if (i >= 0) {
+        reviewState.overlay.splice(i, 1);
+    } else if (file === reviewState.selA || file === reviewState.selB) {
+        return;
+    } else if (reviewState.overlay.length >= REVIEW_OVERLAY_MAX) {
+        if (els.listStatus) {
+            els.listStatus.textContent = '重ね書きは最大' + REVIEW_OVERLAY_MAX + '本までです';
+        }
+        return;
+    } else {
+        reviewState.overlay.push(file);
+    }
     reviewRenderList();
     reviewUpdateComparison();
 }
@@ -583,6 +640,7 @@ function reviewSelectBest() {
     if (reviewState.selA === best) {
         reviewState.selA = null;
     }
+    reviewState.overlay = reviewState.overlay.filter(function(f) { return f !== best; });
     reviewRenderList();
     reviewUpdateComparison();
 }
@@ -733,6 +791,19 @@ function reviewEnsureCharts() {
     };
     const C = REVIEW_SERIES_COLORS;
 
+    // 重ね書き(#554)の系列。未使用の枠は常に null データで持ち、系列の追加・削除はしない
+    const ovSpeed = [];
+    const ovInputs = [];
+    const ovSpeedData = [];
+    const ovInputsData = [];
+    REVIEW_OVERLAY_COLORS.forEach(function(color) {
+        ovSpeed.push({ stroke: color, width: 1 });
+        ovInputs.push({ stroke: color, width: 1 });                    // スロットル 実線
+        ovInputs.push({ stroke: color, width: 1, dash: [2, 3] });      // ブレーキ 点線
+        ovSpeedData.push([null]);
+        ovInputsData.push([null], [null]);
+    });
+
     try {
         const charts = {
             speed: new uPlot(Object.assign({}, base, {
@@ -740,8 +811,8 @@ function reviewEnsureCharts() {
                     {},
                     { stroke: C.a, width: 1.5, fill: C.aFill },        // A 実線
                     { stroke: C.b, width: 1.25, dash: [4, 3] }          // B 破線
-                ]
-            }), [[0], [null], [null]], se),
+                ].concat(ovSpeed)
+            }), [[0], [null], [null]].concat(ovSpeedData), se),
             delta: new uPlot(Object.assign({}, base, {
                 series: [{}, { stroke: C.delta, width: 1.25 }]
             }), [[0], [null]], de),
@@ -753,8 +824,8 @@ function reviewEnsureCharts() {
                     { stroke: C.brakeA, width: 1.25 },                   // A brake
                     { stroke: C.b, width: 1, dash: [4, 3] },             // B throttle
                     { stroke: C.brakeB, width: 1, dash: [4, 3] }         // B brake
-                ]
-            }), [[0], [null], [null], [null], [null]], ie)
+                ].concat(ovInputs)
+            }), [[0], [null], [null], [null], [null]].concat(ovInputsData), ie)
         };
 
         // コンテナ追随リサイズ(charts.js setupAnalysisChartResize と同じ作法)
@@ -783,8 +854,10 @@ function reviewEnsureCharts() {
  * 取得済み A/B の系列から3チャートを描画する。
  * @param {Object|null} a - reviewFetchDetail の戻り(比較対象)
  * @param {Object|null} b - 同(基準)
+ * @param {Array} [ovs] - 重ね書き(#554) [{slot, entry}]。slot は色・系列の枠(0〜REVIEW_OVERLAY_MAX-1)
  */
-function reviewRenderCharts(a, b) {
+function reviewRenderCharts(a, b, ovs) {
+    ovs = ovs || [];
     const charts = reviewEnsureCharts();
     if (!charts) {
         return;
@@ -794,7 +867,10 @@ function reviewRenderCharts(a, b) {
     const rb = b && b.res;
     const na = ra ? ra.dist.length : 0;
     const nb = rb ? rb.dist.length : 0;
-    const N = Math.max(na, nb, 1);
+    let N = Math.max(na, nb, 1);
+    ovs.forEach(function(o) {
+        N = Math.max(N, o.entry.res.dist.length);
+    });
 
     const xs = new Array(N);
     const speedA = new Array(N);
@@ -818,10 +894,29 @@ function reviewRenderCharts(a, b) {
             : null;
     }
 
+    // 重ね書き: 枠ごとに速度・スロットル・ブレーキ(未使用の枠は null 列)
+    const ovSpeed = [];
+    const ovInputs = [];
+    for (let slot = 0; slot < REVIEW_OVERLAY_MAX; slot++) {
+        const o = ovs.filter(function(x) { return x.slot === slot; })[0];
+        const r = o ? o.entry.res : null;
+        const n = r ? r.dist.length : 0;
+        const col = function(arr) {
+            const out = new Array(N);
+            for (let k = 0; k < N; k++) {
+                out[k] = (r && k < n) ? arr[k] : null;
+            }
+            return out;
+        };
+        ovSpeed.push(col(r ? r.speed : null));
+        ovInputs.push(col(r ? r.throttle : null));
+        ovInputs.push(col(r ? r.brake : null));
+    }
+
     try {
-        charts.speed.setData([xs, speedA, speedB]);
+        charts.speed.setData([xs, speedA, speedB].concat(ovSpeed));
         charts.delta.setData([xs, delta]);
-        charts.inputs.setData([xs, thrA, brkA, thrB, brkB]);
+        charts.inputs.setData([xs, thrA, brkA, thrB, brkB].concat(ovInputs));
     } catch (e) {
         // 描画失敗は握りつぶす(他機能へ波及させない。charts.js と同じ方針)
     }
@@ -885,6 +980,76 @@ function reviewComparable(a, b) {
 }
 
 /**
+ * 重ね書きの各ラップを、基準(B→A→最初の重ね書き)と比較可能か判定して、描画対象と凡例項目に分ける(#554)。
+ * 判定は A/B と同じ reviewComparable(同一コース・走行距離 ±REVIEW_DIST_TOLERANCE)。
+ * 基準と比較できない・取得できないラップは描かず、凡例に理由つきで残す(黙って消さない)。
+ * @returns {{drawn: Array, items: Array}} drawn=[{slot, entry}], items=[{file, slot, entry, reason}]
+ */
+function reviewResolveOverlays(a, b, files, entries) {
+    let ref = b || a || null;
+    const items = [];
+    const drawn = [];
+    files.forEach(function(file, slot) {
+        const entry = entries[slot];
+        let reason = '';
+        if (!entry || !entry.res) {
+            reason = 'fetch';
+        } else if (!ref) {
+            ref = entry;            // A/B が無ければ、最初に取得できた重ね書きを基準にする
+        } else if (ref !== entry) {
+            const cmp = reviewComparable(ref, entry);
+            reason = cmp.ok ? '' : cmp.reason;
+        }
+        items.push({ file: file, slot: slot, entry: entry, reason: reason });
+        if (!reason) {
+            drawn.push({ slot: slot, entry: entry });
+        }
+    });
+    return { drawn: drawn, items: items };
+}
+
+/** 凡例から出す、描けなかった理由の文言 */
+const REVIEW_OVERLAY_REASON_TEXT = {
+    'fetch': '取得できません',
+    'course-unknown': 'コース不明',
+    'course-diff': '別コース',
+    'dist-diff': '走行距離が異なる',
+    'no-data': 'データなし'
+};
+
+/**
+ * 重ね書き凡例(色チップ+ファイル名+タイム、×で解除)を描画する。空なら非表示。
+ * @param {Array} items - reviewResolveOverlays の items
+ */
+function reviewRenderOverlayLegend(items) {
+    const box = ensureReviewEls().ovLegend;
+    if (!box) {
+        return;
+    }
+    box.textContent = '';
+    box.hidden = !items.length;
+    items.forEach(function(it) {
+        const chip = document.createElement('span');
+        chip.className = 'review-ov-chip' + (it.reason ? ' excluded' : '');
+        chip.style.setProperty('--ov-color', REVIEW_OVERLAY_COLORS[it.slot]);
+        const lt = it.entry && it.entry.meta && it.entry.meta.laptime_ms_approx;
+        chip.textContent = (it.slot + 1) + ' ' + it.file.slice(0, 19) +
+            (lt && typeof formatLapTime === 'function' ? ' (' + formatLapTime(lt) + ')' : '') +
+            (it.reason ? ' — 除外: ' + REVIEW_OVERLAY_REASON_TEXT[it.reason] : '');
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'review-ov-remove';
+        x.textContent = '×';
+        x.title = '重ね書きから外す';
+        x.addEventListener('click', function() {
+            reviewToggleOverlay(it.file);
+        });
+        chip.appendChild(x);
+        box.appendChild(chip);
+    });
+}
+
+/**
  * 選択(A/B)の変化に応じて詳細取得→サマリ・チャートを更新する。
  * 取得は非同期のため、更新途中に選択が変わった場合は古い結果を破棄する
  * (compareToken による世代ガード)。
@@ -911,27 +1076,34 @@ function reviewUpdateComparison() {
         els.sumB.textContent = 'B: ' + label(selB);
     }
 
-    if (!selA && !selB) {
+    const overlayFiles = reviewState.overlay.slice();
+
+    if (!selA && !selB && !overlayFiles.length) {
         if (els.sumDelta) {
             els.sumDelta.textContent = 'Δ: --';
         }
         if (els.sumCourse) {
             els.sumCourse.textContent = 'コース: --';
         }
-        reviewRenderCharts(null, null);
+        reviewRenderOverlayLegend([]);
+        reviewRenderCharts(null, null, []);
         reviewNotifyExtras(null, null);
         return;
     }
 
     Promise.all([
         selA ? reviewFetchDetail(selA) : Promise.resolve(null),
-        selB ? reviewFetchDetail(selB) : Promise.resolve(null)
-    ]).then(function(pair) {
+        selB ? reviewFetchDetail(selB) : Promise.resolve(null),
+        // 重ね書きの取得失敗は A/B の比較を止めない(該当ラップだけ「取得不可」として外す)
+        Promise.all(overlayFiles.map(function(f) {
+            return reviewFetchDetail(f).catch(function() { return null; });
+        }))
+    ]).then(function(triple) {
         if (token !== reviewState._compareToken) {
             return; // 選択が変わった後の古い応答は捨てる
         }
-        const a = pair[0];
-        const b = pair[1];
+        const a = triple[0];
+        const b = triple[1];
 
         // サマリ(タイム確定後にラベルを引き直す)
         if (els.sumA) {
@@ -953,7 +1125,9 @@ function reviewUpdateComparison() {
                 (course ? (course.name_ja || course.name_en || course.id || '--') : '--');
         }
 
-        reviewRenderCharts(a, b);
+        const ovs = reviewResolveOverlays(a, b, overlayFiles, triple[2]);
+        reviewRenderOverlayLegend(ovs.items);
+        reviewRenderCharts(a, b, ovs.drawn);
         // 実レース由来メトリクス P1 (#145): 比較確定データを race-metrics.js へ(唯一のフック)
         if (typeof rmOnReviewCompare === 'function') rmOnReviewCompare(a, b);
         reviewNotifyExtras(a, b);

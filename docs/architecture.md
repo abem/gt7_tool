@@ -123,7 +123,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `lap-manager.js` | ラップ管理 | ラップタイム記録・履歴管理 |
 | `telemetry-analysis.js` | 距離基準ラップ解析 | 距離索引、ライブ・タイムデルタ、推定ラップタイム、リファレンス速度重畳、レースエンジニア通知 |
 | `drive-view.js` | DRIVE/ANALYSIS ビュー切替 | 走行用最小表示（DRIVE）と解析表示（ANALYSIS）の切替、選択は localStorage に永続化 |
-| `review-view.js` + `review.css` | REVIEW ビュー | 過去ラップの一覧（日付グループ・フィルタ）・A/B選択・距離基準チャート3種（速度重畳/タイムデルタ/スロットル・ブレーキ）・比較サマリ。読み出しAPI `/api/laps` を使用 |
+| `review-view.js` + `review.css` | REVIEW ビュー | 過去ラップの一覧（日付グループ・フィルタ）・A/B選択・重ね書き（#554、行の「＋」で最大5本を速度・ペダル入力のチャートへ追加。A/Bと同じ比較可否判定で、比較できない周回は凡例に理由つきで除外）・距離基準チャート3種（速度重畳/タイムデルタ/スロットル・ブレーキ）・比較サマリ。読み出しAPI `/api/laps` を使用 |
 | `replay-mode.js` + `replay.css` | 全カード再生モード | 記録済みラップを既存の単一入口 `handleTelemetryMessage` へ供給し、走行中と同一の全カードで時間/距離スクラバー再生。2段ロード（10Hz先行→60Hz背景差替）・倍速・シーク対応 |
 | `race-metrics.js` + `race-metrics.css` | RACE METRICS | G-Gダイアグラム・コーナーフェーズ別デルタ・サスペンション変位ヒストグラム・タイヤデグ率+ピットウィンドウ・滑らかさスコア・回生エネルギー/トルク配分。REVIEW/全カード再生下部とライブ（STRATEGYミニカード）に表示 |
 | `track-map.js` + `track-map.css` | REVIEW トラックマップ（#552） | A/B の走行ラインを速度・ブレーキ・スロットルで色分け（Bは白の破線）して描く Canvas2D。`review-view.js` の `reviewNotifyExtras()` から `tmOnReviewCompare` が呼ばれる。区間強調用に `tmHighlightRange` も公開。IIFE で隔離 |

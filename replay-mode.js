@@ -377,6 +377,10 @@ function replayShowV1Fallback(file) {
     if (reviewState.selB === file) {
         reviewState.selB = null;
     }
+    if (Array.isArray(reviewState.overlay)) {
+        // A に選ばれたラップは重ね書きから外す(二重に描かない。#554)
+        reviewState.overlay = reviewState.overlay.filter(function(f) { return f !== file; });
+    }
     applyReviewMode(true);
     if (typeof reviewRenderList === 'function') {
         reviewRenderList();   // Aバッジを即時表示
