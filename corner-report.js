@@ -15,6 +15,13 @@
  *  - 原因の連鎖は、操作の違いを走行順に並べた規則ベースの説明で、因果の証明ではない。
  *  - 同一コースで走行距離差 3% 以内の A/B のときだけ算出する(review-view.js の共通判定)。
  *
+ * CONSISTENCY(#562): 同じコース・同じ車種の直近の周回(最大12本、走行距離が A と3%以内)を読み込み、
+ * 同じコーナーごとに、ブレーキ位置・最低速度・スロットルを入れる位置・コーナータイムの標準偏差を求める
+ * (VRS・Delta の「毎周のばらつき」、gt7dashboard の「ベストラップ間の速度のばらつき」を参考に、
+ * ラップ全体の一貫性σでは見えない「どのコーナーで毎周ばらつくか」を示す)。結果は、
+ * トラックマップの STABILITY の色分け(track-map.js の tmSetStability)にも使う。
+ * コーナーは、読み込んだ全周回の速度の平均の谷から検出する(周回の並びに依存しない)。
+ *
  * 契約: review-view.js の reviewNotifyExtras() から crOnReviewCompare(a, b) が呼ばれる唯一のフック。
  * IIFE で隔離し、公開するグローバルは crOnReviewCompare のみ。
  * 行の強調は track-map.js の tmHighlightRange(i0, i1) を typeof ガード付きで呼ぶ。
@@ -42,8 +49,22 @@
     const DIFF_SPEED_KMH = 2;
     const DIFF_PEAK_PCT = 15;
     const TOP_LOSSES = 3;
+    // ---- CONSISTENCY(#562) ----
+    const CONS_MAX_LAPS = 12;      // 使う周回の上限(A/B を含む)
+    const CONS_COLLECT = 16;       // 除外の前に集める周回の上限(ラップタイム外れ値を除いたあと、CONS_MAX_LAPS まで使う)
+    const CONS_LAPTIME_TOL = 0.10; // ラップタイムが中央値から±10%超の周回(アウトラップ・接触等)は、ばらつきの集計から除く
+    const CONS_MIN_LAPS = 3;       // これ未満は算出しない
+    const CONS_MAX_TRY = 40;       // 読み込みを試みる候補の上限(複数周回の記録・別コース等を飛ばす分を含む)
+    const CONS_MIN_VALUES = 3;     // 標準偏差を求めるのに必要な値の数
+    // この値のばらつき(σ)を「ばらつき大(1.0)」の基準にする。目安の値で、実データの周回(ペースの揃わない
+    // 練習走行を含む)の分布に合わせた経験則。安定は基準の約1/3未満、普通は約2/3未満。
+    const BAD_BRAKE_M = 30;
+    const BAD_SPEED_KMH = 12;
+    const BAD_THROTTLE_M = 45;
+    const LEVEL_OK = 0.34;
+    const LEVEL_BAD = 0.67;
 
-    const state = { pinned: -1, a: null, b: null };
+    const state = { pinned: -1, a: null, b: null, consToken: 0, consBusy: false, consRows: [], consPinned: -1 };
 
     function byId(id) {
         return document.getElementById(id);
@@ -411,6 +432,267 @@
         return [Number(tr.getAttribute('data-cr-i0')), Number(tr.getAttribute('data-cr-i1'))];
     }
 
+    /* ================================================================
+     *  CONSISTENCY(#562): 直近の周回のコーナーごとのばらつき
+     * ================================================================ */
+
+    /** 標準偏差(標本、n-1)。値が CONS_MIN_VALUES 未満なら null。null は無視する。 */
+    function stdev(values) {
+        const v = values.filter(function(x) { return x != null && isFinite(x); });
+        if (v.length < CONS_MIN_VALUES) {
+            return null;
+        }
+        const m = v.reduce(function(s, x) { return s + x; }, 0) / v.length;
+        const ss = v.reduce(function(s, x) { return s + (x - m) * (x - m); }, 0);
+        return Math.sqrt(ss / (v.length - 1));
+    }
+
+    /**
+     * ラップタイムが中央値から±CONS_LAPTIME_TOL 超の周回を除く(アウトラップ・接触・スピン等で、
+     * 「毎周のばらつき」ではなく別の走りになっているため)。A/B は、比較の起点なので必ず残す。
+     * ラップタイムが無い周回は残す。
+     */
+    function dropLapTimeOutliers(entries, keep) {
+        const times = entries.map(function(e) { return e.meta && e.meta.laptime_ms_approx; })
+            .filter(function(t) { return t > 0; }).sort(function(p, q) { return p - q; });
+        if (times.length < 3) {
+            return entries;
+        }
+        const mid = Math.floor(times.length / 2);
+        const med = times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
+        return entries.filter(function(e) {
+            const t = e.meta && e.meta.laptime_ms_approx;
+            return keep.indexOf(e) >= 0 || !(t > 0) || Math.abs(t - med) / med <= CONS_LAPTIME_TOL;
+        });
+    }
+
+    /** 全周回の速度の平均から、共通のコーナーを検出する。 */
+    function commonCorners(entries) {
+        const n = Math.min.apply(null, entries.map(function(e) { return e.res.speed.length; }));
+        const mean = new Array(n);
+        for (let k = 0; k < n; k++) {
+            let s = 0;
+            entries.forEach(function(e) { s += e.res.speed[k]; });
+            mean[k] = s / entries.length;
+        }
+        return detectCorners({ speed: mean }, { speed: mean }, n);
+    }
+
+    /**
+     * コーナーごとのばらつきを求める(純関数)。
+     * @returns {Array} [{n, apexM, i0, i1, sdBrake, sdSpeed, sdThrottle, sdTime, level, nLaps}]
+     */
+    function consistency(entries) {
+        const corners = commonCorners(entries);
+        const dist = entries[0].res.dist;
+        return corners.map(function(c, i) {
+            const ms = entries.map(function(e) { return cornerMetrics(e.res, c); });
+            const sdBrake = stdev(ms.map(function(m) { return m.brakePos; }));
+            const sdSpeed = stdev(ms.map(function(m) { return m.minSpeed; }));
+            const sdThrottle = stdev(ms.map(function(m) { return m.throttlePos; }));
+            const sdTime = stdev(ms.map(function(m) { return m.time; }));
+            const parts = [];
+            if (sdBrake != null) parts.push(sdBrake / BAD_BRAKE_M);
+            if (sdSpeed != null) parts.push(sdSpeed / BAD_SPEED_KMH);
+            if (sdThrottle != null) parts.push(sdThrottle / BAD_THROTTLE_M);
+            // score: 各要素の σ を「ばらつき大」の基準で割った最大値(順位付け用、上限なし)。level: 色分け用に 0〜1 へ丸めた値
+            const score = parts.length ? Math.max.apply(null, parts) : null;
+            return {
+                n: i + 1, apexM: dist[c.apex], i0: c.start, i1: c.end,
+                sdBrake: sdBrake, sdSpeed: sdSpeed, sdThrottle: sdThrottle, sdTime: sdTime,
+                score: score, level: score == null ? null : Math.min(1, score),
+                nLaps: entries.length
+            };
+        });
+    }
+
+    function levelText(level) {
+        return level == null ? '--' : (level < LEVEL_OK ? '安定' : (level < LEVEL_BAD ? '普通' : 'ばらつき大'));
+    }
+
+    function levelClass(level) {
+        return level == null ? '' : (level < LEVEL_OK ? 'rm-gain' : (level < LEVEL_BAD ? '' : 'rm-loss'));
+    }
+
+    /** 最もばらつく要素の名前(文章用)。 */
+    function worstFactor(r) {
+        const cands = [
+            ['ブレーキ位置', r.sdBrake, BAD_BRAKE_M, 'm'],
+            ['最低速度', r.sdSpeed, BAD_SPEED_KMH, 'km/h'],
+            ['スロットルを入れる位置', r.sdThrottle, BAD_THROTTLE_M, 'm']
+        ].filter(function(c) { return c[1] != null; });
+        if (!cands.length) {
+            return null;
+        }
+        cands.sort(function(p, q) { return q[1] / q[2] - p[1] / p[2]; });
+        return cands[0][0] + ' σ ' + cands[0][1].toFixed(cands[0][3] === 'm' ? 0 : 1) + ' ' + cands[0][3];
+    }
+
+    function setConsStatus(text) {
+        setText('cr-cons-status', text);
+    }
+
+    function clearCons() {
+        state.consToken++;
+        state.consBusy = false;
+        state.consRows = [];
+        state.consPinned = -1;
+        const t = byId('cr-cons-table');
+        if (t) {
+            t.textContent = '';
+        }
+        const l = byId('cr-cons-advice');
+        if (l) {
+            l.textContent = '';
+        }
+        if (typeof tmSetStability === 'function') {
+            tmSetStability(null);
+        }
+    }
+
+    function updateConsButton() {
+        const btn = byId('cr-cons-load');
+        if (!btn) {
+            return;
+        }
+        const usable = !!(state.a && state.b && comparable(state.a, state.b).ok && rowsPresent());
+        btn.disabled = state.consBusy || !usable;
+    }
+
+    function rowsPresent() {
+        const t = byId('cr-table');
+        return !!(t && t.querySelector('tbody tr'));
+    }
+
+    function renderCons(rows, nLaps, a) {
+        const table = byId('cr-cons-table');
+        table.textContent = '';
+        const advice = byId('cr-cons-advice');
+        advice.textContent = '';
+        const ranked = rows.filter(function(r) { return r.score != null; })
+            .sort(function(p, q) { return q.score - p.score; });
+        ranked.slice(0, 3).filter(function(r) { return r.level >= LEVEL_OK; }).forEach(function(r) {
+            const li = document.createElement('li');
+            li.className = 'cr-loss';
+            li.textContent = 'T' + r.n + ': 毎周ばらつく — ' + worstFactor(r) + '（' + levelText(r.level) + '）';
+            advice.appendChild(li);
+        });
+        if (!advice.children.length) {
+            const li = document.createElement('li');
+            li.textContent = 'どのコーナーも、ばらつきは小さい範囲です（' + nLaps + ' 周）';
+            advice.appendChild(li);
+        }
+        const thead = document.createElement('thead');
+        const hr = document.createElement('tr');
+        ['コーナー', '位置 (m)', 'ブレーキ位置 σ (m)', '最低速 σ (km/h)', 'スロットル位置 σ (m)', 'コーナータイム σ (s)', '安定度'].forEach(function(h) {
+            const th = document.createElement('th');
+            th.textContent = h;
+            hr.appendChild(th);
+        });
+        thead.appendChild(hr);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        const f = function(v, d) { return v == null ? '--' : v.toFixed(d); };
+        rows.forEach(function(r) {
+            const tr = document.createElement('tr');
+            tr.tabIndex = 0;
+            tr.setAttribute('data-cc-i0', r.i0);
+            tr.setAttribute('data-cc-i1', r.i1);
+            cell(tr, 'T' + r.n);
+            cell(tr, String(Math.round(r.apexM)));
+            cell(tr, f(r.sdBrake, 1));
+            cell(tr, f(r.sdSpeed, 1));
+            cell(tr, f(r.sdThrottle, 1));
+            cell(tr, f(r.sdTime, 3));
+            cell(tr, levelText(r.level), levelClass(r.level));
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        // トラックマップの色分け用: A(主ライン)の距離グリッド index ごとの不安定度
+        const levels = new Array(a.res.dist.length).fill(null);
+        rows.forEach(function(r) {
+            for (let i = r.i0; i <= r.i1 && i < levels.length; i++) {
+                levels[i] = r.level;
+            }
+        });
+        if (typeof tmSetStability === 'function') {
+            tmSetStability(levels, true);
+        }
+    }
+
+    /** 同じコース・車種の直近の周回を読み込み、コーナーごとのばらつきを求める。 */
+    async function loadConsistency() {
+        const a = state.a;
+        const b = state.b;
+        if (!a || !b || state.consBusy || typeof reviewFetchDetail !== 'function') {
+            return;
+        }
+        clearCons();
+        const token = state.consToken;
+        state.consBusy = true;
+        updateConsButton();
+        const carId = a.meta && a.meta.car_id;
+        const laps = (typeof reviewState !== 'undefined' && reviewState.laps ? reviewState.laps : [])
+            .filter(function(l) { return String(l.car_id) === String(carId); });
+        const entries = [a, b];
+        const seen = { };
+        seen[a.meta.file] = true;
+        seen[b.meta.file] = true;
+        let tried = 0;
+        for (let i = 0; i < laps.length && entries.length < CONS_COLLECT && tried < CONS_MAX_TRY; i++) {
+            if (seen[laps[i].file]) {
+                continue;
+            }
+            tried++;
+            setConsStatus('周回を読み込み中… ' + entries.length + ' / ' + CONS_COLLECT + ' 周（候補 ' + tried + ' 件を確認）');
+            let e = null;
+            try {
+                e = await reviewFetchDetail(laps[i].file);
+            } catch (err) {
+                e = null;
+            }
+            if (token !== state.consToken) {
+                return;       // A/B が変わった・再読み込みされた: 古い結果は捨てる
+            }
+            seen[laps[i].file] = true;
+            // 同じコースで、走行距離が A と3%以内の周回だけ(複数周回の記録・途中切れ・別コースを除く)
+            if (e && e.res && e.res.time && comparable(a, e).ok) {
+                entries.push(e);
+            }
+        }
+        state.consBusy = false;
+        if (token !== state.consToken) {
+            return;
+        }
+        updateConsButton();
+        // 取得に失敗した候補があると、REVIEW 一覧の「読込中…」が残るため、消す
+        const listStatus = byId('review-list-status');
+        if (listStatus && /読込中…$/.test(listStatus.textContent)) {
+            listStatus.textContent = '';
+        }
+        const collected = entries.length;
+        // ラップタイムの外れ値を除き、新しい順に最大 CONS_MAX_LAPS 周を使う(A/B は先頭にあり、必ず残る)
+        const used = dropLapTimeOutliers(entries, [a, b]).slice(0, CONS_MAX_LAPS);
+        if (used.length < CONS_MIN_LAPS) {
+            setConsStatus('同じコース・車種で比較できる周回が ' + used.length + ' 本しかないため、算出しません（最低 ' +
+                CONS_MIN_LAPS + ' 周。走行距離が A と3%以内・ラップタイムが中央値から±' + Math.round(CONS_LAPTIME_TOL * 100) +
+                '%以内の周回が対象）');
+            return;
+        }
+        const rows = consistency(used);
+        state.consRows = rows;
+        if (!rows.length) {
+            setConsStatus('コーナー(速度の谷)を検出できませんでした');
+            return;
+        }
+        setConsStatus(used.length + ' 周（同じコース・車種、走行距離が A と3%以内、ラップタイムが中央値から±' +
+            Math.round(CONS_LAPTIME_TOL * 100) + '%以内。新しい順に最大 ' + CONS_MAX_LAPS + ' 周' +
+            (collected > used.length ? '。アウトラップ等 ' + (collected - used.length) + ' 周を除外' : '') +
+            '）から、' + rows.length + ' コーナーのばらつきを算出しました。σ が大きいほど、毎周ばらつきます。' +
+            'トラックマップの STABILITY に色分けを反映しました。');
+        renderCons(rows, used.length, a);
+    }
+
     function init() {
         const table = byId('cr-table');
         if (!table) {
@@ -454,6 +736,54 @@
                 ev.target.click();
             }
         });
+        // CONSISTENCY(#562)
+        const btn = byId('cr-cons-load');
+        if (btn) {
+            btn.addEventListener('click', loadConsistency);
+            updateConsButton();
+        }
+        const ct = byId('cr-cons-table');
+        if (ct) {
+            const rangeOf = function(tr) {
+                return [Number(tr.getAttribute('data-cc-i0')), Number(tr.getAttribute('data-cc-i1'))];
+            };
+            ct.addEventListener('mouseover', function(ev) {
+                const tr = ev.target.closest && ev.target.closest('tbody tr');
+                if (tr && state.consPinned < 0) {
+                    const r = rangeOf(tr);
+                    highlight(r[0], r[1]);
+                }
+            });
+            ct.addEventListener('mouseleave', function() {
+                if (state.consPinned < 0) {
+                    highlight(-1, -1);
+                }
+            });
+            ct.addEventListener('click', function(ev) {
+                const tr = ev.target.closest && ev.target.closest('tbody tr');
+                if (!tr) {
+                    return;
+                }
+                const rows = Array.prototype.slice.call(tr.parentNode.children);
+                const idx = rows.indexOf(tr);
+                rows.forEach(function(x) { x.classList.remove('cr-pinned'); });
+                if (state.consPinned === idx) {
+                    state.consPinned = -1;
+                    highlight(-1, -1);
+                } else {
+                    state.consPinned = idx;
+                    const r = rangeOf(tr);
+                    highlight(r[0], r[1]);
+                    tr.classList.add('cr-pinned');
+                }
+            });
+            ct.addEventListener('keydown', function(ev) {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    ev.target.click();
+                }
+            });
+        }
     }
 
     /** review-view.js から呼ばれる唯一のフック。a/b は reviewFetchDetail の戻り値(無ければ null)。 */
@@ -467,7 +797,12 @@
         }
         state.a = a;
         state.b = b;
+        clearCons();
+        setConsStatus(a && b
+            ? '「ばらつきを読み込む」で、同じコース・車種の直近の周回から、コーナーごとのばらつきを算出します'
+            : '');
         render(a, b);
+        updateConsButton();
     };
 
     if (document.readyState === 'loading') {
