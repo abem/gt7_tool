@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import json
+import math
 import os
 import re
 import ssl
@@ -1307,7 +1308,7 @@ def _load_gated_groups():
 def _float_query_required(request, name, lo=None, hi=None):
     """必須の浮動小数点クエリパラメータを取得する(#434 P5 Stage2)。
 
-    欠落・非数値・範囲外はValueError(呼び出し元で400に変換する)。
+    欠落・非数値・非有限値(NaN/inf)・範囲外はValueError(呼び出し元で400に変換する)。
     """
     raw = request.query.get(name)
     if raw is None or raw == "":
@@ -1316,6 +1317,9 @@ def _float_query_required(request, name, lo=None, hi=None):
         value = float(raw)
     except ValueError:
         raise ValueError(f"invalid float for {name}: {raw!r}")
+    if not math.isfinite(value):
+        # NaN は「lo より小さい/hi より大きい」がどちらも偽になり、範囲チェックを素通りするため拒否する
+        raise ValueError(f"{name} must be finite: {raw!r}")
     if lo is not None and value < lo or hi is not None and value > hi:
         raise ValueError(f"{name} out of range [{lo},{hi}]: {value}")
     return value
@@ -1444,15 +1448,19 @@ async def api_predict_laptime_handler(request):
         return web.json_response({"error": "prediction failed"}, status=500)
 
     # #560: 学習時の周回の分布から大きく外れる予測は、モデルが今の記録に合っていない
-    # (記録の入れ替わり・コース識別の食い違い等)とみなし、提供しない(=モデル無しと同じ404)。
+    # (記録の入れ替わり・コース識別の食い違い等)とみなし、提供しない。
+    # 「モデルが無い」(404、フロントは5分間問い合わせを止める)とは別の422にする: 序盤の
+    # 進行度など、学習時の範囲外の入力で1回だけ外れた場合に、健全なモデルの表示を止めないため。
+    # 非有限値(NaN/inf)も、比較が常に偽になって素通りしないよう、同じく提供しない。
     median_ms = group.get("median_laptime_ms")
-    if median_ms and abs(predicted_ms - median_ms) / median_ms > PREDICT_PLAUSIBLE_FRAC:
+    if not math.isfinite(predicted_ms) or (
+            median_ms and abs(predicted_ms - median_ms) / median_ms > PREDICT_PLAUSIBLE_FRAC):
         logger.warning(
-            f"Implausible prediction withheld for {key}: {predicted_ms:.0f}ms vs median {median_ms:.0f}ms"
+            f"Implausible prediction withheld for {key}: {predicted_ms!r}ms vs median {median_ms!r}ms"
         )
         return web.json_response(
             {"error": "prediction is implausible for this course/car_id combination"},
-            status=404,
+            status=422,
         )
 
     return web.json_response(

@@ -126,20 +126,54 @@ BASE_GROUP = {"car_id": 1, "model_path": "m", "mae_ms": 1000.0, "mae_pct": 1.6, 
               "algorithm": "ridge", "median_laptime_ms": 60_000.0}
 
 
-def test_api_withholds_implausible_prediction(monkeypatch):
+def test_api_withholds_implausible_prediction_with_422_not_404(monkeypatch):
+    # 404 は「モデル無し」で、フロントが5分間問い合わせを止める。非現実的な予測は別の422にして、
+    # 序盤の進行度で1回外れただけで、健全なモデルの表示を止めないようにする(#560 レビュー指摘)
     resp = _call_predict(monkeypatch, BASE_GROUP, 136_500.0)    # goodwood/63 の実例(2.3倍)
-    assert resp.status == 404
+    assert resp.status == 422
     assert "implausible" in json.loads(resp.body)["error"]
+
+
+def test_api_withholds_non_finite_prediction(monkeypatch):
+    for bad in (float("nan"), float("inf")):
+        assert _call_predict(monkeypatch, BASE_GROUP, bad).status == 422
+    legacy = {k: v for k, v in BASE_GROUP.items() if k != "median_laptime_ms"}
+    assert _call_predict(monkeypatch, legacy, float("nan")).status == 422   # 旧形式でも NaN は出さない
+
+
+def test_api_rejects_non_finite_query_params(monkeypatch):
+    import main
+    from aiohttp.test_utils import make_mocked_request
+    monkeypatch.setattr(main, "_load_gated_groups", lambda: {"c__1": BASE_GROUP})
+    for bad in ("nan", "inf", "-inf"):
+        q = ("/api/predict/laptime?course=c&car_id=1&progress=0.5&avg_speed_kmh=" + bad +
+             "&max_speed_kmh=190&avg_throttle_pct=55&avg_brake_pct=8&avg_tyre_temp=70")
+        resp = asyncio.new_event_loop().run_until_complete(
+            main.api_predict_laptime_handler(make_mocked_request("GET", q)))
+        assert resp.status == 400
 
 
 def test_api_serves_plausible_prediction_and_boundary(monkeypatch):
     ok = _call_predict(monkeypatch, BASE_GROUP, 61_234.0)
     assert ok.status == 200 and json.loads(ok.body)["predicted_laptime_ms"] == 61_234.0
     assert _call_predict(monkeypatch, BASE_GROUP, 60_000 * 1.29).status == 200     # 範囲内
-    assert _call_predict(monkeypatch, BASE_GROUP, 60_000 * 1.31).status == 404     # 範囲外
-    assert _call_predict(monkeypatch, BASE_GROUP, 60_000 * 0.69).status == 404
+    assert _call_predict(monkeypatch, BASE_GROUP, 60_000 * 1.31).status == 422     # 範囲外
+    assert _call_predict(monkeypatch, BASE_GROUP, 60_000 * 0.69).status == 422
 
 
 def test_api_without_median_keeps_old_behaviour(monkeypatch):
     legacy = {k: v for k, v in BASE_GROUP.items() if k != "median_laptime_ms"}    # 旧形式の許可リスト
     assert _call_predict(monkeypatch, legacy, 136_500.0).status == 200
+
+
+def test_filter_can_empty_a_group_and_reports_all_files_dropped():
+    """中央値(偶数個の中央2点の平均)から、どの周回も±10%超離れるグループは、全て除外される。
+    run() はこの場合、要約の group_outliers_dropped に all_dropped を付けて残す(#560 レビュー指摘)。"""
+    rows = []
+    for dist, day in ((1_000.0, 1), (1_000.0, 2), (3_000.0, 3), (3_000.0, 4)):
+        rows += [dict(r, total_dist_m=dist, file=r["file"].replace("2026-09-01", f"2026-09-{day:02d}"))
+                 for r in _lap_rows(1)]
+    df = pd.DataFrame(rows)
+    assert df["file"].nunique() == 4
+    kept, dropped = t.filter_group_outliers(df)
+    assert kept.empty and dropped["distance"] == 4
