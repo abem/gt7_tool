@@ -309,6 +309,20 @@ ws.onmessage = (event) => {
 - モデルのロード（`joblib.load`）は`asyncio.to_thread`でオフロードされ、他のリクエスト処理をブロックしません。
 - モデル自体は`gt7data/`の蓄積状況に応じて`train_laptime_model.py`の再実行でのみ更新されます（本APIはライブ学習を行いません）。
 
+### 7. 診断ログ `/api/diag`（#558）
+
+**メソッド:** POST
+
+**説明:** ブラウザ（REVIEW の全カード再生）の計測値を、ホストの診断ログへ追記します。「再生が実際より速く見える」のような、操作者のブラウザ環境でしか再現しない問題の原因調査用です。ブラウザ側の `replay-diag.js` が、**再生中だけ**、5秒ごとにまとめて送ります（テレメトリの走行データそのものは送りません）。
+
+**リクエスト:** `Content-Type: application/json`、JSON オブジェクト（例: `{"v":1,"sid":"ab12cd","records":[{"ev":"sample","ratio":1.0,...}]}`）。上限 32KB。
+
+**レスポンス:** 204（追記した）／ 400（JSON でない、またはオブジェクトでない）／ 413（32KB 超）／ 429（同一IPから0.5秒未満の連続送信）／ 500（書き込み失敗）。
+
+**保存先:** `logs/replay_diag.jsonl`（コンテナ内 `/app/logs`。`docker-compose.yml` でホストの `./logs` にマウント）。1行1レコード（JSON Lines）で、`received_at`・`ip`・`data` を持ちます。5MB を超えると `replay_diag.jsonl.1` へ世代交代し、最大約10MBです。文字列は300文字、リスト・辞書は200要素、ネストは5階層に切り詰めます。書き込み先は固定で、クライアントはパスを指定できません。既存のテレメトリの受信・記録・配信には触れません。
+
+**主な `ev`（イベント種別）:** `env`（ブラウザ・CPU・画面）、`replay_start`／`replay_end`、`change`（一時停止・倍速・再生種類などの変化）、`sample`（1秒ごと。`ratio`＝再生位置の進み÷実時間、`fps`、`lagMax`（タイマーの最大の遅れ ms）、`longTasks`、`clockSkew`、`dispSpeed`／`dataSpeed` など）。
+
 ### データフィールド詳細
 
 #### 基本データ (Packet A: 296 bytes)

@@ -91,3 +91,6 @@ ssl/
 # 誤ってgit add -A等で公開リポジトリへ混入するのを防止するため除外)
 backup/
 WORK_*/
+
+# 診断ログ(#558。ブラウザ再生の計測値。docker-compose で ./logs をマウント)
+logs/

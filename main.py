@@ -107,6 +107,20 @@ IMPORT_LOG_DIR = "gt7data_imported"
 # 収まるよう100MBを上限としたDoS対策(具体的な悪用防止のための上限値)。
 IMPORT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
+# 診断ログ(#558): ブラウザ(REVIEW の再生)から送られる計測値を、ホストで読めるログ
+# ファイルへ追記する。目的は、操作者のブラウザ環境でしか再現しない問題(再生が実際より
+# 速く見える等)の原因調査。実データ(LOG_DIR)とは分離した専用ディレクトリへ、
+# 1行1レコード(JSON Lines)で書く。docker-compose.yml で ./logs をホストへマウントする。
+DIAG_LOG_DIR = "logs"
+DIAG_LOG_NAME = "replay_diag.jsonl"
+DIAG_MAX_BODY_BYTES = 32 * 1024         # 1リクエストの上限(超過は413)
+DIAG_MAX_LOG_BYTES = 5 * 1024 * 1024    # ログ1ファイルの上限。超えたら .1 へ世代交代(最大約10MB)
+DIAG_MIN_INTERVAL_S = 0.5               # 同一IPからの最小リクエスト間隔(書込み過多の防止)
+DIAG_CLIP_STR = 300                     # 文字列の最大長(ログ汚染・肥大化の防止)
+DIAG_CLIP_ITEMS = 200                   # リスト・辞書の最大要素数
+DIAG_CLIP_DEPTH = 5                     # ネストの最大深さ
+_diag_last_ts = {}                      # ip -> 最後に受理した time.monotonic()
+
 # 保存失敗時の退避先(#434 P1)。実データ(LOG_DIR)とは物理的に分離し、再試行後も
 # なお書込みに失敗したラップをここへ退避する。ファイル名にLAP_FILE_REと一致しない
 # 接尾辞を付けるため、/api/laps一覧走査(_scan_lap_files)には混入しない。
@@ -1317,6 +1331,74 @@ def _predict_laptime(model_path, feature_values):
     return float(prediction[0])
 
 
+def _diag_clip(value, depth=0):
+    """診断ログへ書く値を、長さ・要素数・深さで切り詰める(受け取った値は信用しない)。"""
+    if depth >= DIAG_CLIP_DEPTH:
+        return None
+    if isinstance(value, str):
+        return value[:DIAG_CLIP_STR]
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_diag_clip(v, depth + 1) for v in value[:DIAG_CLIP_ITEMS]]
+    if isinstance(value, dict):
+        return {str(k)[:DIAG_CLIP_STR]: _diag_clip(v, depth + 1)
+                for k, v in list(value.items())[:DIAG_CLIP_ITEMS]}
+    return str(value)[:DIAG_CLIP_STR]
+
+
+def _diag_append(line):
+    """診断ログへ1行追記する(同期I/O。to_thread から呼ぶ)。上限超過で .1 へ世代交代。"""
+    os.makedirs(DIAG_LOG_DIR, exist_ok=True)
+    path = os.path.join(DIAG_LOG_DIR, DIAG_LOG_NAME)
+    try:
+        if os.path.getsize(path) > DIAG_MAX_LOG_BYTES:
+            os.replace(path, path + ".1")
+    except FileNotFoundError:
+        pass
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(line)
+
+
+async def api_diag_handler(request):
+    """POST /api/diag: ブラウザの計測値(JSON オブジェクト)を診断ログへ追記する(#558)。
+
+    書き込み先は固定(DIAG_LOG_DIR/DIAG_LOG_NAME)で、クライアントはパスを指定できない。
+    サイズ・頻度・長さを制限し、既存のテレメトリ受信・記録・配信には一切触れない。
+    """
+    ip = request.remote or "?"
+    now = time.monotonic()
+    if now - _diag_last_ts.get(ip, -1e9) < DIAG_MIN_INTERVAL_S:
+        return web.json_response({"error": "too many requests"}, status=429)
+
+    body = await request.content.read(DIAG_MAX_BODY_BYTES + 1)
+    if len(body) > DIAG_MAX_BODY_BYTES:
+        return web.json_response({"error": "payload too large"}, status=413)
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return web.json_response({"error": "invalid json"}, status=400)
+    if not isinstance(payload, dict):
+        return web.json_response({"error": "json object required"}, status=400)
+
+    if len(_diag_last_ts) > 1000:
+        _diag_last_ts.clear()          # IP の記録が際限なく増えないようにする
+    _diag_last_ts[ip] = now
+
+    record = {
+        "received_at": datetime.now().isoformat(timespec="milliseconds"),
+        "ip": ip,
+        "data": _diag_clip(payload),
+    }
+    line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+    try:
+        await asyncio.to_thread(_diag_append, line)
+    except OSError as e:
+        logging.warning("diag log write failed: %s", e)
+        return web.json_response({"error": "write failed"}, status=500)
+    return web.Response(status=204)
+
+
 async def api_predict_laptime_handler(request):
     """GET /api/predict/laptime — 品質ゲート済み(MAE<=3%)グループのみラップタイムを
     推論する(#434 P5 Stage2)。
@@ -1484,6 +1566,7 @@ def main():
     app.router.add_post('/api/laps/import', api_laps_import_handler)
     app.router.add_get('/api/laps/{file}', api_lap_detail_handler)
     app.router.add_get('/api/predict/laptime', api_predict_laptime_handler)
+    app.router.add_post('/api/diag', api_diag_handler)
     app.router.add_get('/', index_handler)
     app.router.add_get('/engineer', engineer_handler)
     app.router.add_get('/ws', websocket_handler)
