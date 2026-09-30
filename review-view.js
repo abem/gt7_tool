@@ -61,6 +61,7 @@ const reviewState = {
     selA: null,             // 比較対象ファイル名
     selB: null,             // 基準ファイル名
     overlay: [],            // 重ね書きするファイル名(選択順、最大 REVIEW_OVERLAY_MAX。A/B とは別枠)
+    segMarks: { bounds: null, band: null },   // #565: チャート上の区間の境界(距離グリッド index の配列)と、強調中の区間 [i0, i1]
     charts: null            // {speed, delta, inputs} uPlot インスタンス(A-5)
 };
 
@@ -766,6 +767,74 @@ function reviewFetchDetail(file) {
 }
 
 /**
+ * チャートの上に、区間(区間レポートの20等分)の境界と、強調中の区間の帯を描く(#565)。
+ * 境界は薄い縦線、強調は薄い白の帯(TRACK MAP・区間レポートの行ホバーと連動)。
+ * x 軸は距離[m](グリッド index × REVIEW の距離グリッド)。データ・系列は変更しない。
+ * @param {Object} u - uPlot インスタンス
+ */
+function reviewDrawSegmentMarks(u) {
+    const m = reviewState.segMarks;
+    if (!m || (!m.bounds && !m.band)) {
+        return;
+    }
+    const step = reviewStepM();
+    const bb = u.bbox;
+    const ctx = u.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(bb.left, bb.top, bb.width, bb.height);
+    ctx.clip();
+    if (m.band) {
+        const x0 = u.valToPos(m.band[0] * step, 'x', true);
+        const x1 = u.valToPos(m.band[1] * step, 'x', true);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.fillRect(Math.min(x0, x1), bb.top, Math.abs(x1 - x0), bb.height);
+    }
+    if (m.bounds) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+        ctx.lineWidth = Math.max(1, Math.round(window.devicePixelRatio || 1));
+        m.bounds.forEach(function(i) {
+            const x = Math.round(u.valToPos(i * step, 'x', true));
+            ctx.beginPath();
+            ctx.moveTo(x, bb.top);
+            ctx.lineTo(x, bb.top + bb.height);
+            ctx.stroke();
+        });
+    }
+    ctx.restore();
+}
+
+function reviewRedrawSegmentMarks() {
+    const ch = reviewState.charts;
+    if (!ch) {
+        return;
+    }
+    [ch.speed, ch.delta, ch.inputs].forEach(function(c) {
+        if (c) {
+            c.redraw(false);
+        }
+    });
+}
+
+/**
+ * 区間の境界を設定する(segment-report.js から。A/B が比較可能なときだけ。null で解除)。
+ * @param {Array<number>|null} indices - 距離グリッド index の配列(区間の両端。21個)
+ */
+function reviewSetSegmentBounds(indices) {
+    reviewState.segMarks.bounds = indices && indices.length ? indices.slice() : null;
+    reviewRedrawSegmentMarks();
+}
+
+/**
+ * 強調する区間 [i0, i1](距離グリッド index)を設定する(track-map.js の tmHighlightRange から。
+ * i0 < 0 で解除)。区間レポート・コーナー別レポートの行ホバーと、地図・チャートを連動させる。
+ */
+function reviewSetSegmentBand(i0, i1) {
+    reviewState.segMarks.band = (i0 >= 0 && i1 >= i0) ? [i0, i1] : null;
+    reviewRedrawSegmentMarks();
+}
+
+/**
  * uPlot インスタンス3個を初回のみ生成する(charts.js initAnalysisCharts と同じ作法)。
  */
 function reviewEnsureCharts() {
@@ -789,7 +858,8 @@ function reviewEnsureCharts() {
         cursor: { show: false },
         legend: { show: false },
         padding: [0, 0, 0, 0],
-        points: { show: false }
+        points: { show: false },
+        hooks: { draw: [reviewDrawSegmentMarks] }     // #565: 区間の境界と、強調中の区間の帯
     };
     const C = REVIEW_SERIES_COLORS;
 

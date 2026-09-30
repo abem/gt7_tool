@@ -125,6 +125,7 @@
         const rb = b && b.res && b.res.time && b.res.time.length > SEGMENTS ? b.res : null;
         if (!ra && !rb) {
             setSummary('A/B のラップを選択すると、区間ごとの数値を表示します');
+            publishBounds(null, null, false);
             return;
         }
 
@@ -179,6 +180,7 @@
             tbody.appendChild(tr);
         }
         table.appendChild(tbody);
+        publishBounds(sa, sb, diffOk);
 
         // 集約1行
         if (diffOk && worst && best) {
@@ -254,6 +256,21 @@
     window.srOnReviewCompare = function(a, b) {
         render(a, b);
     };
+
+    /** 区間の境界をチャートへ渡す(#565)。比較可能な A/B のときだけ表示し、それ以外は解除する。 */
+    function publishBounds(sa, sb, diffOk) {
+        if (typeof reviewSetSegmentBounds !== 'function') {
+            return;
+        }
+        const main = sa || sb;
+        if (!diffOk || !main) {
+            reviewSetSegmentBounds(null);
+            return;
+        }
+        const idx = [main[0].i0];
+        main.forEach(function(s) { idx.push(s.i1); });
+        reviewSetSegmentBounds(idx);
+    }
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

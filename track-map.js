@@ -445,6 +445,9 @@
         state.range = null;   // 区間の強調も解除(segment-report.js の呼び出し順に依存しない)
         render();
         updateReadout();
+        if (typeof reviewSetSegmentBand === 'function') {
+            reviewSetSegmentBand(-1, -1);     // チャート側の帯も解除(#565)
+        }
     };
 
     /**
@@ -454,6 +457,10 @@
     window.tmHighlightRange = function(i0, i1) {
         state.range = (i0 >= 0 && i1 >= i0) ? [i0, i1] : null;
         render();
+        // 距離チャート(SPEED / TIME DELTA / THROTTLE・BRAKE)の同じ区間にも帯を出す(#565)
+        if (typeof reviewSetSegmentBand === 'function') {
+            reviewSetSegmentBand(i0, i1);
+        }
     };
 
     /**
