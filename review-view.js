@@ -931,9 +931,10 @@ function reviewRenderCharts(a, b, ovs) {
  * @param {Object|null} a
  * @param {Object|null} b
  */
-function reviewNotifyExtras(a, b) {
+function reviewNotifyExtras(a, b, extras) {
     if (typeof tmOnReviewCompare === 'function') tmOnReviewCompare(a, b);
-    if (typeof tbOnReviewCompare === 'function') tbOnReviewCompare(a, b);
+    // 理論ベストだけは、重ね書きで描いている周回(比較可能と判定済み)も合成に使う(#554 の残課題)
+    if (typeof tbOnReviewCompare === 'function') tbOnReviewCompare(a, b, extras);
     if (typeof srOnReviewCompare === 'function') srOnReviewCompare(a, b);
     if (typeof ltOnReviewCompare === 'function') ltOnReviewCompare(a, b);
     if (typeof cpOnReviewCompare === 'function') cpOnReviewCompare(a, b);
@@ -1135,7 +1136,7 @@ function reviewUpdateComparison() {
         reviewRenderCharts(a, b, ovs.drawn);
         // 実レース由来メトリクス P1 (#145): 比較確定データを race-metrics.js へ(唯一のフック)
         if (typeof rmOnReviewCompare === 'function') rmOnReviewCompare(a, b);
-        reviewNotifyExtras(a, b);
+        reviewNotifyExtras(a, b, ovs.drawn.map(function(o) { return o.entry; }));
     }).catch(function(err) {
         if (token !== reviewState._compareToken) {
             return;
