@@ -858,8 +858,7 @@ function reviewEnsureCharts() {
         cursor: { show: false },
         legend: { show: false },
         padding: [0, 0, 0, 0],
-        points: { show: false },
-        hooks: { draw: [reviewDrawSegmentMarks] }     // #565: 区間の境界と、強調中の区間の帯
+        points: { show: false }
     };
     const C = REVIEW_SERIES_COLORS;
 
@@ -879,6 +878,7 @@ function reviewEnsureCharts() {
     try {
         const charts = {
             speed: new uPlot(Object.assign({}, base, {
+                hooks: { draw: [reviewDrawSegmentMarks] },     // #565: 区間の境界と、強調中の区間の帯
                 series: [
                     {},
                     { stroke: C.a, width: 1.5, fill: C.aFill },        // A 実線
@@ -886,9 +886,11 @@ function reviewEnsureCharts() {
                 ].concat(ovSpeed)
             }), [[0], [null], [null]].concat(ovSpeedData), se),
             delta: new uPlot(Object.assign({}, base, {
+                hooks: { draw: [reviewDrawSegmentMarks] },     // #565: 区間の境界と、強調中の区間の帯
                 series: [{}, { stroke: C.delta, width: 1.25 }]
             }), [[0], [null]], de),
             inputs: new uPlot(Object.assign({}, base, {
+                hooks: { draw: [reviewDrawSegmentMarks] },     // #565: 区間の境界と、強調中の区間の帯
                 scales: { x: { time: false }, y: { auto: false, range: [0, 100] } },
                 series: [
                     {},
