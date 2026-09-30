@@ -3,17 +3,18 @@
  *
  * AiM RaceStudio3 の「best segment times から best theoretical time を算出」に相当する指標。
  * GT7 は実セクタータイムを送らないため、距離グリッドを N 等分した仮想区間ごとに
- * A/B の区間タイムの小さい方を採り、その合計を理論ベストとする。
+ * A/B(と、重ね書きで選んだ周回)の区間タイムの小さい方を採り、その合計を理論ベストとする。
  * 実ベスト(A/B の速い方)との差が「取りこぼし」で、ラップのどこで時間を失っているかを
  * TRACK MAP / TIME DELTA と併せて探る手掛かりになる。
  *
  * 前提と限界(表示にも明記する):
- *  - A/B の 2 ラップのみからの合成(N=20 区間)。ラップ数が増えるほど理論値は速くなる。
+ *  - A/B の 2 ラップ(重ね書きで比較可能な周回を選んでいれば、それらも含む。最大7本)からの合成
+ *    (N=20 区間)。ラップ数が増えるほど理論値は速くなる。
  *  - 区間境界は距離の等分で、コースの実コーナーとは無関係。
  *  - 同一コースの場合のみ算出する(コースが異なる場合は算出しない)。
  *  - 走行ラインの違いによる距離差は、短い方の距離範囲で切り揃えて比較する。
  *
- * 契約: review-view.js の reviewNotifyExtras() から tbOnReviewCompare(a, b) が呼ばれる
+ * 契約: review-view.js の reviewNotifyExtras() から tbOnReviewCompare(a, b, extras) が呼ばれる
  * 唯一のフック。IIFE で隔離し、公開するグローバルは tbOnReviewCompare のみ。
  */
 (function() {
@@ -29,16 +30,16 @@
     }
 
     /**
-     * A/B の距離連続タイム列(res.time[])から理論ベストの取りこぼしを求める。
+     * 各ラップの距離連続タイム列(res.time[])から理論ベストの取りこぼしを求める。
+     * @param {Array} laps - 2本以上の {res} (A/B と、比較可能な重ね書きの周回)
      * @returns {Object|null} {gainS, bestS} または算出不能なら null
      */
-    function compute(a, b) {
-        const ra = a && a.res;
-        const rb = b && b.res;
-        if (!ra || !rb || !ra.time || !rb.time) {
+    function compute(laps) {
+        const rs = laps.map(function(l) { return l && l.res; });
+        if (rs.length < 2 || rs.some(function(r) { return !r || !r.time; })) {
             return null;
         }
-        const n = Math.min(ra.time.length, rb.time.length);
+        const n = Math.min.apply(null, rs.map(function(r) { return r.time.length; }));
         if (n < SEGMENTS + 1) {
             return null;
         }
@@ -46,13 +47,9 @@
         for (let s = 0; s < SEGMENTS; s++) {
             const i0 = Math.floor((n - 1) * s / SEGMENTS);
             const i1 = Math.floor((n - 1) * (s + 1) / SEGMENTS);
-            const ta = ra.time[i1] - ra.time[i0];
-            const tb = rb.time[i1] - rb.time[i0];
-            theory += Math.min(ta, tb);
+            theory += Math.min.apply(null, rs.map(function(r) { return r.time[i1] - r.time[i0]; }));
         }
-        const totalA = ra.time[n - 1] - ra.time[0];
-        const totalB = rb.time[n - 1] - rb.time[0];
-        const best = Math.min(totalA, totalB);
+        const best = Math.min.apply(null, rs.map(function(r) { return r.time[n - 1] - r.time[0]; }));
         return { gainS: Math.max(0, best - theory), bestS: best };
     }
 
@@ -72,7 +69,12 @@
         el.title = title || '';
     }
 
-    window.tbOnReviewCompare = function(a, b) {
+    /**
+     * @param {Object|null} a
+     * @param {Object|null} b
+     * @param {Array} [extras] - 重ね書きで描画している周回の詳細(基準と比較可能と判定済み)。無ければ A/B のみ
+     */
+    window.tbOnReviewCompare = function(a, b, extras) {
         if (!a || !b) {
             setText('理論ベスト: A/B両方を選択', '');
             return;
@@ -99,20 +101,24 @@
             }
             return;
         }
-        const r = compute(a, b);
+        // 重ね書きの周回は、A とも比較可能なものだけ加える(A/B と同じ判定)
+        const laps = [a, b].concat((extras || []).filter(function(e) {
+            return e && e !== a && e !== b && comparable(a, e).ok;
+        }));
+        const r = compute(laps);
         if (!r) {
             setText('理論ベスト: --', '');
             return;
         }
-        const la = a.meta && a.meta.laptime_ms_approx;
-        const lb = b.meta && b.meta.laptime_ms_approx;
-        const fastest = (la && lb) ? Math.min(la, lb) : (la || lb || 0);
+        const times = laps.map(function(l) { return l.meta && l.meta.laptime_ms_approx; }).filter(Boolean);
+        const fastest = times.length ? Math.min.apply(null, times) : 0;
         const gainMs = r.gainS * 1000;
         const abs = fastest ? fmtLap(fastest - gainMs) + ' ' : '';
         setText(
-            '理論ベスト: ' + abs + '(実ベスト比 −' + r.gainS.toFixed(2) + 's)',
-            SEGMENTS + '等分した仮想区間ごとに A/B の速い方を合成した近似値です。' +
-            'A/B の 2 ラップのみが対象で、区間境界は実コーナーとは無関係です。'
+            '理論ベスト: ' + abs + '(実ベスト比 −' + r.gainS.toFixed(2) + 's' +
+            (laps.length > 2 ? '・' + laps.length + '本から合成' : '') + ')',
+            SEGMENTS + '等分した仮想区間ごとに' + (laps.length > 2 ? 'A/B と重ね書きの' + laps.length + '本' : ' A/B') +
+            'の速い方を合成した近似値です。区間境界は実コーナーとは無関係です。'
         );
     };
 })();
