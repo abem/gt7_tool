@@ -716,6 +716,7 @@ function reviewBuildSeries(samples) {
             dist: cum,
             t: t,
             speed: s.speed_kmh || 0,
+            gear: s.gear || 0,
             throttle: s.throttle_pct || 0,
             brake: s.brake_pct || 0,
             x: s.position_x || 0,
@@ -752,7 +753,8 @@ function reviewFetchDetail(file) {
                 resampled = resampleByDist(series.samples, reviewStepM());
                 resampled.totalDist = series.cumDist;
             }
-            const entry = { meta: body.meta, res: resampled };
+            // raw: 距離グリッドへ間引く前の記録サンプル(約10Hz)。分布(CHANNEL PLOTS のヒストグラム)用
+            const entry = { meta: body.meta, res: resampled, raw: series.samples };
             reviewState.detailCache[file] = entry;
             if (els.listStatus) {
                 els.listStatus.textContent = '';
@@ -934,6 +936,7 @@ function reviewNotifyExtras(a, b) {
     if (typeof tbOnReviewCompare === 'function') tbOnReviewCompare(a, b);
     if (typeof srOnReviewCompare === 'function') srOnReviewCompare(a, b);
     if (typeof ltOnReviewCompare === 'function') ltOnReviewCompare(a, b);
+    if (typeof cpOnReviewCompare === 'function') cpOnReviewCompare(a, b);
 }
 
 /**

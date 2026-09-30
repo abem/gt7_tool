@@ -59,6 +59,18 @@ const RM_OIL_PRESSURE_DROP_FRAC = 0.3;    // 直近平均比でこの割合超�
 const RM_FUEL_PER_LAP_HISTORY_LEN = 5;
 const RM_FUEL_PER_LAP_RISE_FRAC = 0.5;    // 誤検知リスクが高いため緩めの閾値(直近平均比+50%)
 
+/* ---- T8(#555) 警告の1枠集約 定数 ---- */
+// 同時に複数の警告が出ても、最も重要な1件だけを1枠に出す。優先度は severity の高い順
+// (serious: 油圧 > warning: ラップ悪化・タイヤ温度 > notice: 燃料消費率)、同じなら新しい方。
+// 確認(タップ/Enter)で消去すると、次に重要な警告が出る。確認されなくても、期限で自動的に消える
+// (serious は油圧のような機械トラブルなので長め)。DRIVE・REVIEW では従来どおりトーストのまま。
+const RM_ALERT_PRIORITY = { serious: 3, warning: 2, notice: 1 };
+const RM_ALERT_TTL_MS = { serious: 5 * 60 * 1000, warning: 60 * 1000, notice: 30 * 1000 };
+
+/* ---- T9(#555) 燃料の目標消費 定数 ---- */
+const RM_FUEL_TARGET_STORAGE = 'gt7.fuelTargetPerLap';   // 目標燃費[L/lap]の保存名(localStorage)
+const RM_FUEL_TARGET_TOLERANCE = 0.02;               // 目標との差がこの割合以内は「目標どおり」
+
 /* ---- B2(#436) AIハイライト自動生成 定数 ---- */
 // バッチ処理(replayState.frames全体が確定済みのrmOnReplayBuffer時点)向けの検出方式。
 // B1のライブ移動窓方式(直近N件との比較)とは異なり、ラップ全体の中央値を基準にする。
@@ -94,6 +106,8 @@ const rmState = {
         fuelPerLapHistory: [],
         notifiedLapNumbers: new Set()       // 既に警告済みのラップ番号(重複通知防止)
     },
+    alerts: { active: [], el: null },   // T8(#555): 表示待ちの警告と、1枠の要素
+    fuelTarget: null,     // T9(#555): 目標燃費[L/lap]。未設定は null
     highlights: []        // B2(#436): 直近rmOnReplayBuffer時点で検出したハイライト一覧
 };
 
@@ -794,6 +808,105 @@ function rmDegRate(lapTimes) {
 }
 
 /**
+ * 警告を1枠に集約して出す(T8、#555)。ANALYSIS のみ。DRIVE・REVIEW、または集約先が無い場合は、
+ * 従来どおり pushNotification() のトーストにする(DRIVE は注視時間・応答ボタンとの関係で現状維持)。
+ * 同じラベルの警告は新しい方で置き換える。
+ * @param {string} label
+ * @param {string} value
+ * @param {string} severity - serious|warning|notice
+ */
+function rmRaiseAlert(label, value, severity) {
+    const feed = document.getElementById('race-engineer-feed');
+    const cls = document.body ? document.body.classList : null;
+    if (!feed || !cls || cls.contains('drive-mode') || cls.contains('review-mode')) {
+        if (typeof pushNotification === 'function') {
+            pushNotification(label, value, severity);
+        }
+        return;
+    }
+    const active = rmState.alerts.active.filter(function(a) { return a.label !== label; });
+    active.push({ label: label, value: value, severity: severity, at: performance.now() });
+    rmState.alerts.active = active;
+    rmRenderAlerts();
+}
+
+/** 期限切れを除き、最重要の1件を返す(無ければ null)。 */
+function rmTopAlert() {
+    const now = performance.now();
+    rmState.alerts.active = rmState.alerts.active.filter(function(a) {
+        return now - a.at < (RM_ALERT_TTL_MS[a.severity] || RM_ALERT_TTL_MS.notice);
+    });
+    let top = null;
+    rmState.alerts.active.forEach(function(a) {
+        const pa = RM_ALERT_PRIORITY[a.severity] || 0;
+        const pt = top ? (RM_ALERT_PRIORITY[top.severity] || 0) : -1;
+        if (!top || pa > pt || (pa === pt && a.at > top.at)) {
+            top = a;
+        }
+    });
+    return top;
+}
+
+/** 警告の1枠を描画する(最重要の1件+他の件数)。無ければ枠ごと消す。 */
+function rmRenderAlerts() {
+    const st = rmState.alerts;
+    const top = rmTopAlert();
+    if (!top) {
+        if (st.el && st.el.parentNode) {
+            st.el.parentNode.removeChild(st.el);
+        }
+        st.el = null;
+        return;
+    }
+    const feed = document.getElementById('race-engineer-feed');
+    if (!feed) {
+        return;
+    }
+    if (!st.el) {
+        const el = document.createElement('div');
+        el.id = 'rm-alert-slot';
+        el.setAttribute('role', 'button');
+        el.tabIndex = 0;
+        el.title = 'タップ／Enterで確認（消去）';
+        const ack = function() {
+            const t = rmTopAlert();
+            if (t) {
+                rmState.alerts.active = rmState.alerts.active.filter(function(a) { return a !== t; });
+            }
+            rmRenderAlerts();
+        };
+        el.addEventListener('click', ack);
+        el.addEventListener('keydown', function(ev) {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+                ev.preventDefault();
+                ack();
+            }
+        });
+        feed.insertBefore(el, feed.firstChild);
+        st.el = el;
+    }
+    const el = st.el;
+    el.className = 'engineer-alert show rm-alert-slot ' + top.severity;
+    el.textContent = '';
+    const label = document.createElement('span');
+    label.className = 'ea-label';
+    label.textContent = top.label;
+    const val = document.createElement('span');
+    val.className = 'ea-value';
+    val.textContent = top.value;
+    el.appendChild(label);
+    el.appendChild(val);
+    const others = rmState.alerts.active.length - 1;
+    if (others > 0) {
+        const more = document.createElement('span');
+        more.className = 'rm-alert-more';
+        more.textContent = '+' + others;
+        more.title = '他に ' + others + ' 件の警告（確認すると次に重要なものを表示）';
+        el.appendChild(more);
+    }
+}
+
+/**
  * アウトライヤー検出自動化(B1、#436)。マシントラブルの未然防止を狙い、
  * 「除外」ではなく「検出・警告」する方向でrmDegRateと同じ中央値±8%方式(ラップタイム)、
  * および移動窓・変化率ベースの新方式(タイヤ温度・油圧・燃料消費率のライブ値)を用いる。
@@ -814,13 +927,11 @@ function rmOutlierTick() {
                 const deviation = (latest.time - median) / median;
                 if (deviation > RM_DEG_OUTLIER_FRAC) {
                     rmState.outlier.notifiedLapNumbers.add(latest.number);
-                    if (typeof pushNotification === 'function') {
-                        pushNotification(
-                            'LAP ANOMALY',
-                            'L' + latest.number + ' +' + (deviation * 100).toFixed(0) + '%',
-                            'warning'
-                        );
-                    }
+                    rmRaiseAlert(
+                        'LAP ANOMALY',
+                        'L' + latest.number + ' +' + (deviation * 100).toFixed(0) + '%',
+                        'warning'
+                    );
                 }
             }
         }
@@ -839,9 +950,7 @@ function rmOutlierTick() {
         if (hist.length >= RM_TYRE_TEMP_HISTORY_LEN) {
             const delta = v - hist[0];
             if (delta > RM_TYRE_TEMP_RATE_THRESHOLD) {
-                if (typeof pushNotification === 'function') {
-                    pushNotification('TYRE TEMP', tyreLabels[i] + ' +' + delta.toFixed(0) + '°C/5s', 'warning');
-                }
+                rmRaiseAlert('TYRE TEMP', tyreLabels[i] + ' +' + delta.toFixed(0) + '°C/5s', 'warning');
                 hist.length = 0; // 連続通知を避けるためリセット
             }
         }
@@ -859,9 +968,7 @@ function rmOutlierTick() {
         if (hist.length >= RM_OIL_PRESSURE_HISTORY_LEN) {
             const baseline = hist.reduce(function(a, b) { return a + b; }, 0) / hist.length;
             if (baseline > 0 && (baseline - oilV) / baseline > RM_OIL_PRESSURE_DROP_FRAC) {
-                if (typeof pushNotification === 'function') {
-                    pushNotification('OIL PRESSURE', oilV.toFixed(1) + ' bar', 'serious');
-                }
+                rmRaiseAlert('OIL PRESSURE', oilV.toFixed(1) + ' bar', 'serious');
                 hist.length = 0;
             }
         }
@@ -879,9 +986,7 @@ function rmOutlierTick() {
         if (hist.length >= RM_FUEL_PER_LAP_HISTORY_LEN) {
             const baseline = hist.reduce(function(a, b) { return a + b; }, 0) / hist.length;
             if (baseline > 0 && (fuelV - baseline) / baseline > RM_FUEL_PER_LAP_RISE_FRAC) {
-                if (typeof pushNotification === 'function') {
-                    pushNotification('FUEL RATE', fuelV.toFixed(2) + ' L/lap', 'notice');
-                }
+                rmRaiseAlert('FUEL RATE', fuelV.toFixed(2) + ' L/lap', 'notice');
                 hist.length = 0;
             }
         }
@@ -890,6 +995,78 @@ function rmOutlierTick() {
             hist.shift();
         }
     }
+}
+
+/* ================================================================
+ *  T9(#555): 燃料の目標消費との差分
+ *  FUEL カードに目標燃費[L/lap]の入力欄と、現在の PER LAP との差を色つきで表示する
+ *  (Formula E のエネルギー目標表示の考え方)。目標は localStorage に保存する(未設定は表示しない)。
+ *  PER LAP はカードの表示値(main.py の推定)を厳格パースして使う(M-4 と同じ方針)。
+ * ================================================================ */
+
+function rmLoadFuelTarget() {
+    try {
+        const v = parseFloat(localStorage.getItem(RM_FUEL_TARGET_STORAGE));
+        return v > 0 ? v : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function rmSaveFuelTarget(v) {
+    try {
+        if (v > 0) {
+            localStorage.setItem(RM_FUEL_TARGET_STORAGE, String(v));
+        } else {
+            localStorage.removeItem(RM_FUEL_TARGET_STORAGE);
+        }
+    } catch (e) {
+        // 保存できなくても表示は動く
+    }
+}
+
+/** 目標差分の表示を更新する(1Hz。入力欄が無ければ何もしない)。 */
+function rmFuelTargetTick() {
+    const input = document.getElementById('fuel-target-input');
+    const out = document.getElementById('fuel-target-diff');
+    if (!input || !out) {
+        return;
+    }
+    const perLapEl = document.getElementById('fuel-per-lap');
+    const perLap = perLapEl ? rmParseFloatStrict(perLapEl.textContent) : null;
+    const target = rmState.fuelTarget;
+    out.classList.remove('over', 'under', 'on');
+    if (!(target > 0) || !(perLap > 0)) {
+        out.textContent = '--';
+        return;
+    }
+    const diff = perLap - target;
+    out.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' L/lap';
+    if (Math.abs(diff) <= target * RM_FUEL_TARGET_TOLERANCE) {
+        out.classList.add('on');       // 目標どおり
+    } else {
+        out.classList.add(diff > 0 ? 'over' : 'under');   // 使い過ぎ=赤 / 節約=緑
+    }
+}
+
+/** 目標入力欄の初期化(保存値の復元と、入力の保存)。 */
+function rmInitFuelTarget() {
+    const input = document.getElementById('fuel-target-input');
+    if (!input || input.dataset.rmBound) {
+        return;
+    }
+    input.dataset.rmBound = '1';
+    rmState.fuelTarget = rmLoadFuelTarget();
+    if (rmState.fuelTarget) {
+        input.value = String(rmState.fuelTarget);
+    }
+    input.addEventListener('input', function() {
+        const v = parseFloat(input.value);
+        rmState.fuelTarget = v > 0 ? v : null;
+        rmSaveFuelTarget(rmState.fuelTarget);
+        rmFuelTargetTick();
+    });
+    rmFuelTargetTick();
 }
 
 /** M-4 の1Hz更新本体。 */
@@ -932,6 +1109,12 @@ function rmStrategyTick() {
 
     // B1(#436): アウトライヤー検出自動化。同じ1Hzティックに統合(新規タイマーは追加しない)。
     rmOutlierTick();
+    // T9(#555): 燃料の目標差分・T8(#555): 警告の期限切れの掃除も同じティックで行う
+    rmInitFuelTarget();
+    rmFuelTargetTick();
+    if (rmState.alerts.active.length) {
+        rmRenderAlerts();
+    }
 }
 
 /* ================================================================
