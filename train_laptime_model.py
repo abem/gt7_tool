@@ -369,6 +369,9 @@ def run(log_dir, model_dir, min_group_size, summary_out=None):
     group_dropped = {}
     for (course_id, car_id), sub in df.groupby(["course_id", "car_id"]):
         kept, dropped = filter_group_outliers(sub)
+        if kept.empty:
+            # 中央値から外れる周回だけでグループが空になった場合も、要約から消えないよう記録する
+            dropped = dict(dropped, all_dropped=True)
         if dropped["distance"] or dropped["laptime"]:
             group_dropped[f"{course_id}__{car_id}"] = dropped
         cleaned.append(kept)
@@ -385,7 +388,7 @@ def run(log_dir, model_dir, min_group_size, summary_out=None):
         try:
             result = train_and_evaluate_group(sub)
         except ValueError as e:
-            # GroupShuffleSplitがラップ数不足で分割できない等
+            # 時系列の分割(_time_ordered_split)が、ラップ数不足で成り立たない等
             group_results[key] = {"error": str(e)}
             continue
         model = result.pop("_model")
