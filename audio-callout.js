@@ -27,7 +27,12 @@
     const MIN_GAP_MS = 3000;
     const SPOKEN_SEVERITIES = { serious: 1, critical: 2 };
 
-    // 通知のラベル→読み上げ文(値の入れ方も含む)。無い場合は「ラベル 値」をそのまま読む
+    // pit-wall.js は、エンジニアのメッセージを自前で読み上げる(speakEngineerMessage)。二重に読まないため、対象外
+    const SELF_SPOKEN_LABELS = { 'ENGINEER': true };
+
+    // 通知のラベル→読み上げ文(値の入れ方も含む)。無い場合は「ラベル 値」をそのまま読む。
+    // LAP ANOMALY / TYRE TEMP / FUEL RATE は、現状の severity(warning / notice)では読み上げ対象外
+    // (SPOKEN_SEVERITIES に無い)。severity を上げたときのために、文だけ用意している。
     const LABEL_TEXT = {
         'OIL PRESSURE': function(v) { return '油圧が低下しています。' + v; },
         'LAP ANOMALY': function(v) { return 'ラップタイムが悪化しています。' + v; },
@@ -103,13 +108,19 @@
 
     /** 通知(pushNotification・警告の1枠)から。serious / critical だけ読む。 */
     window.acOnNotification = function(label, value, severity) {
-        const rank = SPOKEN_SEVERITIES[severity];
-        if (!rank || suppressedByView()) {
-            return;
+        try {
+            const rank = SPOKEN_SEVERITIES[severity];
+            if (!rank || SELF_SPOKEN_LABELS[label] || suppressedByView()) {
+                return;
+            }
+            const v = value == null ? '' : String(value);
+            const make = LABEL_TEXT[label];
+            // critical は、読み上げ中でも割り込む。同じ瞬間に複数の critical が出たときは、最後の1件だけが聞こえる
+            // (ブラウザの音声合成は、cancel で前の発話を捨てるため。通知の表示は、全件が従来どおり出る)
+            speak(make ? make(v) : (label + ' ' + v), rank >= 2);
+        } catch (e) {
+            // 読み上げの失敗は、通知の表示・記録に影響させない(呼び出し元は通知の中核の処理)
         }
-        const v = value == null ? '' : String(value);
-        const make = LABEL_TEXT[label];
-        speak(make ? make(v) : (label + ' ' + v), rank >= 2);
     };
 
     /**
@@ -118,6 +129,14 @@
      * @param {number} bestBeforeMs - このラップの前のベスト(無ければ 0)
      */
     window.acOnLapComplete = function(lapMs, bestBeforeMs) {
+        try {
+            announceLap(lapMs, bestBeforeMs);
+        } catch (e) {
+            // 読み上げの失敗は、ラップ完了の処理(ベスト更新)に影響させない
+        }
+    };
+
+    function announceLap(lapMs, bestBeforeMs) {
         if (!(lapMs > 0) || suppressedByView()) {
             return;
         }
@@ -132,12 +151,14 @@
                 ((lapMs - bestBeforeMs) / 1000).toFixed(2) + ' 秒遅い';
         }
         speak(text, false);
-    };
+    }
 
     function setEnabled(on, byUser) {
         state.enabled = on;
         save(on);
         if (state.btn) {
+            // 他のツールバーのトグルと同じ、見た目の状態(.tb-btn.active)と、aria-pressed
+            state.btn.classList.toggle('active', on);
             state.btn.setAttribute('aria-pressed', on ? 'true' : 'false');
             state.btn.title = on ? '音声の通知: オン(クリックでオフ)' : '音声の通知: オフ(クリックでオン)';
         }
