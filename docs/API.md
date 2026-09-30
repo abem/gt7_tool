@@ -294,7 +294,14 @@ ws.onmessage = (event) => {
 {"error": "no quality-gated model for this course/car_id combination"}
 ```
 
-学習データ不足・MAE>3%・未学習の組み合わせは全てこの404になります（対応済みコース×車種の一覧は`models/gated_groups.json`、2026-08-02時点で11組み合わせ）。
+学習データ不足・MAE>3%・未学習の組み合わせは全てこの404になります（対応済みコース×車種の一覧は`models/gated_groups.json`、2026-09-30の再学習時点で15組み合わせ）。
+
+**品質ゲートと妥当性チェック（#560）:**
+- 学習は、同じコース×車種の中央値から走行距離（±10%）・ラップタイム（±30%）が外れる記録（途中で切れた記録・複数周回を含む記録）を除いて行います。
+- 検証は、古い周回で学習し、**最も新しい周回**（全体の20%、最低3本）で評価する時系列の分割です。MAE≤3%の判定はこの評価で行い、`mae_ms`/`mae_pct` もこの評価値です。保存されるモデルは、全周回で学習し直したものです。
+- `gated_groups.json` の各組には、`median_laptime_ms`（学習時のラップタイム中央値）・`median_distance_m`・`n_test_laps`・`trained_at` が入ります。
+- 予測値が `median_laptime_ms` から**±30%を超えて外れる**場合は、モデルが今の記録に合っていない（記録の入れ替わり・コース識別の食い違い等）とみなし、モデル無しと同じ404を返します（`{"error": "prediction is implausible for this course/car_id combination"}`）。`median_laptime_ms` の無い旧形式の許可リストでは、この確認は行いません。
+- 記録が入れ替わったら、`train_laptime_model.py` を再実行してモデルを更新してください（モデルは要求ごとに読み込むため、サーバーの再起動は不要です）。
 
 **レスポンス（400、パラメータ不正）:**
 

@@ -1279,6 +1279,7 @@ async def api_laps_import_handler(request):
 
 PREDICT_MODEL_DIR = "models"
 PREDICT_GATED_GROUPS_FILE = os.path.join(PREDICT_MODEL_DIR, "gated_groups.json")
+PREDICT_PLAUSIBLE_FRAC = 0.30   # 予測が学習時のラップタイム中央値から±30%超なら提供しない(#560)
 
 # train_laptime_model.py の FEATURE_COLUMNS と同一順序(モデル入力の列順を一致させる)。
 PREDICT_FEATURE_COLUMNS = (
@@ -1441,6 +1442,18 @@ async def api_predict_laptime_handler(request):
     except Exception as e:
         logger.error(f"Prediction failed for {key}: {e}", exc_info=True)
         return web.json_response({"error": "prediction failed"}, status=500)
+
+    # #560: 学習時の周回の分布から大きく外れる予測は、モデルが今の記録に合っていない
+    # (記録の入れ替わり・コース識別の食い違い等)とみなし、提供しない(=モデル無しと同じ404)。
+    median_ms = group.get("median_laptime_ms")
+    if median_ms and abs(predicted_ms - median_ms) / median_ms > PREDICT_PLAUSIBLE_FRAC:
+        logger.warning(
+            f"Implausible prediction withheld for {key}: {predicted_ms:.0f}ms vs median {median_ms:.0f}ms"
+        )
+        return web.json_response(
+            {"error": "prediction is implausible for this course/car_id combination"},
+            status=404,
+        )
 
     return web.json_response(
         {

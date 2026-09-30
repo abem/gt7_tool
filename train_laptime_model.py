@@ -5,6 +5,11 @@
 (25/50/75%時点)における走行特徴量から、最終ラップタイム(last_laptime)を予測する回帰
 モデルを学習・検証する。
 
+#560 の是正: 学習データは、同じコース×車種の中央値から走行距離・ラップタイムが外れる記録
+(途中で切れた記録・複数周回を含む記録)を除き、検証は「古い周回で学習し、最も新しい周回で
+評価する」時系列の分割で行う(ランダム分割では、記録の入れ替わりで分布が変わったモデルが
+高精度に見えてしまうため)。品質ゲートはこの時系列の評価で判定する。
+
 このスクリプトはgt7data/(既存の実測ラップデータ)を読み取り専用で走査するだけで、
 ライブ受信経路(decoder.py/telemetry.py/main.pyのtelemetry_background_task/
 broadcast_to_clients/broadcast_consumer_task)には一切触れない、独立実行のオフライン
@@ -22,18 +27,20 @@ broadcast_to_clients/broadcast_consumer_task)には一切触れない、独立�
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-from sklearn.model_selection import GroupShuffleSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -66,6 +73,16 @@ QUALITY_GATE_MAE_PCT = 3.0
 
 GATED_GROUPS_FILENAME = "gated_groups.json"
 
+# 学習データの整合(#560)。同じコース×車種の単独周回は、走行距離・ラップタイムがほぼ揃う。
+# 途中で切れた記録や複数周回を含む記録(Lap-1等)は、目標値(最後の1周のタイム)と、特徴量の
+# 進行度(ファイル全体の距離に対する割合)が対応しないため、グループの中央値から外れるものを除く。
+GROUP_DIST_TOLERANCE = 0.10       # 走行距離が中央値から±10%超なら除外
+GROUP_LAPTIME_TOLERANCE = 0.30    # ラップタイムが中央値から±30%超なら除外
+# 時系列の検証(#560): 最も新しい周回を検証に、それより古い周回を学習に使う。
+TEST_LAP_FRACTION = 0.2
+MIN_TEST_LAPS = 3
+MIN_TRAIN_LAPS = 5
+
 
 def _write_gated_groups(model_dir, group_results):
     """品質ゲート(MAE<=QUALITY_GATE_MAE_PCT)を満たすグループのみを抽出し、
@@ -89,6 +106,12 @@ def _write_gated_groups(model_dir, group_results):
                 "mae_pct": result["mae_pct"],  # 表示用(丸め済み)。判定はmae_pct_rawで実施済み
                 "n_laps": result["n_laps"],
                 "algorithm": result["algorithm"],
+                # #560: 推論API(main.py)の妥当性チェックと、モデルの世代の把握に使う
+                "median_laptime_ms": result["median_laptime_ms"],
+                "median_distance_m": result["median_distance_m"],
+                "n_test_laps": result["n_test_laps"],
+                "validation": "time_holdout",
+                "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
     path = os.path.join(model_dir, GATED_GROUPS_FILENAME)
     with open(path, "w") as f:
@@ -170,6 +193,7 @@ def _extract_checkpoint_rows(file_id, samples, course_id, car_id, last_laptime):
             "avg_brake_pct": float(np.mean(brakes)),
             "avg_tyre_temp": float(np.mean(tyre_temp_means)) if tyre_temp_means else np.nan,
             "last_laptime": float(last_laptime),
+            "total_dist_m": float(total_dist),
         })
     return rows
 
@@ -235,20 +259,54 @@ def build_dataset(log_dir):
     return df, dict(skipped), total_files
 
 
-def _group_train_test_split(df, test_size=0.2, random_state=42):
-    """同一ラップ(file)のチェックポイント行がtrain/testに分かれないよう、
-    ラップ単位でグループ分割する(リーク防止)。
+def filter_group_outliers(df_group):
+    """同じコース×車種のラップのうち、走行距離・ラップタイムが中央値から大きく外れる記録を除く(#560)。
+
+    途中で切れた記録・複数周回を含む記録は、目標値(最後の1周のタイム)と特徴量の進行度が
+    対応しないため、学習・検証の双方から除外する。
+    Returns: (絞り込み後のDataFrame, 除外内訳 {"distance": n, "laptime": n})
     """
-    splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-    train_idx, test_idx = next(splitter.split(df, groups=df["file"]))
-    return df.iloc[train_idx], df.iloc[test_idx]
+    per_file = df_group.groupby("file").agg(
+        dist=("total_dist_m", "first"), laptime=("last_laptime", "first")
+    )
+    dropped = {"distance": 0, "laptime": 0}
+    if len(per_file) < 3:
+        return df_group, dropped
+    med_dist = float(per_file["dist"].median())
+    med_lap = float(per_file["laptime"].median())
+    keep = []
+    for fn, row in per_file.iterrows():
+        if med_dist > 0 and abs(row["dist"] - med_dist) / med_dist > GROUP_DIST_TOLERANCE:
+            dropped["distance"] += 1
+        elif med_lap > 0 and abs(row["laptime"] - med_lap) / med_lap > GROUP_LAPTIME_TOLERANCE:
+            dropped["laptime"] += 1
+        else:
+            keep.append(fn)
+    return df_group[df_group["file"].isin(keep)], dropped
+
+
+def _time_ordered_split(df):
+    """時系列の分割(#560): ファイル名(=記録時刻)の昇順で、最も新しい周回を検証に使う。
+
+    検証は、学習に使った周回より後の周回だけで行う。ラップ数が足りなければ ValueError。
+    """
+    files = sorted(df["file"].unique())
+    n_test = max(MIN_TEST_LAPS, int(math.ceil(len(files) * TEST_LAP_FRACTION)))
+    if len(files) - n_test < MIN_TRAIN_LAPS:
+        raise ValueError(
+            f"not enough laps for a time-ordered split ({len(files)} laps, "
+            f"need >= {MIN_TRAIN_LAPS + n_test})"
+        )
+    test_files = set(files[-n_test:])
+    is_test = df["file"].isin(test_files)
+    return df[~is_test], df[is_test]
 
 
 def train_and_evaluate_group(df_group):
     """1つのコース×車種グループについて、Ridge/RandomForestを比較しMAE/RMSEの
     良い方を採用する。"""
     n_laps = df_group["file"].nunique()
-    train_df, test_df = _group_train_test_split(df_group)
+    train_df, test_df = _time_ordered_split(df_group)
 
     X_train = train_df[list(FEATURE_COLUMNS)].values
     y_train = train_df["last_laptime"].values
@@ -272,15 +330,27 @@ def train_and_evaluate_group(df_group):
         if best is None or mae < best["mae_ms"]:
             best = result
 
+    # 評価に使った分割で選んだ方式を、全ラップ(学習+検証)で学習し直して保存する
+    # (最新の周回の傾向も反映するため。評価値は上の時系列の検証のもの)
+    final_model = clone(candidates[best["algorithm"]])
+    final_model.fit(df_group[list(FEATURE_COLUMNS)].values, df_group["last_laptime"].values)
+
+    per_file = df_group.groupby("file").agg(
+        dist=("total_dist_m", "first"), laptime=("last_laptime", "first")
+    )
     return {
         "n_laps": int(n_laps),
         "n_train_rows": int(len(train_df)),
         "n_test_rows": int(len(test_df)),
+        "n_test_laps": int(test_df["file"].nunique()),
         "algorithm": best["algorithm"],
         "mae_ms": best["mae_ms"],
         "rmse_ms": best["rmse_ms"],
-        "mean_laptime_ms": float(df_group["last_laptime"].mean()),
-        "_model": best["model"],
+        # MAE%の分母は、検証に使った(最新の)周回のラップタイム平均
+        "mean_laptime_ms": float(test_df["last_laptime"].mean()),
+        "median_laptime_ms": float(per_file["laptime"].median()),
+        "median_distance_m": float(per_file["dist"].median()),
+        "_model": final_model,
     }
 
 
@@ -293,6 +363,16 @@ def run(log_dir, model_dir, min_group_size, summary_out=None):
             "total_files_scanned": total_files, "skipped": skipped,
             "groups": {}, "note": "no usable data",
         }
+
+    # #560: グループごとに、中央値から外れる記録(途中切れ・複数周回)を除いてから数える
+    cleaned = []
+    group_dropped = {}
+    for (course_id, car_id), sub in df.groupby(["course_id", "car_id"]):
+        kept, dropped = filter_group_outliers(sub)
+        if dropped["distance"] or dropped["laptime"]:
+            group_dropped[f"{course_id}__{car_id}"] = dropped
+        cleaned.append(kept)
+    df = pd.concat(cleaned, ignore_index=True)
 
     group_sizes = df.groupby(["course_id", "car_id"])["file"].nunique()
     trainable_groups = group_sizes[group_sizes >= min_group_size].index.tolist()
@@ -331,6 +411,7 @@ def run(log_dir, model_dir, min_group_size, summary_out=None):
         },
         "quality_gate_mae_pct": QUALITY_GATE_MAE_PCT,
         "gated_groups_count": len(gated_groups),
+        "group_outliers_dropped": group_dropped,
     }
 
     if summary_out:
