@@ -1090,6 +1090,8 @@ function reviewUpdateComparison() {
         }
         reviewRenderOverlayLegend([]);
         reviewRenderCharts(null, null, []);
+        // RACE METRICS も初期表示へ戻す(選択を全て外したときに、古い値が残らないように)
+        if (typeof rmOnReviewCompare === 'function') rmOnReviewCompare(null, null);
         reviewNotifyExtras(null, null);
         return;
     }
