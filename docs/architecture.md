@@ -130,6 +130,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `theory-best.js` | REVIEW 理論ベスト（#552） | 距離を20等分した仮想区間ごとに A/B の速い方を合成した近似値と、実ベストとの差を要約帯へ表示。コース不一致・走行距離差3%超は算出しない。`tbOnReviewCompare` が唯一のフック |
 | `segment-report.js` + `segment-report.css` | REVIEW 区間レポート（#552 T5） | 距離20等分の区間ごとに A/B のタイム・最高速・最低速・最大ブレーキ・平均スロットルを表で表示。行ホバー/タップで `tmHighlightRange` を呼び地図の区間を強調。`srOnReviewCompare` が唯一のフック。トラックマップとの左右並び（`#tm-sr-row`）もここで定義 |
 | `channel-plots.js` + `channel-plots.css` | REVIEW 散布図・チャンネル分布（#555 T6/T7） | 任意の2チャンネルの散布図（速度・スロットル・ブレーキ・距離・縦加速度・タイム差）と、1チャンネルの分布（スロットル・ブレーキ・速度・ギア）を A/B で描く Canvas2D。散布図は距離10m格子、分布は記録サンプル（`reviewFetchDetail` の `raw`）から作る。`cpOnReviewCompare` が唯一のフック。IIFE で隔離 |
+| `corner-report.js` + `corner-report.css` | REVIEW コーナー別レポート（#561） | A/B の速度の平均の谷からコーナーを検出し、ブレーキ位置・踏み込み・離す位置・最低速度・スロットル位置・立ち上がり速度を A/B で比較。損失の大きい順に、操作の違いを走行順につないだ文章を出す。行ホバーで `tmHighlightRange`。`crOnReviewCompare` が唯一のフック。IIFE で隔離 |
 | `lap-trend.js` + `lap-trend.css` | REVIEW ラップ推移（#552 T3） | 同一コース・同一車種のラップタイム推移（uPlot）。ボタン操作時のみ `/api/laps/{file}?every=60` を最大40本・3並列で取得し、距離±3%外を除外。`ltOnReviewCompare` が唯一のフック |
 | `websocket.js` | WebSocket通信 | 接続管理、テレメトリデータ処理 |
 | `test-mode.js` | テストモード | デモデータ生成、PS5なしの動作確認 |
