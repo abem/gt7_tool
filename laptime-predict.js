@@ -28,6 +28,7 @@ const LP_DISCONTINUITY_M = 120;      // review-view.js/telemetry-analysis.js等�
 const LP_REFERENCE_CANDIDATE_LIMIT = 30; // 参照距離探索時の候補ラップ上限(car_id絞り込み後)
 const LP_REFERENCE_SAMPLE_COUNT = 6;    // 参照距離に使う同コース周回の本数(距離の塊の中央値を取る。#559)
 const LP_REFERENCE_DIST_TOLERANCE = 0.03; // 同じ周回とみなす距離の許容差(review-view.jsのREVIEW_DIST_TOLERANCEと同じ考え方)
+const LP_REFERENCE_NONE_RETRY_MS = 60 * 1000; // 参照ラップが見つからない組み合わせを探し直す間隔(毎秒の全走査を防ぐ)
 const LP_NO_MODEL_RETRY_MS = 5 * 60 * 1000; // モデル無し(404)の組み合わせを再問い合わせするまでの間隔(#558)
 
 const lpState = {
@@ -39,6 +40,7 @@ const lpState = {
     brakeSum: 0, brakeCount: 0,
     tyreTempSum: 0, tyreTempCount: 0,
     referenceDistanceCache: {},   // key: `${courseId}__${carId}` -> 距離(m)。確定値のみ格納
+    referenceNoneRetryAtMs: {},   // key -> この時刻(performance.now)まで参照距離を探し直さない(同コースの記録が無いとき。#559)
     referenceDistanceFetching: {},// key -> true(取得中、重複fetch防止)
     noModelRetryAtMs: {},         // key -> この時刻(performance.now)まで予測APIへ問い合わせない(404のとき)
     _els: null,
@@ -209,6 +211,10 @@ async function lpFetchReferenceDistance(courseId, carId) {
     if (lpState.referenceDistanceFetching[key]) {
         return null;
     }
+    const retryAt = lpState.referenceNoneRetryAtMs[key];
+    if (retryAt && performance.now() < retryAt) {
+        return null;
+    }
     lpState.referenceDistanceFetching[key] = true;
     try {
         const listResp = await fetch(
@@ -240,6 +246,8 @@ async function lpFetchReferenceDistance(courseId, carId) {
             }
         }
         if (!dists.length) {
+            // 同コースの記録が無い(初めての車種×コースなど)。毎秒の全走査を避け、一定時間あけて探し直す
+            lpState.referenceNoneRetryAtMs[key] = performance.now() + LP_REFERENCE_NONE_RETRY_MS;
             return null;
         }
         const ref = lpPickReferenceDistance(dists);
