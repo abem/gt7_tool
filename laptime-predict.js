@@ -26,6 +26,7 @@ const LP_SAMPLE_INTERVAL_MS = 250;   // ラップ内累積平均のサンプリ�
 const LP_PREDICT_TICK_MS = 1000;     // API呼び出し周期(race-metrics.js M-4と同じ1Hz)
 const LP_DISCONTINUITY_M = 120;      // review-view.js/telemetry-analysis.js等と同じ瞬間移動閾値
 const LP_REFERENCE_CANDIDATE_LIMIT = 30; // 参照距離探索時の候補ラップ上限(car_id絞り込み後)
+const LP_NO_MODEL_RETRY_MS = 5 * 60 * 1000; // モデル無し(404)の組み合わせを再問い合わせするまでの間隔(#558)
 
 const lpState = {
     currentLapNumber: null,
@@ -37,6 +38,7 @@ const lpState = {
     tyreTempSum: 0, tyreTempCount: 0,
     referenceDistanceCache: {},   // key: `${courseId}__${carId}` -> 距離(m)。確定値のみ格納
     referenceDistanceFetching: {},// key -> true(取得中、重複fetch防止)
+    noModelRetryAtMs: {},         // key -> この時刻(performance.now)まで予測APIへ問い合わせない(404のとき)
     _els: null,
 };
 
@@ -258,13 +260,25 @@ async function lpPredictTick() {
         avg_tyre_temp: avgTyreTemp.toFixed(2),
     });
 
+    // モデルが無い(404)と分かっている組み合わせは、一定時間は問い合わせない(#558)。
+    // 毎秒404を返し続け、ブラウザのコンソールとサーバーのログを埋めていた
+    const noModelKey = courseId + '__' + carId;
+    const retryAt = lpState.noModelRetryAtMs[noModelKey];
+    if (retryAt && performance.now() < retryAt) {
+        lpShowNeutral(els);
+        return;
+    }
+
     try {
         const resp = await fetch('/api/predict/laptime?' + params.toString());
         if (resp.status === 404) {
-            // 品質ゲート対象外・未学習の組み合わせ(采指示: 非表示のまま)
+            // 品質ゲート対象外・未学習の組み合わせ(采指示: 非表示のまま)。
+            // 再学習で追加される可能性があるため、期限つきで問い合わせを止める
+            lpState.noModelRetryAtMs[noModelKey] = performance.now() + LP_NO_MODEL_RETRY_MS;
             lpShowNeutral(els);
             return;
         }
+        delete lpState.noModelRetryAtMs[noModelKey];
         if (!resp.ok) {
             lpShowNeutral(els);
             return;
