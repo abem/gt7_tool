@@ -32,6 +32,8 @@
     const TICK_MS = 1000;
     const LIST_LIMIT = 60;         // 一覧から見る件数
     const MAX_TRY = 20;            // 概要を取る周回の上限(サーバーの負荷を抑える)
+    const MAX_FILE_BYTES = 40e6;   // これより大きい記録は、読み込みに時間がかかる(サーバーが全体を解析する)ため、候補にしない
+    const RETRY_MS = 60000;        // 取得に失敗したとき、この間隔をあけて再試行する
     const MIN_CANDIDATES = 3;      // これ未満は、中央値が頼りにならないため使わない
     const DIST_TOLERANCE = 0.05;   // 走行距離の、中央値からの許容差
     const MIN_TIME_FRAC = 0.7;     // ラップタイムの下限(中央値に対する割合)
@@ -42,7 +44,8 @@
         key: null,          // 車種ID__コースID
         loading: false,
         token: 0,           // 古い応答を捨てるための世代
-        cache: {},          // key -> {r, lapMs, recordedAt, file} | 'none'
+        cache: {},          // key -> {r, lapMs, recordedAt, file} | 'none'(該当なしが確定したときだけ)
+        retryAt: {},        // key -> この時刻(performance.now)まで再試行しない(取得に失敗したとき)
         replaced: undefined // 基準を書き換える前の analysisState.refLap(オフにしたときに戻す)
     };
 
@@ -145,6 +148,9 @@
         const cands = [];
         let tried = 0;
         for (let i = 0; i < laps.length && tried < MAX_TRY; i++) {
+            if (laps[i].size_bytes > MAX_FILE_BYTES) {
+                continue;         // 巨大な記録は飛ばす
+            }
             tried++;
             let body = null;
             try {
@@ -235,10 +241,19 @@
         try {
             entry = await findBest(k.car, k.course, token);
         } catch (e) {
-            entry = null;
+            entry = 'error';
+        }
+        if (token !== state.token) {
+            return;           // 車種・コースが変わった: 新しい読み込みの状態(loading)には触れない
         }
         state.loading = false;
-        if (entry === undefined || token !== state.token) {
+        if (entry === undefined) {
+            return;
+        }
+        if (entry === 'error') {
+            // 一時的な失敗(通信・サーバー)は、「該当なし」として確定させず、期限をあけて再試行する
+            state.retryAt[k.key] = performance.now() + RETRY_MS;
+            setLabel('基準: このセッションのベスト（過去のベストを取得できません。しばらくして再試行します）');
             return;
         }
         state.cache[k.key] = entry || 'none';
@@ -249,6 +264,11 @@
 
     function tick() {
         if (typeof analysisState === 'undefined' || !document.body || document.body.classList.contains('review-mode')) {
+            return;
+        }
+        // TEST MODE は、合成データ(車種ID 1234 など、記録の無い組み合わせ)のため、対象外。
+        // 記録済みラップの再生は、過去のベストとの比較に意味があるため、対象にする
+        if (typeof testModeActive !== 'undefined' && testModeActive) {
             return;
         }
         const k = currentKey();
@@ -273,9 +293,13 @@
         if (entry === 'none') {
             return;
         }
+        // 基準が外部(resetAnalysis 等)で消えたときは、以前の退避(replaced)は古いため捨てる
+        if (analysisState.refLap === null) {
+            state.replaced = undefined;
+        }
         if (entry) {
             apply(entry);
-        } else if (!state.loading) {
+        } else if (!state.loading && !(state.retryAt[k.key] > performance.now())) {
             start(k);
         }
     }
