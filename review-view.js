@@ -937,6 +937,7 @@ function reviewNotifyExtras(a, b, extras) {
     if (typeof tbOnReviewCompare === 'function') tbOnReviewCompare(a, b, extras);
     if (typeof srOnReviewCompare === 'function') srOnReviewCompare(a, b);
     if (typeof ltOnReviewCompare === 'function') ltOnReviewCompare(a, b);
+    if (typeof crOnReviewCompare === 'function') crOnReviewCompare(a, b);
     if (typeof cpOnReviewCompare === 'function') cpOnReviewCompare(a, b);
 }
 

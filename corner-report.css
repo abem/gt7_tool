@@ -1,0 +1,96 @@
+/**
+ * GT7 Telemetry Dashboard - REVIEW コーナー別レポート スタイル (#561)
+ *
+ * 新規ファイル隔離。表示制御は id 直接ルール(#157 の教訓)。
+ * 表は幅が広いため、カード内の横スクロール領域(#cr-scroll)に収める(#435 の教訓)。
+ */
+
+#cr-review-card {
+    display: none;
+}
+
+body.review-mode #cr-review-card {
+    display: block;
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-width: 0;
+}
+
+#cr-summary {
+    margin: 4px 0 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+#cr-advice {
+    margin: 0 0 8px;
+    padding-left: 18px;
+    font-size: 13px;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+#cr-advice li {
+    margin: 2px 0;
+}
+
+#cr-advice li.cr-loss::marker {
+    color: var(--critical);
+}
+
+#cr-advice li.cr-gain {
+    color: var(--good);
+}
+
+#cr-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#cr-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    font-size: 12px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+#cr-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--border-hairline);
+    white-space: nowrap;
+}
+
+#cr-table td {
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    white-space: nowrap;
+}
+
+#cr-table th:first-child,
+#cr-table td:first-child {
+    text-align: left;
+    padding-left: 4px;
+}
+
+#cr-table tbody tr {
+    cursor: pointer;
+}
+
+#cr-table tbody tr:hover,
+#cr-table tbody tr:focus,
+#cr-table tbody tr.cr-pinned {
+    background: var(--surface-3);
+    outline: none;
+}
+
+#cr-table tbody tr.cr-pinned {
+    box-shadow: inset 2px 0 0 var(--accent-brand);
+}

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/segment-report.css">
     <link rel="stylesheet" href="/lap-trend.css">
     <link rel="stylesheet" href="/channel-plots.css">
+    <link rel="stylesheet" href="/corner-report.css">
     <link rel="stylesheet" href="/replay.css">
     <link rel="stylesheet" href="/race-metrics.css">
     <link rel="stylesheet" href="/card-groups.css">
@@ -121,6 +122,15 @@
                         <div id="sr-scroll">
                             <table id="sr-table" aria-label="区間ごとの比較表"></table>
                         </div>
+                    </div>
+                </div>
+                <!-- #561: コーナー別レポート(A/B のコーナーごとの操作の違いと、ひとことの改善提案)。corner-report.js が描画 -->
+                <div id="cr-review-card" class="card">
+                    <div class="card-title review-chart-title">CORNER REPORT (A/B ・ 速度の谷から検出したコーナー)</div>
+                    <div id="cr-summary" aria-live="polite"></div>
+                    <ul id="cr-advice"></ul>
+                    <div id="cr-scroll">
+                        <table id="cr-table" aria-label="コーナーごとの操作の比較表"></table>
                     </div>
                 </div>
                 <!-- #555 T6/T7: 散布図(任意の2チャンネル)とチャンネル分布(ヒストグラム)。channel-plots.js が描画 -->
@@ -773,6 +783,7 @@
     <script src="/segment-report.js"></script>
     <script src="/lap-trend.js"></script>
     <script src="/channel-plots.js"></script>
+    <script src="/corner-report.js"></script>
     <script src="/websocket.js"></script>
     <script src="/pit-wall.js"></script>
     <script src="/laptime-predict.js"></script>
