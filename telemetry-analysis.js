@@ -380,8 +380,13 @@ function onLapComplete(lapNumber, lastLaptimeMs) {
         return;
     }
 
+    const bestBeforeMs = analysisState.refLap ? analysisState.refLap.totalTime * 1000 : 0;
     const isBest = !analysisState.refLap ||
         (lastLaptimeMs < analysisState.refLap.totalTime * 1000);
+    // 音声の通知(#564): ラップ完了のタイムと、ベストとの差(audio-callout.js)
+    if (typeof acOnLapComplete === 'function') {
+        acOnLapComplete(lastLaptimeMs, bestBeforeMs);
+    }
 
     if (isBest) {
         const r = resampleByDist(analysisState.curLap.samples, STEP);
@@ -650,6 +655,10 @@ function updateEstimatedLap(data) {
  * @param {string} severity - good|warning|serious|critical|pb
  */
 function pushNotification(label, value, severity) {
+    // 音声の通知(#564): serious/critical だけ読み上げる(audio-callout.js。表示・記録の処理は変えない)
+    if (typeof acOnNotification === 'function') {
+        acOnNotification(label, value, severity);
+    }
     const MAX_NOTIFICATIONS = 3;
     const q = analysisState.notif.queue;
     q.push({
