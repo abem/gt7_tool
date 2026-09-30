@@ -125,10 +125,11 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `drive-view.js` | DRIVE/ANALYSIS ビュー切替 | 走行用最小表示（DRIVE）と解析表示（ANALYSIS）の切替、選択は localStorage に永続化 |
 | `review-view.js` + `review.css` | REVIEW ビュー | 過去ラップの一覧（日付グループ・フィルタ）・A/B選択・重ね書き（#554、行の「＋」で最大5本を速度・ペダル入力のチャートへ追加。A/Bと同じ比較可否判定で、比較できない周回は凡例に理由つきで除外）・距離基準チャート3種（速度重畳/タイムデルタ/スロットル・ブレーキ）・比較サマリ。読み出しAPI `/api/laps` を使用 |
 | `replay-mode.js` + `replay.css` | 全カード再生モード | 記録済みラップを既存の単一入口 `handleTelemetryMessage` へ供給し、走行中と同一の全カードで時間/距離スクラバー再生。2段ロード（10Hz先行→60Hz背景差替）・倍速・シーク対応 |
-| `race-metrics.js` + `race-metrics.css` | RACE METRICS | G-Gダイアグラム・コーナーフェーズ別デルタ・サスペンション変位ヒストグラム・タイヤデグ率+ピットウィンドウ・滑らかさスコア・回生エネルギー/トルク配分。REVIEW/全カード再生下部とライブ（STRATEGYミニカード）に表示 |
+| `race-metrics.js` + `race-metrics.css` | RACE METRICS | G-Gダイアグラム・コーナーフェーズ別デルタ・サスペンション変位ヒストグラム・タイヤデグ率+ピットウィンドウ・滑らかさスコア・回生エネルギー/トルク配分。REVIEW/全カード再生下部とライブ（STRATEGYミニカード）に表示。ライブでは、アウトライヤー警告の1枠集約（#555 T8: `rmRaiseAlert`。ANALYSISのみ、DRIVE/REVIEWは従来のトースト）と、FUELカードの目標燃費差分（T9）も担う |
 | `track-map.js` + `track-map.css` | REVIEW トラックマップ（#552） | A/B の走行ラインを速度・ブレーキ・スロットルで色分け（Bは白の破線）して描く Canvas2D。`review-view.js` の `reviewNotifyExtras()` から `tmOnReviewCompare` が呼ばれる。区間強調用に `tmHighlightRange` も公開。IIFE で隔離 |
 | `theory-best.js` | REVIEW 理論ベスト（#552） | 距離を20等分した仮想区間ごとに A/B の速い方を合成した近似値と、実ベストとの差を要約帯へ表示。コース不一致・走行距離差3%超は算出しない。`tbOnReviewCompare` が唯一のフック |
 | `segment-report.js` + `segment-report.css` | REVIEW 区間レポート（#552 T5） | 距離20等分の区間ごとに A/B のタイム・最高速・最低速・最大ブレーキ・平均スロットルを表で表示。行ホバー/タップで `tmHighlightRange` を呼び地図の区間を強調。`srOnReviewCompare` が唯一のフック。トラックマップとの左右並び（`#tm-sr-row`）もここで定義 |
+| `channel-plots.js` + `channel-plots.css` | REVIEW 散布図・チャンネル分布（#555 T6/T7） | 任意の2チャンネルの散布図（速度・スロットル・ブレーキ・距離・縦加速度・タイム差）と、1チャンネルの分布（スロットル・ブレーキ・速度・ギア）を A/B で描く Canvas2D。散布図は距離10m格子、分布は記録サンプル（`reviewFetchDetail` の `raw`）から作る。`cpOnReviewCompare` が唯一のフック。IIFE で隔離 |
 | `lap-trend.js` + `lap-trend.css` | REVIEW ラップ推移（#552 T3） | 同一コース・同一車種のラップタイム推移（uPlot）。ボタン操作時のみ `/api/laps/{file}?every=60` を最大40本・3並列で取得し、距離±3%外を除外。`ltOnReviewCompare` が唯一のフック |
 | `websocket.js` | WebSocket通信 | 接続管理、テレメトリデータ処理 |
 | `test-mode.js` | テストモード | デモデータ生成、PS5なしの動作確認 |

@@ -1,0 +1,99 @@
+/**
+ * GT7 Telemetry Dashboard - REVIEW 散布図・チャンネル分布 スタイル (#555 T6/T7)
+ *
+ * 新規ファイル隔離。表示制御は id 直接ルール(#157 の教訓)。
+ */
+
+#cp-review-card {
+    display: none;
+}
+
+body.review-mode #cp-review-card {
+    display: block;
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-width: 0;
+}
+
+#cp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+#cp-head .review-chart-title {
+    margin-bottom: 0;
+}
+
+.cp-tabs {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.cp-tab {
+    background: var(--surface-3);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.cp-tab[aria-pressed="true"] {
+    color: var(--accent-brand);
+    border-color: var(--accent-brand);
+    background: var(--accent-wash);
+}
+
+#cp-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+#cp-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 10px;
+}
+
+#cp-controls span[hidden] {
+    display: none;
+}
+
+#cp-controls select {
+    background: var(--surface-3);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 2px 4px;
+    max-width: 100%;
+}
+
+#cp-wrap {
+    width: 100%;
+    min-width: 0;
+}
+
+#cp-canvas {
+    display: block;
+}
+
+#cp-readout {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
