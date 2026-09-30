@@ -1,0 +1,39 @@
+/**
+ * GT7 Telemetry Dashboard - 過去の自己ベストを基準にするライブのデルタ スタイル (#563)
+ *
+ * DELTA VS BEST カード内の、基準の由来の表示と、切替ボタン。新規ファイル隔離。
+ */
+
+.ref-source-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 2px 0 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.ref-source {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+}
+
+.ref-toggle {
+    flex: none;
+    background: var(--surface-3);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    cursor: pointer;
+}
+
+.ref-toggle.active {
+    color: var(--accent-brand);
+    border-color: var(--accent-brand);
+    background: var(--accent-wash);
+}
