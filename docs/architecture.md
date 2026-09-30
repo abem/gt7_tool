@@ -132,6 +132,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `channel-plots.js` + `channel-plots.css` | REVIEW 散布図・チャンネル分布（#555 T6/T7） | 任意の2チャンネルの散布図（速度・スロットル・ブレーキ・距離・縦加速度・タイム差）と、1チャンネルの分布（スロットル・ブレーキ・速度・ギア）を A/B で描く Canvas2D。散布図は距離10m格子、分布は記録サンプル（`reviewFetchDetail` の `raw`）から作る。`cpOnReviewCompare` が唯一のフック。IIFE で隔離 |
 | `corner-report.js` + `corner-report.css` | REVIEW コーナー別レポート（#561）＋ばらつき CONSISTENCY（#562: 同コース・同車種の直近の周回のコーナーごとの σ と、トラックマップの STABILITY 色分け `tmSetStability`） | A/B の速度の平均の谷からコーナーを検出し、ブレーキ位置・踏み込み・離す位置・最低速度・スロットル位置・立ち上がり速度を A/B で比較。損失の大きい順に、操作の違いを走行順につないだ文章を出す。行ホバーで `tmHighlightRange`。`crOnReviewCompare` が唯一のフック。IIFE で隔離 |
 | `audio-callout.js` | 音声の通知（#564） | ブラウザの音声合成で、serious/critical の通知と、ラップ完了のタイム・ベストとの差を読み上げる（ツールバーの AUDIO、既定オフ、再生・REVIEW 中は無効）。`telemetry-analysis.js`・`race-metrics.js` から `acOnNotification` / `acOnLapComplete` を呼ぶ。IIFE で隔離 |
+| `persistent-ref.js` + `persistent-ref.css` | 過去の自己ベストを基準にするライブのデルタ（#563） | 車種・コースの DOM 表示を1秒ごとに監視し、過去の同コース・同車種の最速の単独周回を、`analysisState.refLap`（ライブのデルタ・推定ラップの基準）に、その日のベストより速い間だけ入れる。ライブの受信・描画経路には触れない。DELTA VS BEST カードに由来と「過去BEST」の切替。IIFE で隔離（グローバルなし） |
 | `lap-trend.js` + `lap-trend.css` | REVIEW ラップ推移（#552 T3） | 同一コース・同一車種のラップタイム推移（uPlot）。ボタン操作時のみ `/api/laps/{file}?every=60` を最大40本・3並列で取得し、距離±3%外を除外。`ltOnReviewCompare` が唯一のフック |
 | `websocket.js` | WebSocket通信 | 接続管理、テレメトリデータ処理 |
 | `test-mode.js` | テストモード | デモデータ生成、PS5なしの動作確認 |

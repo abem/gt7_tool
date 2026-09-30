@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/lap-trend.css">
     <link rel="stylesheet" href="/channel-plots.css">
     <link rel="stylesheet" href="/corner-report.css">
+    <link rel="stylesheet" href="/persistent-ref.css">
     <link rel="stylesheet" href="/replay.css">
     <link rel="stylesheet" href="/race-metrics.css">
     <link rel="stylesheet" href="/card-groups.css">
@@ -635,6 +636,12 @@
 
             <div class="card delta-card" data-cardgroup="g5">
                 <div class="delta-label">DELTA VS BEST</div>
+                <!-- #563: 基準の由来と、過去の自己ベストを基準にするかの切替(persistent-ref.js が配線) -->
+                <div class="ref-source-row">
+                    <span id="ref-source" class="ref-source" aria-live="polite"></span>
+                    <button type="button" id="ref-persistent-toggle" class="ref-toggle" aria-pressed="true"
+                            title="過去に記録した同じコース・車種の最速の周回を、走り始めから基準にする(オフ: その日のベストだけ)">過去BEST</button>
+                </div>
                 <div class="delta-bar-container">
                     <div class="delta-bar-negative" id="delta-bar-negative"></div>
                     <div class="delta-bar-center"></div>
@@ -809,5 +816,6 @@
     <script src="/card-groups.js"></script>
     <script src="/voice-command.js"></script>
     <script src="/audio-callout.js"></script>
+    <script src="/persistent-ref.js"></script>
 </body>
 </html>
