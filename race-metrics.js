@@ -106,7 +106,7 @@ const rmState = {
         fuelPerLapHistory: [],
         notifiedLapNumbers: new Set()       // 既に警告済みのラップ番号(重複通知防止)
     },
-    alerts: { active: [], el: null },   // T8(#555): 表示待ちの警告と、1枠の要素
+    alerts: { active: [], el: null, sig: '' },   // T8(#555): 表示待ちの警告・1枠の要素・描画済みの内容(再描画の要否判定)
     fuelTarget: null,     // T9(#555): 目標燃費[L/lap]。未設定は null
     highlights: []        // B2(#436): 直近rmOnReplayBuffer時点で検出したハイライト一覧
 };
@@ -862,12 +862,19 @@ function rmRenderAlerts() {
             st.el.parentNode.removeChild(st.el);
         }
         st.el = null;
+        st.sig = '';
         return;
     }
     const feed = document.getElementById('race-engineer-feed');
     if (!feed) {
         return;
     }
+    // 1Hz の期限掃除でも呼ばれる。内容が同じなら作り直さない(スクリーンリーダーの読み上げ直し・ツールチップの点滅を避ける)
+    const sig = top.label + '|' + top.value + '|' + top.severity + '|' + rmState.alerts.active.length;
+    if (st.el && st.el.parentNode && st.sig === sig) {
+        return;
+    }
+    st.sig = sig;
     if (!st.el) {
         const el = document.createElement('div');
         el.id = 'rm-alert-slot';

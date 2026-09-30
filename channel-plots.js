@@ -30,8 +30,8 @@
     // sign は、そのラップが A なら +1、B なら -1(タイム差は常に A−B で表すため)。
     const SCATTER_CHANNELS = [
         { key: 'speed', label: '速度 [km/h]', get: function(r, k) { return r.speed[k]; } },
-        { key: 'throttle', label: 'スロットル [%]', get: function(r, k) { return r.throttle[k]; } },
-        { key: 'brake', label: 'ブレーキ [%]', get: function(r, k) { return r.brake[k]; } },
+        { key: 'throttle', label: 'スロットル [%]', fixed: [-3, 103], get: function(r, k) { return r.throttle[k]; } },
+        { key: 'brake', label: 'ブレーキ [%]', fixed: [-3, 103], get: function(r, k) { return r.brake[k]; } },
         { key: 'dist', label: '距離 [m]', get: function(r, k) { return r.dist[k]; } },
         { key: 'accel', label: '縦加速度 [m/s²]', get: accelAt },
         { key: 'delta', label: 'タイム差 A−B [s]', needsPair: true, get: function(r, k, other, sign) {
@@ -50,7 +50,8 @@
         a: null, b: null,
         mode: 'scatter',
         x: 'speed', y: 'accel', h: 'throttle',
-        ro: null
+        ro: null,
+        lastW: -1
     };
 
     function byId(id) {
@@ -244,8 +245,9 @@
             setReadout('');
             return;
         }
-        const xr = robustExtent(all.map(function(p) { return p.x; }));
-        const yr = robustExtent(all.map(function(p) { return p.y; }));
+        // 0〜100% の項目は範囲が決まっているので固定(両端の値を外れ値として隠さない)
+        const xr = cx.fixed || robustExtent(all.map(function(p) { return p.x; }));
+        const yr = cy.fixed || robustExtent(all.map(function(p) { return p.y; }));
         const inside = function(p) { return p.x >= xr[0] && p.x <= xr[1] && p.y >= yr[0] && p.y <= yr[1]; };
         const va = pa.filter(inside);
         const vb = pb.filter(inside);
@@ -397,7 +399,14 @@
         applyMode();
         // 幅の変化(REVIEW への切替・ウィンドウ幅)で再描画
         if (typeof ResizeObserver === 'function' && byId('cp-wrap')) {
-            state.ro = new ResizeObserver(function() { render(); });
+            // 幅が変わったときだけ描き直す(高さは固定のため、同じ幅での再描画・連鎖を避ける)
+            state.ro = new ResizeObserver(function() {
+                const w = byId('cp-wrap').clientWidth;
+                if (w !== state.lastW) {
+                    state.lastW = w;
+                    render();
+                }
+            });
             state.ro.observe(byId('cp-wrap'));
         }
     }
