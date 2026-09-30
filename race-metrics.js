@@ -828,6 +828,10 @@ function rmRaiseAlert(label, value, severity) {
     active.push({ label: label, value: value, severity: severity, at: performance.now() });
     rmState.alerts.active = active;
     rmRenderAlerts();
+    // 音声の通知(#564): 1枠に集約する経路では pushNotification を通らないため、ここでも呼ぶ
+    if (typeof acOnNotification === 'function') {
+        acOnNotification(label, value, severity);
+    }
 }
 
 /** 表示待ちの警告を全て消し、枠も撤去する(セッション切替・DRIVE/REVIEW への切替で古い警告を残さない)。 */
