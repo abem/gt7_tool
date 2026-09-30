@@ -434,6 +434,11 @@
      * @param {Object|null} b - {meta, res}
      */
     window.tmOnReviewCompare = function(a, b) {
+        // A/B が変わったら、コーナーごとのばらつき(STABILITY)は古くなるため、ここでも消す
+        // (corner-report.js の呼び出し順に依存しないため。重ね書きの追加・解除など A/B が同じなら残す)
+        if ((a || null) !== state.a || (b || null) !== state.b) {
+            state.stability = null;
+        }
         state.a = a || null;
         state.b = b || null;
         state.hover = -1;

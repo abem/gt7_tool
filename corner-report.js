@@ -665,6 +665,11 @@
             return;
         }
         updateConsButton();
+        // 取得に失敗した候補があると、REVIEW 一覧の「読込中…」が残るため、消す
+        const listStatus = byId('review-list-status');
+        if (listStatus && /読込中…$/.test(listStatus.textContent)) {
+            listStatus.textContent = '';
+        }
         const collected = entries.length;
         // ラップタイムの外れ値を除き、新しい順に最大 CONS_MAX_LAPS 周を使う(A/B は先頭にあり、必ず残る)
         const used = dropLapTimeOutliers(entries, [a, b]).slice(0, CONS_MAX_LAPS);
