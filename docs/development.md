@@ -2,23 +2,28 @@
 
 コードを変更した際の検証手順をまとめます。フロントエンド実行モデルの制約（プレーン `<script>` 読み込み / 単一グローバルスコープ共有 / ES モジュール不使用）は [architecture.md](architecture.md) の「実行モデルと制約」を参照してください。
 
-## 1. 回帰テスト（Python）
-
-リポジトリ直下で実行します（`decoder` モジュール解決のため `PYTHONPATH=.` が必要）:
+## 1. テスト（1つのコマンドで全部）
 
 ```bash
 cd <リポジトリ直下>
-PYTHONPATH=. python3 -m pytest tests/ -q
+bash tests/run_all.sh
 ```
 
-- `tests/test_decoder.py`: Salsa20 復号・XOR フォールバック・parse・CourseEstimator の回帰テスト
-- `tests/test_course_detection.py`: コース推定ロジックの検証
-- `pycryptodome` と `pytest` が必要（`requirements.txt` 参照）
-- コンテナ内には `tests/` がコピーされていないため、**ホスト側で実行**すること
+次の3つを順に実行し、1つでも失敗すれば終了コード1で終わります（本番サーバー・PS5 は不要）。
+
+| 段階 | 内容 | 単体での実行 |
+|---|---|---|
+| 静的チェック | JS の構文、**トップレベルの名前の重複**（単一グローバルスコープでの上書き）、HTML が読み込むファイルの存在と Dockerfile の COPY への包含、id の重複、Python の構文・未使用 import・重複定義 | `python3 tests/static_check.py` |
+| Python の単体テスト | `tests/test_*.py`（復号・コース推定・学習パイプライン・予測 API）。scikit-learn 等が要るため、**コンテナのイメージ内**で実行（リポジトリを読み取り専用でマウント） | `docker compose run --rm --no-deps -T -v "$PWD:/src:ro" -w /src gt7_tool python -B -m pytest tests -q -p no:cacheprovider` |
+| e2e | ヘッドレスのブラウザで、REVIEW・ライブ表示を、実際に記録した周回のフィクスチャで検証（約4分）。詳細は [tests/e2e/README.md](../tests/e2e/README.md) | `python3 tests/e2e/run_e2e.py` |
+
+- e2e には、ホストに `playwright`（chromium）と `Pillow` が必要です（`requirements-dev.txt`）。
+- **整理（リファクタリング）のとき**: 変更の前に全テストが通ることを確認し、変更の後に同じ結果になることを確かめます。`e2e_900_golden.py` が、全要素の算出スタイル・表示テキスト・チャートのデータを、保存した期待値と比べます。意図して結果を変えたときだけ、差分を確認してから `python3 tests/e2e/run_e2e.py --update-golden -k golden -k 554_overlay` で作り直します。
+- 復号・コース推定だけなら、ホストでも実行できます: `PYTHONPATH=. python3 -m pytest tests/test_decoder.py tests/test_course_detection.py -q`（`pycryptodome` と `pytest` が必要）。
 
 ## 2. 構文チェック
 
-編集したファイル単位で素早く確認できます:
+編集したファイル単位で素早く確認できます（全体は `python3 tests/static_check.py`）:
 
 ```bash
 node --check <file>.js        # JavaScript

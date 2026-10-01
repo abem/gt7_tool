@@ -94,3 +94,7 @@ WORK_*/
 
 # 診断ログ(#558。ブラウザ再生の計測値。docker-compose で ./logs をマウント)
 logs/
+
+# e2e テストの出力(スクリーンショット等)
+tests/e2e/out/
+tests/e2e/__pycache__/
