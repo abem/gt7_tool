@@ -13,3 +13,4 @@ with sync_playwright() as pw:
     chk('フェーズ別Δt が案内文に戻り、コーナー別の一覧が空になる',ph().startswith('フェーズ別デルタ: AとBの2本を選択') and pg.evaluate("document.getElementById('rm-corner-list').textContent.length")==0,ph()[:30])
     chk('pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

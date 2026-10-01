@@ -73,3 +73,4 @@ chk('別コースの重ね書きは合成に含めない(表示不変)',n[2]==n[
 chk('1本外すと4本から合成(独立実装と一致)',('4本から合成' in n[3]) and abs(g(n[3])-e4)<0.006,(n[3],round(e4,3)))
 chk('pageerror 0',not n[4],n[4])
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

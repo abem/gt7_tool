@@ -16,3 +16,4 @@ with sync_playwright() as pw:
     select(pg,A,B); chk('選び直すと表が再描画される(固定は解除)',len(table(pg))==8 and not pinned())
     chk('pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

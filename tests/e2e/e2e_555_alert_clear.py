@@ -17,3 +17,4 @@ with sync_playwright() as pw:
     pg.evaluate("resetAnalysis()"); chk('resetAnalysis(): 枠と待ち行列が消える',not has() and pg.evaluate("rmState.alerts.active.length")==0)
     chk('pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

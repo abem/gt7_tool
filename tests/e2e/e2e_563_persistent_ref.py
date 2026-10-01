@@ -151,3 +151,4 @@ with sync_playwright() as pw:
         chk(f'{vw}px: 由来の行がカード内に収まる',cw[0]<=cw[1]+1,cw)
         pg.screenshot(path=f'{OUT}/pr563_{vw}.png'); chk(f'{vw}px: pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

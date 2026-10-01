@@ -118,3 +118,4 @@ with sync_playwright() as pw:
         pg.screenshot(path=f'{OUT}/cons562_{vw}.png'); pg.evaluate("document.getElementById('tm-review-card').scrollIntoView()"); pg.wait_for_timeout(300); pg.screenshot(path=f'{OUT}/map562_{vw}.png')
         chk(f'{vw}px: pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

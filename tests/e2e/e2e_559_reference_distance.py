@@ -75,3 +75,4 @@ with sync_playwright() as pw:
     chk('同コースの記録が無い: 3回呼んでも走査は1回だけ(一覧1+詳細14)',r==[None,None,None] and n[0]==1+len(lap),(r,n[0]))
     chk('pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

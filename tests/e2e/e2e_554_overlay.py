@@ -67,7 +67,8 @@ with sync_playwright() as pw:
         ref=max(s.get('speed_kmh') or 0 for s in det[f]['samples']); info.append((round(mx,1),round(ref,1)))
         okmax&=abs(mx-ref)/ref<0.05
     chk('重ね書きの最高速度が元データと一致(±5%)',okmax,info)
-    chk('A/B の系列は重ね書き追加後も不変',data(pg)['s'][:3]==ns['s'][:3] or True)
+    chk('x 軸(距離)と A/B の速度は、重ね書きの追加後も、追加前と同一',dd['s'][:3]==ns['s'][:3],
+        [(len(p_),len(q_)) for p_,q_ in zip(dd['s'][:3],ns['s'][:3])])
     chk('A/B の速度が追加前と同一',dd['s'][1]==ns['s'][1] and dd['s'][2]==ns['s'][2])
     # 上限
     for f in OV[3:]: click_ov(pg,f); pg.wait_for_timeout(500)
@@ -114,3 +115,4 @@ with sync_playwright() as pw:
         chk(f'{vw}px: 横スクロールなし',sw[0]<=sw[1],sw); chk(f'{vw}px: pageerror 0',not errs,errs)
         pg.screenshot(path=f'{OUT}/ov554_{vw}.png',full_page=False); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

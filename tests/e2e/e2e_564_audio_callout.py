@@ -77,3 +77,4 @@ with sync_playwright() as pw:
         chk(f'{vw}px: 横スクロールなし(ツールバーに AUDIO 追加後)',sw[0]<=sw[1],sw)
         pg.screenshot(path=f'{OUT}/ac564_{vw}.png'); chk(f'{vw}px: pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

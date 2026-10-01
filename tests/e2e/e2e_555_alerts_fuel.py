@@ -72,3 +72,4 @@ with sync_playwright() as pw:
         chk(f'{vw}px: 目標行がカード内に収まる',r[0]<=r[1]+1,r)
         pg.screenshot(path=f'{OUT}/t555a_{vw}.png'); chk(f'{vw}px: pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

@@ -24,3 +24,4 @@ with sync_playwright() as pw:
     pg.evaluate("rmRaiseAlert('OIL PRESSURE','1.0 bar','serious')"); chk('消去後に再度出る(sig リセット)',pg.evaluate("!!document.getElementById('rm-alert-slot')"))
     chk('pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

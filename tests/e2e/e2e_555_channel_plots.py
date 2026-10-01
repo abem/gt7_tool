@@ -148,3 +148,4 @@ with sync_playwright() as pw:
         tab(pg,'hist'); pg.wait_for_timeout(300); pg.screenshot(path=f'{OUT}/cp555_{vw}_hist.png')
         chk(f'{vw}px: pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

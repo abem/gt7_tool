@@ -29,6 +29,10 @@ GOLDEN_DIR = os.path.join(HERE, 'golden')
 OUT = os.environ.get('GT7_E2E_OUT') or os.path.join(HERE, 'out')
 os.makedirs(OUT, exist_ok=True)
 UPDATE_GOLDEN = os.environ.get('GT7_E2E_UPDATE_GOLDEN') == '1'
+if UPDATE_GOLDEN:
+    # 比較をせずに期待値を書き換えるモード。環境変数の消し忘れに気づけるよう、必ず表示する
+    print('*** ゴールデン更新モード(GT7_E2E_UPDATE_GOLDEN=1): 比較せず、期待値を現在の結果で書き換えます ***',
+          file=sys.stderr, flush=True)
 
 
 def _free_port():

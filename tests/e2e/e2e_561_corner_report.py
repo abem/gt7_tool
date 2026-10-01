@@ -56,3 +56,4 @@ with sync_playwright() as pw:
         chk(f'{vw}px: 表がカード内(内部スクロール)に収まる',cw[0]<=cw[1],cw)
         pg.screenshot(path=f'{OUT}/cr561_{vw}.png'); chk(f'{vw}px: pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

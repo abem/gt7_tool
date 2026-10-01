@@ -210,13 +210,11 @@ with sync_playwright() as p:
     if outl:
         orange = near((0xE8, 0xA1, 0x3D))
         check('T3: 外れ値の印(橙の○)が描画される', orange > 10, f'orange={orange}')
-    check('T3: ホバーで日時とタイムを表示', True)  # 下で確認
     box = page.locator('#lt-chart').bounding_box(); hit = False
     for fx in [i / 20 for i in range(2, 19)]:
         page.mouse.move(box['x'] + box['width'] * fx, box['y'] + box['height'] * 0.5); page.wait_for_timeout(50)
         if '#' in page.inner_text('#lt-readout'): hit = True; break
-    results[-1] = ('T3: ホバーで日時とタイムを表示', hit, page.inner_text('#lt-readout'))
-    print(('PASS' if hit else 'FAIL'), results[-1][0], results[-1][2])
+    check('T3: ホバーで日時とタイムを表示', hit, page.inner_text('#lt-readout'))
     # 選択解除でクリア
     page.evaluate(f"reviewToggleSelect({json.dumps(A_FILE)})"); page.wait_for_timeout(600)
     page.evaluate(f"reviewToggleSelect({json.dumps(B_FILE)})"); page.wait_for_timeout(800)

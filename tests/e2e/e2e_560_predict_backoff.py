@@ -48,3 +48,4 @@ with sync_playwright() as pw:
     c,shown,meta,errs=run(pw,'200')
     chk('モデル有り(200): 毎秒の問い合わせ・予測タイムと根拠(MAE・n)を表示',c>=8 and shown=='1:23.800' and meta=='MAE 1.95% / n=14',(c,shown,meta)); chk('200: pageerror 0',not errs,errs)
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)

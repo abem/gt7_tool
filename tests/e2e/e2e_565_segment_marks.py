@@ -92,3 +92,4 @@ with sync_playwright() as pw:
         pg.evaluate("document.getElementById('review-speed-chart').scrollIntoView()"); pg.hover('#sr-table tbody tr:nth-child(5)') if vw>1000 else None; pg.wait_for_timeout(300)
         pg.screenshot(path=f'{OUT}/seg565_{vw}.png'); chk(f'{vw}px: pageerror 0',not errs,errs); b.close()
 print('PASS',ok[0],'FAIL',ok[1])
+raise SystemExit(1 if ok[1] else 0)
