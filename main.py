@@ -14,6 +14,7 @@ from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
 from decoder import GT7Decoder, CourseEstimator
+from lapstore import LAP_FILE_RE, FEATURE_COLUMNS, FEATURE_QUERY_PARAMS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -660,9 +661,7 @@ async def static_handler(request):
 
 # save_lap_to_file の命名形式に完全一致するファイルのみをAPIの対象にする
 # (許可リスト方式: パス区切り・別拡張子・BU等の変則名は正規表現の時点で排除)
-LAP_FILE_RE = re.compile(
-    r'^(\d{4})-(\d{2})-(\d{2})_(\d{2})_(\d{2})_(\d{2})_CAR-(\d+)_Lap-(\d+)\.json$'
-)
+# LAP_FILE_RE: lapstore.pyからimport(train_laptime_model.pyと同一のregexオブジェクトを共有、#574)。
 
 # 詳細APIの既定射影: REVIEWビューの距離基準比較に必要な最小フィールド集合
 DEFAULT_LAP_FIELDS = (
@@ -1282,11 +1281,24 @@ PREDICT_MODEL_DIR = "models"
 PREDICT_GATED_GROUPS_FILE = os.path.join(PREDICT_MODEL_DIR, "gated_groups.json")
 PREDICT_PLAUSIBLE_FRAC = 0.30   # 予測が学習時のラップタイム中央値から±30%超なら提供しない(#560)
 
-# train_laptime_model.py の FEATURE_COLUMNS と同一順序(モデル入力の列順を一致させる)。
-PREDICT_FEATURE_COLUMNS = (
-    "progress_fraction", "avg_speed_kmh", "max_speed_kmh",
-    "avg_throttle_pct", "avg_brake_pct", "avg_tyre_temp",
-)
+# PREDICT_FEATURE_COLUMNS: lapstore.FEATURE_COLUMNSのalias(train_laptime_model.pyの
+# FEATURE_COLUMNSと同一オブジェクトのため、手書きコピーによる食い違い(#560と同種の
+# train/serve mismatch)が構造的に起きない、#574)。
+PREDICT_FEATURE_COLUMNS = FEATURE_COLUMNS
+
+# 各特徴量列(PREDICT_FEATURE_COLUMNS)に対応する /api/predict/laptime のクエリパラメータ名。
+# progress_fractionのみクエリ名が"progress"(laptime-predict.jsとの既存互換)。
+PREDICT_FEATURE_QUERY_PARAMS = FEATURE_QUERY_PARAMS
+
+# 各クエリパラメータの妥当値範囲(lo, hi)。Noneは下限/上限なし。既存の検証ルールを維持する。
+PREDICT_FEATURE_RANGES = {
+    "progress": (0.0, 1.0),
+    "avg_speed_kmh": (0.0, None),
+    "max_speed_kmh": (0.0, None),
+    "avg_throttle_pct": (0.0, 100.0),
+    "avg_brake_pct": (0.0, 100.0),
+    "avg_tyre_temp": (None, None),
+}
 
 
 def _load_gated_groups():
@@ -1427,19 +1439,20 @@ async def api_predict_laptime_handler(request):
         )
 
     try:
-        progress = _float_query_required(request, "progress", lo=0.0, hi=1.0)
-        avg_speed_kmh = _float_query_required(request, "avg_speed_kmh", lo=0.0)
-        max_speed_kmh = _float_query_required(request, "max_speed_kmh", lo=0.0)
-        avg_throttle_pct = _float_query_required(request, "avg_throttle_pct", lo=0.0, hi=100.0)
-        avg_brake_pct = _float_query_required(request, "avg_brake_pct", lo=0.0, hi=100.0)
-        avg_tyre_temp = _float_query_required(request, "avg_tyre_temp")
+        # PREDICT_FEATURE_COLUMNS(= lapstore.FEATURE_COLUMNS、学習時の列順)を
+        # そのまま辿って特徴量ベクトルを組むため、推論側の列順が学習側と自然に一致する
+        # (手書きの並び替えで食い違う余地を無くす、#574)。検証ルール・範囲・エラー
+        # メッセージは以前と同一(PREDICT_FEATURE_RANGESに列ごとの範囲を集約)。
+        feature_values = [
+            _float_query_required(
+                request, PREDICT_FEATURE_QUERY_PARAMS[column],
+                lo=PREDICT_FEATURE_RANGES[PREDICT_FEATURE_QUERY_PARAMS[column]][0],
+                hi=PREDICT_FEATURE_RANGES[PREDICT_FEATURE_QUERY_PARAMS[column]][1],
+            )
+            for column in PREDICT_FEATURE_COLUMNS
+        ]
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=400)
-
-    feature_values = [
-        progress, avg_speed_kmh, max_speed_kmh,
-        avg_throttle_pct, avg_brake_pct, avg_tyre_temp,
-    ]
 
     try:
         predicted_ms = await asyncio.to_thread(_predict_laptime, group["model_path"], feature_values)

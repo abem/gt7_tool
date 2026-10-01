@@ -302,7 +302,14 @@ ws.onmessage = (event) => {
 - `gated_groups.json` の各組には、`median_laptime_ms`（学習時のラップタイム中央値）・`median_distance_m`・`n_test_laps`・`trained_at` が入ります。
 - 予測値が `median_laptime_ms` から**±30%を超えて外れる**場合、または NaN/inf の場合は、モデルが今の記録に合っていない（記録の入れ替わり・コース識別の食い違い等）とみなし、**422**を返します（`{"error": "prediction is implausible for this course/car_id combination"}`）。「モデル無し」の404とは別にしているのは、フロントが404を受けると5分間問い合わせを止めるためです。序盤の進行度など、学習時の範囲外の入力で1回だけ外れても、その回の表示が「--」になるだけです。`median_laptime_ms` の無い旧形式の許可リストでは、範囲の確認は行いません（NaN/inf の拒否は常に行います）。
 - 品質ゲートの `mae_ms`/`mae_pct` は、古い周回で学習したモデルを最新の周回で評価した値です。保存されるモデルは、同じ方式を全周回で学習し直したもので、それ自体は再評価していません（評価済みの方式・設定の再学習であり、最新の周回の傾向も反映するための選択です）。また、方式（Ridge/RandomForest）の選択も同じ評価用の周回で行うため、値はわずかに楽観的です。
-- 記録が入れ替わったら、`train_laptime_model.py` を再実行してモデルを更新してください（モデルは要求ごとに読み込むため、サーバーの再起動は不要です）。
+- 記録が入れ替わったら、`train_laptime_model.py` を再実行してモデルを更新してください（モデルはファイルの更新を検知して読み込み直すため、サーバーの再起動は不要です、#573）。学習パイプライン本体（`train_laptime_model.py`）とその共有定義（`lapstore.py`、#574で新設）はイメージに含まれない（trainer非同梱）ため、再学習時はビルド済みイメージへ両ファイルをマウントして実行します。
+
+```bash
+docker compose run --rm --no-deps \
+  -v "$PWD/train_laptime_model.py:/app/train_laptime_model.py:ro" \
+  -v "$PWD/lapstore.py:/app/lapstore.py:ro" \
+  gt7_tool python train_laptime_model.py
+```
 
 **レスポンス（422、予測が非現実的）:**
 

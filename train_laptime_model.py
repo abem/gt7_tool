@@ -29,7 +29,6 @@ import argparse
 import json
 import math
 import os
-import re
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -43,9 +42,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-LAP_FILE_RE = re.compile(
-    r'^(\d{4})-(\d{2})-(\d{2})_(\d{2})_(\d{2})_(\d{2})_CAR-(\d+)_Lap-(\d+)\.json$'
-)
+from lapstore import LAP_FILE_RE, FEATURE_COLUMNS
 
 # review-view.js/telemetry-analysis.js/replay-mode.jsと同じ閾値(precedent踏襲)。
 # 1フレーム弦長がこれ超は瞬間移動(pit/respawn)とみなし距離加算をスキップする。
@@ -61,10 +58,7 @@ MAX_LAPTIME_MS = 1_800_000
 # (Stage2のライブ推論=走行中の逐次予測を模した設計。予備調査(a)で提案した方式)。
 CHECKPOINT_FRACTIONS = (0.25, 0.5, 0.75)
 
-FEATURE_COLUMNS = (
-    "progress_fraction", "avg_speed_kmh", "max_speed_kmh",
-    "avg_throttle_pct", "avg_brake_pct", "avg_tyre_temp",
-)
+# FEATURE_COLUMNS: lapstore.pyからimport(main.pyの推論側と列順を共有、#574)。
 
 # 品質ゲート閾値(#434 P5 Stage2、采指示2026-08-02厳守): MAE%がこの値を超えるグループは
 # ライブ推論API(main.py: api_predict_laptime_handler)から一切提供しない(中間帯の個別許容なし)。
