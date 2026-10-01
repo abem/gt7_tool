@@ -28,9 +28,20 @@ uplot-test.html
 # Node - exclude node_modules but keep package files for npm install
 node_modules/
 
-# Dev-only dirs (Dockerfile はファイルを明示 COPY するため未使用だが、ビルドコンテキスト送信を軽量化)
+# Dev-only dirs (イメージに入れない。ビルドコンテキストの送信も軽くする)
 scripts/
 tests/
+requirements-dev.txt
+.claude/
+
+# 実行時にボリュームでマウントするもの・ローカルの作業物(イメージに入れない)
+gt7data
+gt7data_trash
+gt7data_imported/
+models/
+logs/
+backup/
+WORK_*/
 
 # Docs
 docs/
