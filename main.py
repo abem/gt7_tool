@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 import logging
+import threading
 import time
 import aiohttp
 import joblib
@@ -14,6 +15,7 @@ from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
 from decoder import GT7Decoder, CourseEstimator
+from lapstore import LAP_FILE_RE, FEATURE_COLUMNS, FEATURE_QUERY_PARAMS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +23,101 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+
+# ================================================================
+#  再読み込みキャッシュ (#573)
+#
+#  毎リクエストのファイル再読み込み・モデル再ロードを避けるための小さなヘルパー群。
+#  いずれも「ファイルの変更(mtime/size)を鍵に含める」方式で、再起動不要の自動更新を
+#  実現する(再学習・記録の入れ替わり後も次回リクエストで新しい内容が使われる)。
+# ================================================================
+
+class _StatCache:
+    """キー付きの値を少数件だけ保持するLRUキャッシュ(#573)。
+
+    gated_groups.json・joblibモデルのように「毎回ファイルを開く必要はなく、
+    (path, mtime_ns, size)等の“版”が変わった時だけ読み直せばよい」用途向け。
+    get_or_load の外側(呼び出し元)で stat() を行い、変化していなければ loader
+    (重いI/O)を呼ばずに既存値を返す。asyncio.to_thread から並行に呼ばれても
+    安全(ロードはロック外で行い、格納のみロックで保護する。同時ロードが競合しても
+    結果は同じ版の値なので安全側)。
+    """
+
+    def __init__(self, maxsize):
+        self._maxsize = maxsize
+        self._lock = threading.Lock()
+        self._entries = {}   # key -> (version, value)
+        self._order = []     # 古い順のkey一覧(LRU)
+
+    def get_or_load(self, key, version, loader):
+        with self._lock:
+            cached = self._entries.get(key)
+            if cached is not None and cached[0] == version:
+                self._touch(key)
+                return cached[1]
+        value = loader()
+        with self._lock:
+            self._entries[key] = (version, value)
+            self._touch(key)
+            while len(self._order) > self._maxsize:
+                oldest = self._order.pop(0)
+                self._entries.pop(oldest, None)
+        return value
+
+    def _touch(self, key):
+        if key in self._order:
+            self._order.remove(key)
+        self._order.append(key)
+
+
+class _ByteBoundedLRUCache:
+    """合計バイト数で上限を切るLRUキャッシュ(#573、/api/laps/{file}の最終応答用)。
+
+    単一エントリが max_entry_bytes を超える場合は保持しない(大型ラップの保持で
+    メモリを圧迫しないため)。キーに版情報(mtime_ns/size等)を含めることで、
+    ファイルが変わった場合は別キーとなり自然にミスする(古いエントリはLRUで
+    いずれ追い出される)。
+    """
+
+    def __init__(self, total_bytes, max_entry_bytes):
+        self._total_bytes = total_bytes
+        self._max_entry_bytes = max_entry_bytes
+        self._lock = threading.Lock()
+        self._entries = {}   # key -> (size, value)
+        self._order = []     # 古い順のkey一覧(LRU)
+        self._bytes_used = 0
+
+    def get(self, key):
+        with self._lock:
+            if key not in self._entries:
+                return None
+            self._touch(key)
+            return self._entries[key][1]
+
+    def put(self, key, value, size):
+        if size > self._max_entry_bytes:
+            return
+        with self._lock:
+            if key in self._entries:
+                self._evict(key)
+            self._entries[key] = (size, value)
+            self._order.append(key)
+            self._bytes_used += size
+            while self._bytes_used > self._total_bytes and self._order:
+                self._evict(self._order[0])
+
+    def _touch(self, key):
+        self._order.remove(key)
+        self._order.append(key)
+
+    def _evict(self, key):
+        entry = self._entries.pop(key, None)
+        if entry is not None:
+            self._bytes_used -= entry[0]
+        if key in self._order:
+            self._order.remove(key)
+
 
 # 物理計算・燃料計算で使う定数
 KMH_TO_MS = 3.6
@@ -660,9 +757,7 @@ async def static_handler(request):
 
 # save_lap_to_file の命名形式に完全一致するファイルのみをAPIの対象にする
 # (許可リスト方式: パス区切り・別拡張子・BU等の変則名は正規表現の時点で排除)
-LAP_FILE_RE = re.compile(
-    r'^(\d{4})-(\d{2})-(\d{2})_(\d{2})_(\d{2})_(\d{2})_CAR-(\d+)_Lap-(\d+)\.json$'
-)
+# LAP_FILE_RE: lapstore.pyからimport(train_laptime_model.pyと同一のregexオブジェクトを共有、#574)。
 
 # 詳細APIの既定射影: REVIEWビューの距離基準比較に必要な最小フィールド集合
 DEFAULT_LAP_FIELDS = (
@@ -674,6 +769,17 @@ API_LAPS_LIMIT_DEFAULT = 200
 API_LAPS_LIMIT_MAX = 1000
 API_LAPS_EVERY_DEFAULT = 6   # 60Hz記録を約10Hzへ間引き
 API_LAPS_EVERY_MAX = 60
+
+# /api/laps/{file} の最終応答(decimated+projected済みのsamples)キャッシュ(#573)。
+# 解析済みの全サンプル配列(実測最大約84MB)そのものは保持しない。保持するのは
+# every/fields/format適用後の最終payloadのみで、バイト数も小さい(縮小後のため)。
+# キーに (filepath, mtime_ns, size) を含めるため、ファイルが変わる(再記録・再インポート)と
+# 自然にキャッシュミスする。
+LAP_RESPONSE_CACHE_TOTAL_BYTES = 64 * 1024 * 1024
+LAP_RESPONSE_CACHE_MAX_ENTRY_BYTES = 8 * 1024 * 1024
+_lap_detail_cache = _ByteBoundedLRUCache(
+    LAP_RESPONSE_CACHE_TOTAL_BYTES, LAP_RESPONSE_CACHE_MAX_ENTRY_BYTES
+)
 
 # CSVエクスポート(#174/#175)の既定射影: 記録済み全フィールド(実サンプルの実測キー一覧に基づく)。
 # JSON応答の既定(DEFAULT_LAP_FIELDS、REVIEW距離チャート用の最小集合)とは別に、
@@ -1159,12 +1265,25 @@ async def api_lap_detail_handler(request):
         fields = DEFAULT_LAP_FIELDS
 
     try:
-        body_data, samples_returned, samples_total, first, duration_ms = await asyncio.to_thread(
-            _load_lap_file, filepath, fields, every, output_format
-        )
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
-        logger.error(f"Corrupt lap file {name}: {e}")
-        return web.json_response({"error": "corrupt file"}, status=500)
+        st = os.stat(filepath)
+    except OSError:
+        return web.json_response({"error": "not found"}, status=404)
+    cache_key = (filepath, st.st_mtime_ns, st.st_size, fields, every, output_format)
+    cached = _lap_detail_cache.get(cache_key)
+    if cached is not None:
+        body_data, samples_returned, samples_total, first, duration_ms = cached
+    else:
+        try:
+            result = await asyncio.to_thread(
+                _load_lap_file, filepath, fields, every, output_format
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
+            logger.error(f"Corrupt lap file {name}: {e}")
+            return web.json_response({"error": "corrupt file"}, status=500)
+        body_data, samples_returned, samples_total, first, duration_ms = result
+        # 単一エントリがLAP_RESPONSE_CACHE_MAX_ENTRY_BYTESを超える場合は put() 内部で
+        # 保持されない(大型ラップでメモリを圧迫しないため)。
+        _lap_detail_cache.put(cache_key, result, len(body_data.encode('utf-8')))
 
     if output_format == "csv":
         csv_name = re.sub(r'\.json$', '.csv', name)
@@ -1282,27 +1401,54 @@ PREDICT_MODEL_DIR = "models"
 PREDICT_GATED_GROUPS_FILE = os.path.join(PREDICT_MODEL_DIR, "gated_groups.json")
 PREDICT_PLAUSIBLE_FRAC = 0.30   # 予測が学習時のラップタイム中央値から±30%超なら提供しない(#560)
 
-# train_laptime_model.py の FEATURE_COLUMNS と同一順序(モデル入力の列順を一致させる)。
-PREDICT_FEATURE_COLUMNS = (
-    "progress_fraction", "avg_speed_kmh", "max_speed_kmh",
-    "avg_throttle_pct", "avg_brake_pct", "avg_tyre_temp",
-)
+# PREDICT_FEATURE_COLUMNS: lapstore.FEATURE_COLUMNSのalias(train_laptime_model.pyの
+# FEATURE_COLUMNSと同一オブジェクトのため、手書きコピーによる食い違い(#560と同種の
+# train/serve mismatch)が構造的に起きない、#574)。
+PREDICT_FEATURE_COLUMNS = FEATURE_COLUMNS
+
+# 各特徴量列(PREDICT_FEATURE_COLUMNS)に対応する /api/predict/laptime のクエリパラメータ名。
+# progress_fractionのみクエリ名が"progress"(laptime-predict.jsとの既存互換)。
+PREDICT_FEATURE_QUERY_PARAMS = FEATURE_QUERY_PARAMS
+
+# 各クエリパラメータの妥当値範囲(lo, hi)。Noneは下限/上限なし。既存の検証ルールを維持する。
+PREDICT_FEATURE_RANGES = {
+    "progress": (0.0, 1.0),
+    "avg_speed_kmh": (0.0, None),
+    "max_speed_kmh": (0.0, None),
+    "avg_throttle_pct": (0.0, 100.0),
+    "avg_brake_pct": (0.0, 100.0),
+    "avg_tyre_temp": (None, None),
+}
+
+
+# gated_groups.json の解析済み内容のキャッシュ(#573、(mtime_ns, size)がキー)。
+# 1秒ごとに呼ばれるAPIのため、ファイルが変わっていない間は毎回のopen+json.loadを避ける。
+_gated_groups_cache = _StatCache(maxsize=1)
 
 
 def _load_gated_groups():
     """品質ゲート済みグループ一覧(models/gated_groups.json)を読み込む(#434 P5 Stage2)。
 
     train_laptime_model.pyが生成する小さな許可リストファイル。ファイル不在・破損時は
-    空dict(=全リクエストが404、安全側にフォールバック)。
+    空dict(=全リクエストが404、安全側にフォールバック)。再学習でファイルが更新された
+    場合も、次回呼び出しで(mtime_ns, size)の変化を検知し読み直す(サーバー再起動不要、#573)。
     """
-    if not os.path.isfile(PREDICT_GATED_GROUPS_FILE):
-        return {}
     try:
-        with open(PREDICT_GATED_GROUPS_FILE) as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to load {PREDICT_GATED_GROUPS_FILE}: {e}")
+        st = os.stat(PREDICT_GATED_GROUPS_FILE)
+    except OSError:
         return {}
+
+    def loader():
+        try:
+            with open(PREDICT_GATED_GROUPS_FILE) as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load {PREDICT_GATED_GROUPS_FILE}: {e}")
+            return {}
+
+    return _gated_groups_cache.get_or_load(
+        PREDICT_GATED_GROUPS_FILE, (st.st_mtime_ns, st.st_size), loader
+    )
 
 
 def _float_query_required(request, name, lo=None, hi=None):
@@ -1325,13 +1471,27 @@ def _float_query_required(request, name, lo=None, hi=None):
     return value
 
 
+# ロード済みjoblibモデルのキャッシュ(#573、(path, mtime_ns, size)がキー)。本APIは
+# 1秒ごとに呼ばれるため、モデルファイルが変わっていない間はjoblib.loadの
+# デシリアライズコストを避ける。再学習でファイルが置き換わった場合も、次回呼び出しで
+# (mtime_ns, size)の変化を検知し読み直す(サーバー再起動不要)。
+# 複数のコース×車種を同時に推論し得るため、少数件のLRUで複数モデルを保持する。
+PREDICT_MODEL_CACHE_MAXSIZE = 32
+_model_cache = _StatCache(maxsize=PREDICT_MODEL_CACHE_MAXSIZE)
+
+
 def _predict_laptime(model_path, feature_values):
     """joblibモデルをロードし推論する(#434 P5 Stage2、同期関数)。
 
     joblib.load()のデシリアライズコストがイベントループを塞がないよう、
     呼び出し元は必ずasyncio.to_thread経由で呼ぶこと(既存の_load_lap_fileと同じ方針)。
+    ロード済みモデルは_model_cacheで(path, mtime_ns, size)をキーに再利用する(#573)。
+    _StatCache.get_or_loadはasyncio.to_thread経由の並行呼び出しに対して安全。
     """
-    model = joblib.load(model_path)
+    st = os.stat(model_path)  # 不在時はFileNotFoundError(呼び出し元が500へ変換、従来どおり)
+    model = _model_cache.get_or_load(
+        model_path, (st.st_mtime_ns, st.st_size), lambda: joblib.load(model_path)
+    )
     prediction = model.predict([feature_values])
     return float(prediction[0])
 
@@ -1427,19 +1587,20 @@ async def api_predict_laptime_handler(request):
         )
 
     try:
-        progress = _float_query_required(request, "progress", lo=0.0, hi=1.0)
-        avg_speed_kmh = _float_query_required(request, "avg_speed_kmh", lo=0.0)
-        max_speed_kmh = _float_query_required(request, "max_speed_kmh", lo=0.0)
-        avg_throttle_pct = _float_query_required(request, "avg_throttle_pct", lo=0.0, hi=100.0)
-        avg_brake_pct = _float_query_required(request, "avg_brake_pct", lo=0.0, hi=100.0)
-        avg_tyre_temp = _float_query_required(request, "avg_tyre_temp")
+        # PREDICT_FEATURE_COLUMNS(= lapstore.FEATURE_COLUMNS、学習時の列順)を
+        # そのまま辿って特徴量ベクトルを組むため、推論側の列順が学習側と自然に一致する
+        # (手書きの並び替えで食い違う余地を無くす、#574)。検証ルール・範囲・エラー
+        # メッセージは以前と同一(PREDICT_FEATURE_RANGESに列ごとの範囲を集約)。
+        feature_values = [
+            _float_query_required(
+                request, PREDICT_FEATURE_QUERY_PARAMS[column],
+                lo=PREDICT_FEATURE_RANGES[PREDICT_FEATURE_QUERY_PARAMS[column]][0],
+                hi=PREDICT_FEATURE_RANGES[PREDICT_FEATURE_QUERY_PARAMS[column]][1],
+            )
+            for column in PREDICT_FEATURE_COLUMNS
+        ]
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=400)
-
-    feature_values = [
-        progress, avg_speed_kmh, max_speed_kmh,
-        avg_throttle_pct, avg_brake_pct, avg_tyre_temp,
-    ]
 
     try:
         predicted_ms = await asyncio.to_thread(_predict_laptime, group["model_path"], feature_values)

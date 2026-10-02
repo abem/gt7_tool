@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # アプリケーションファイルをコピー
-COPY main.py telemetry.py decoder.py ./
+COPY main.py telemetry.py decoder.py lapstore.py ./
 COPY config.json ./
 COPY course_database.json* ./
 # 画面のファイル: トップレベルの *.html・*.js・*.css を、種類ごとに一括でコピーする(#575)。
