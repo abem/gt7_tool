@@ -134,22 +134,13 @@ function vcInsertButton() {
     if (!bar || document.getElementById('vc-toolbar-btn')) {
         return !!document.getElementById('vc-toolbar-btn');
     }
-    const btn = document.createElement('button');
-    btn.id = 'vc-toolbar-btn';
-    btn.type = 'button';
-    btn.className = 'tb-btn';
-    btn.title = '音声コマンドでビュー/カード表示を切替(押している間ではなく、押すと1回だけ聞き取ります)';
-    btn.setAttribute('aria-label', 'VOICE');
+    const btn = gtCreateToolbarButton({
+        id: 'vc-toolbar-btn',
+        label: 'VOICE',
+        icon: '🎤',
+        title: '音声コマンドでビュー/カード表示を切替(押している間ではなく、押すと1回だけ聞き取ります)'
+    });
     btn.setAttribute('aria-pressed', 'false');
-    const ico = document.createElement('span');
-    ico.className = 'tb-ico';
-    ico.setAttribute('aria-hidden', 'true');
-    ico.textContent = '🎤'; // 🎤
-    const label = document.createElement('span');
-    label.className = 'tb-label';
-    label.textContent = 'VOICE';
-    btn.appendChild(ico);
-    btn.appendChild(label);
     btn.addEventListener('click', vcStart);
     bar.appendChild(btn);
     vcState.btn = btn;
@@ -164,14 +155,7 @@ function vcInit() {
     // menu.js のツールバーは DOMContentLoaded で生成される。本ファイルは
     // menu.js より後だが、生成前に走った場合に備えて短いリトライを持つ
     // (card-groups.js の cgInit と同型の防御)。
-    if (!vcInsertButton()) {
-        let tries = 0;
-        const t = setInterval(function() {
-            if (vcInsertButton() || ++tries > 20) {
-                clearInterval(t);
-            }
-        }, 100);
-    }
+    gtRetryUntil(vcInsertButton);
 }
 
 if (document.readyState === 'loading') {

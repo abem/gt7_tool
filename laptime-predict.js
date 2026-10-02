@@ -140,26 +140,6 @@ function lpSampleTick() {
  *  既存の /api/laps・/api/laps/{file}(fields射影で軽量化)のみ使用。main.py無改変)
  * ================================================================ */
 
-/** ラップ詳細サンプル配列(position_x/position_z)から累積距離(m)を算出する。 */
-function lpComputeDistanceFromSamples(samples) {
-    let dist = 0, prev = null;
-    samples.forEach(function(s) {
-        if (s.position_x == null || s.position_z == null) {
-            return;
-        }
-        if (prev) {
-            const dx = s.position_x - prev[0];
-            const dz = s.position_z - prev[1];
-            const chord = Math.sqrt(dx * dx + dz * dz);
-            if (chord <= LP_DISCONTINUITY_M) {
-                dist += chord;
-            }
-        }
-        prev = [s.position_x, s.position_z];
-    });
-    return dist;
-}
-
 /**
  * 同一コース×車種の参照ラップ総距離を、複数周回の距離から頑健に決める(#559)。
  *
@@ -169,14 +149,10 @@ function lpComputeDistanceFromSamples(samples) {
  * そのため、同コースの周回を最大LP_REFERENCE_SAMPLE_COUNT本集め、距離が
  * ±LP_REFERENCE_DIST_TOLERANCE以内で最も多く集まる塊(=単独周回)の中央値を採用する。
  * 塊が作れない(全て食い違う)場合は全体の中央値。
+ * 周回の距離(gtPathDistance)と中央値(gtMedian)は、common-utils.js の共通の実装を使う。
+ *
+ * 距離の配列から参照距離を決める(純関数)。最大の塊の中央値。同数なら先に現れた(=新しい)塊。
  */
-function lpMedian(values) {
-    const a = values.slice().sort(function(x, y) { return x - y; });
-    const n = a.length;
-    return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
-}
-
-/** 距離の配列から参照距離を決める(純関数)。最大の塊の中央値。同数なら先に現れた(=新しい)塊。 */
 function lpPickReferenceDistance(dists) {
     if (!dists.length) {
         return 0;
@@ -190,7 +166,7 @@ function lpPickReferenceDistance(dists) {
             best = members;
         }
     });
-    return best.length > 1 ? lpMedian(best) : lpMedian(dists);
+    return best.length > 1 ? gtMedian(best) : gtMedian(dists);
 }
 
 /**
@@ -240,7 +216,7 @@ async function lpFetchReferenceDistance(courseId, carId) {
             if (!detail.meta || !detail.meta.course || detail.meta.course.id !== courseId) {
                 continue;
             }
-            const dist = lpComputeDistanceFromSamples(detail.samples || []);
+            const dist = gtPathDistance(detail.samples);
             if (dist > 0) {
                 dists.push(dist);
             }

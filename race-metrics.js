@@ -1022,24 +1022,12 @@ function rmOutlierTick() {
  * ================================================================ */
 
 function rmLoadFuelTarget() {
-    try {
-        const v = parseFloat(localStorage.getItem(RM_FUEL_TARGET_STORAGE));
-        return v > 0 ? v : null;
-    } catch (e) {
-        return null;
-    }
+    const v = parseFloat(gtStorageGet(RM_FUEL_TARGET_STORAGE));
+    return v > 0 ? v : null;
 }
 
 function rmSaveFuelTarget(v) {
-    try {
-        if (v > 0) {
-            localStorage.setItem(RM_FUEL_TARGET_STORAGE, String(v));
-        } else {
-            localStorage.removeItem(RM_FUEL_TARGET_STORAGE);
-        }
-    } catch (e) {
-        // 保存できなくても表示は動く
-    }
+    gtStorageSet(RM_FUEL_TARGET_STORAGE, v > 0 ? String(v) : null);   // 保存できなくても表示は動く
 }
 
 /** 目標差分の表示を更新する(1Hz。入力欄が無ければ何もしない)。 */

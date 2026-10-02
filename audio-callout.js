@@ -52,20 +52,13 @@
         btn: null
     };
 
+    /** 保存された設定(既定はオフ。保存が無い・読めないときもオフ)。 */
     function load() {
-        try {
-            return localStorage.getItem(STORAGE_KEY) === '1';
-        } catch (e) {
-            return false;
-        }
+        return gtStorageGet(STORAGE_KEY) === '1';
     }
 
     function save(on) {
-        try {
-            localStorage.setItem(STORAGE_KEY, on ? '1' : '0');
-        } catch (e) {
-            // 保存できなくても、その場の切り替えは動く
-        }
+        gtStorageSet(STORAGE_KEY, on ? '1' : '0');   // 保存できなくても、その場の切り替えは動く
     }
 
     /** 再生・REVIEW 中は読み上げない。 */
@@ -179,21 +172,8 @@
         if (!bar || document.getElementById('ac-toolbar-btn')) {
             return !!document.getElementById('ac-toolbar-btn');
         }
-        const btn = document.createElement('button');
-        btn.id = 'ac-toolbar-btn';
-        btn.type = 'button';
-        btn.className = 'tb-btn';
-        btn.setAttribute('aria-label', 'AUDIO');
+        const btn = gtCreateToolbarButton({ id: 'ac-toolbar-btn', label: 'AUDIO', icon: '🔊' });
         btn.setAttribute('aria-pressed', 'false');
-        const ico = document.createElement('span');
-        ico.className = 'tb-ico';
-        ico.setAttribute('aria-hidden', 'true');
-        ico.textContent = '🔊';
-        const label = document.createElement('span');
-        label.className = 'tb-label';
-        label.textContent = 'AUDIO';
-        btn.appendChild(ico);
-        btn.appendChild(label);
         btn.addEventListener('click', function() {
             setEnabled(!state.enabled, true);
         });
@@ -215,14 +195,7 @@
         };
         document.addEventListener('pointerdown', arm, true);
         document.addEventListener('keydown', arm, true);
-        if (!insertButton()) {
-            let tries = 0;
-            const t = setInterval(function() {
-                if (insertButton() || ++tries > 20) {
-                    clearInterval(t);
-                }
-            }, 100);
-        }
+        gtRetryUntil(insertButton);   // menu.js のツールバーが、まだ作られていない場合に備える
     }
 
     if (document.readyState === 'loading') {

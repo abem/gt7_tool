@@ -454,12 +454,11 @@
      */
     function dropLapTimeOutliers(entries, keep) {
         const times = entries.map(function(e) { return e.meta && e.meta.laptime_ms_approx; })
-            .filter(function(t) { return t > 0; }).sort(function(p, q) { return p - q; });
+            .filter(function(t) { return t > 0; });
         if (times.length < 3) {
             return entries;
         }
-        const mid = Math.floor(times.length / 2);
-        const med = times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
+        const med = gtMedian(times);
         return entries.filter(function(e) {
             const t = e.meta && e.meta.laptime_ms_approx;
             return keep.indexOf(e) >= 0 || !(t > 0) || Math.abs(t - med) / med <= CONS_LAPTIME_TOL;
@@ -699,42 +698,12 @@
             return;
         }
         render(null, null);
-        table.addEventListener('mouseover', function(ev) {
-            const tr = ev.target.closest && ev.target.closest('tbody tr');
-            if (tr && state.pinned < 0) {
-                const r = rowRange(tr);
-                highlight(r[0], r[1]);
-            }
-        });
-        table.addEventListener('mouseleave', function() {
-            if (state.pinned < 0) {
-                highlight(-1, -1);
-            }
-        });
-        table.addEventListener('click', function(ev) {
-            const tr = ev.target.closest && ev.target.closest('tbody tr');
-            if (!tr) {
-                return;
-            }
-            const rows = Array.prototype.slice.call(tr.parentNode.children);
-            const idx = rows.indexOf(tr);
-            if (state.pinned === idx) {
-                state.pinned = -1;
-                highlight(-1, -1);
-                tr.classList.remove('cr-pinned');
-            } else {
-                rows.forEach(function(x) { x.classList.remove('cr-pinned'); });
-                state.pinned = idx;
-                const r = rowRange(tr);
-                highlight(r[0], r[1]);
-                tr.classList.add('cr-pinned');
-            }
-        });
-        table.addEventListener('keydown', function(ev) {
-            if (ev.key === 'Enter' || ev.key === ' ') {
-                ev.preventDefault();
-                ev.target.click();
-            }
+        gtBindRowHighlight(table, {
+            getPinned: function() { return state.pinned; },
+            setPinned: function(i) { state.pinned = i; },
+            rangeOf: rowRange,
+            highlight: highlight,
+            pinnedClass: 'cr-pinned'
         });
         // CONSISTENCY(#562)
         const btn = byId('cr-cons-load');
@@ -744,44 +713,14 @@
         }
         const ct = byId('cr-cons-table');
         if (ct) {
-            const rangeOf = function(tr) {
-                return [Number(tr.getAttribute('data-cc-i0')), Number(tr.getAttribute('data-cc-i1'))];
-            };
-            ct.addEventListener('mouseover', function(ev) {
-                const tr = ev.target.closest && ev.target.closest('tbody tr');
-                if (tr && state.consPinned < 0) {
-                    const r = rangeOf(tr);
-                    highlight(r[0], r[1]);
-                }
-            });
-            ct.addEventListener('mouseleave', function() {
-                if (state.consPinned < 0) {
-                    highlight(-1, -1);
-                }
-            });
-            ct.addEventListener('click', function(ev) {
-                const tr = ev.target.closest && ev.target.closest('tbody tr');
-                if (!tr) {
-                    return;
-                }
-                const rows = Array.prototype.slice.call(tr.parentNode.children);
-                const idx = rows.indexOf(tr);
-                rows.forEach(function(x) { x.classList.remove('cr-pinned'); });
-                if (state.consPinned === idx) {
-                    state.consPinned = -1;
-                    highlight(-1, -1);
-                } else {
-                    state.consPinned = idx;
-                    const r = rangeOf(tr);
-                    highlight(r[0], r[1]);
-                    tr.classList.add('cr-pinned');
-                }
-            });
-            ct.addEventListener('keydown', function(ev) {
-                if (ev.key === 'Enter' || ev.key === ' ') {
-                    ev.preventDefault();
-                    ev.target.click();
-                }
+            gtBindRowHighlight(ct, {
+                getPinned: function() { return state.consPinned; },
+                setPinned: function(i) { state.consPinned = i; },
+                rangeOf: function(tr) {
+                    return [Number(tr.getAttribute('data-cc-i0')), Number(tr.getAttribute('data-cc-i1'))];
+                },
+                highlight: highlight,
+                pinnedClass: 'cr-pinned'
             });
         }
     }

@@ -25,7 +25,6 @@
     const FETCH_EVERY = 60;        // サンプル間引き(距離の概算には十分)
     // 距離差の許容は review-view.js の REVIEW_DIST_TOLERANCE を使う(未読込時の既定)
     const DIST_TOLERANCE_FALLBACK = 0.03;
-    const DISCONTINUITY_M = 120;   // これを超える点間距離は位置の飛びとして距離加算しない
     const CHART_H = 220;
     const OUTLIER_RATIO = 1.3;     // 中央値のこの倍率を超える周回を外れ値とする
     const OUTLIER_MIN_LAPS = 4;    // これ未満の本数では中央値が不安定なので判定しない
@@ -109,26 +108,6 @@
         }
     }
 
-    /** 詳細(間引き)サンプルから走行距離を概算する。 */
-    function pathLength(samples) {
-        let cum = 0;
-        let lx = null;
-        let lz = null;
-        (samples || []).forEach(function(s) {
-            if (s.position_x != null && s.position_z != null) {
-                if (lx !== null) {
-                    const seg = Math.hypot(s.position_x - lx, s.position_z - lz);
-                    if (seg <= DISCONTINUITY_M) {
-                        cum += seg;
-                    }
-                }
-                lx = s.position_x;
-                lz = s.position_z;
-            }
-        });
-        return cum;
-    }
-
     function fetchLap(lap) {
         return fetch('/api/laps/' + encodeURIComponent(lap.file) + '?every=' + FETCH_EVERY)
             .then(function(res) {
@@ -144,7 +123,7 @@
                     recordedAt: Date.parse(lap.recorded_at) || 0,
                     lapMs: m.laptime_ms_approx || 0,
                     course: m.course ? (m.course.id || m.course.name_ja || m.course.name_en || null) : null,
-                    dist: pathLength(body.samples)
+                    dist: gtPathDistance(body.samples)   // 詳細(間引き)サンプルからの概算
                 };
             });
     }
@@ -188,9 +167,7 @@
         if (rows.length < OUTLIER_MIN_LAPS) {
             return 0;
         }
-        const sorted = rows.map(function(r) { return r.lapMs; }).sort(function(a, b) { return a - b; });
-        const mid = sorted.length >> 1;
-        const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        const median = gtMedian(rows.map(function(r) { return r.lapMs; }));
         let n = 0;
         rows.forEach(function(r) {
             if (r.lapMs > median * OUTLIER_RATIO) {

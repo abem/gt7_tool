@@ -208,43 +208,13 @@
             return;
         }
         render(null, null);   // 初期表示(未選択の案内文)
-        table.addEventListener('mouseover', function(ev) {
-            const tr = ev.target.closest && ev.target.closest('tbody tr');
-            if (tr && state.pinned < 0) {
-                const r = rowRange(tr);
-                highlight(r[0], r[1]);
-            }
-        });
-        table.addEventListener('mouseleave', function() {
-            if (state.pinned < 0) {
-                highlight(-1, -1);
-            }
-        });
-        // クリック(タップ)で強調を固定/解除(タッチ端末ではホバーが無いため)
-        table.addEventListener('click', function(ev) {
-            const tr = ev.target.closest && ev.target.closest('tbody tr');
-            if (!tr) {
-                return;
-            }
-            const r = rowRange(tr);
-            const rows = Array.prototype.slice.call(tr.parentNode.children);
-            const idx = rows.indexOf(tr);
-            if (state.pinned === idx) {
-                state.pinned = -1;
-                highlight(-1, -1);
-                tr.classList.remove('sr-pinned');
-            } else {
-                rows.forEach(function(x) { x.classList.remove('sr-pinned'); });
-                state.pinned = idx;
-                highlight(r[0], r[1]);
-                tr.classList.add('sr-pinned');
-            }
-        });
-        table.addEventListener('keydown', function(ev) {
-            if (ev.key === 'Enter' || ev.key === ' ') {
-                ev.preventDefault();
-                ev.target.click();
-            }
+        // ホバーで強調、クリック(タップ)で固定/解除(タッチ端末ではホバーが無いため)
+        gtBindRowHighlight(table, {
+            getPinned: function() { return state.pinned; },
+            setPinned: function(i) { state.pinned = i; },
+            rangeOf: rowRange,
+            highlight: highlight,
+            pinnedClass: 'sr-pinned'
         });
     }
 

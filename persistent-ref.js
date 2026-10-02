@@ -37,7 +37,6 @@
     const MIN_CANDIDATES = 3;      // これ未満は、中央値が頼りにならないため使わない
     const DIST_TOLERANCE = 0.05;   // 走行距離の、中央値からの許容差
     const MIN_TIME_FRAC = 0.7;     // ラップタイムの下限(中央値に対する割合)
-    const DISCONTINUITY_M = 120;   // 瞬間移動とみなす1サンプルの移動量(review-view.js と同じ)
 
     const state = {
         enabled: true,
@@ -53,47 +52,13 @@
         return document.getElementById(id);
     }
 
+    /** 保存された設定(既定はオン。保存が無い・読めないときもオン)。 */
     function load() {
-        try {
-            return localStorage.getItem(STORAGE_KEY) !== '0';
-        } catch (e) {
-            return true;
-        }
+        return gtStorageGet(STORAGE_KEY) !== '0';
     }
 
     function save(on) {
-        try {
-            localStorage.setItem(STORAGE_KEY, on ? '1' : '0');
-        } catch (e) {
-            // 保存できなくても、その場の切り替えは動く
-        }
-    }
-
-    function median(values) {
-        const a = values.slice().sort(function(x, y) { return x - y; });
-        const n = a.length;
-        return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
-    }
-
-    /** 位置(position_x/position_z)の弦長の積算[m]。瞬間移動(DISCONTINUITY_M 超)は加算しない。 */
-    function pathDistance(samples) {
-        let d = 0;
-        let px = null;
-        let pz = null;
-        (samples || []).forEach(function(s) {
-            if (s.position_x == null || s.position_z == null) {
-                return;
-            }
-            if (px !== null) {
-                const seg = Math.hypot(s.position_x - px, s.position_z - pz);
-                if (seg <= DISCONTINUITY_M) {
-                    d += seg;
-                }
-            }
-            px = s.position_x;
-            pz = s.position_z;
-        });
-        return d;
+        gtStorageSet(STORAGE_KEY, on ? '1' : '0');   // 保存できなくても、その場の切り替えは動く
     }
 
     /**
@@ -105,8 +70,8 @@
         if (cands.length < MIN_CANDIDATES) {
             return null;
         }
-        const medDist = median(cands.map(function(c) { return c.dist; }));
-        const medTime = median(cands.map(function(c) { return c.lapMs; }));
+        const medDist = gtMedian(cands.map(function(c) { return c.dist; }));
+        const medTime = gtMedian(cands.map(function(c) { return c.lapMs; }));
         const ok = cands.filter(function(c) {
             return Math.abs(c.dist - medDist) / medDist <= DIST_TOLERANCE && c.lapMs >= medTime * MIN_TIME_FRAC;
         });
@@ -166,7 +131,7 @@
             if (!meta || !meta.course || meta.course.id !== courseId || !(lapMs > 0)) {
                 continue;
             }
-            const dist = pathDistance(body.samples);
+            const dist = gtPathDistance(body.samples);
             if (dist > 0) {
                 cands.push({ file: laps[i].file, lapMs: lapMs, dist: dist, recordedAt: laps[i].recorded_at || '' });
             }
