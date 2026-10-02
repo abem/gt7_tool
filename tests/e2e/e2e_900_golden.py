@@ -35,7 +35,8 @@ SNAP_JS = r"""
   const path = (el) => {
     const parts = [];
     for (let e = el; e && e !== stop; e = e.parentElement) {
-      const i = e.parentElement ? Array.prototype.indexOf.call(e.parentElement.children, e) : 0;
+      // script / style 等は、パスの番号に数えない(読み込むスクリプトを足しても、要素の名前が変わらないように)
+      const i = e.parentElement ? Array.prototype.filter.call(e.parentElement.children, (c) => !c.matches('script, style, link, meta')).indexOf(e) : 0;
       parts.unshift(e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + ':' + (e === root ? 0 : i));
     }
     return parts.join('>');
