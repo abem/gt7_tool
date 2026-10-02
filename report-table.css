@@ -1,0 +1,92 @@
+/*
+ * 共通: レポート系の表(#571/#572 の整理)
+ *
+ * 区間レポート(#sr-table)・コーナー別レポート(#cr-table)・ばらつき(#cr-cons-table)は、
+ * 見た目が同じなので、ここにまとめた。表ごとに違うのは、最小幅と、固定した行の class 名だけ
+ * (それぞれのファイルに残す)。id と class は変えない(JS が参照する)。
+ * 横スクロール領域: 表は幅が広いため、カード内のスクロール領域に収める(#435 の教訓)。
+ */
+#sr-scroll,
+#cr-scroll,
+#cr-cons-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#sr-table,
+#cr-table,
+#cr-cons-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+#sr-table th,
+#cr-table th,
+#cr-cons-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--border-hairline);
+    white-space: nowrap;
+}
+
+#sr-table td,
+#cr-table td,
+#cr-cons-table td {
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    white-space: nowrap;
+}
+
+#sr-table th:first-child,
+#sr-table td:first-child,
+#cr-table th:first-child,
+#cr-table td:first-child,
+#cr-cons-table th:first-child,
+#cr-cons-table td:first-child {
+    text-align: left;
+    padding-left: 4px;
+}
+
+#sr-table tbody tr,
+#cr-table tbody tr,
+#cr-cons-table tbody tr {
+    cursor: pointer;
+}
+
+#sr-table tbody tr:hover,
+#sr-table tbody tr:focus,
+#sr-table tbody tr.sr-pinned,
+#cr-table tbody tr:hover,
+#cr-table tbody tr:focus,
+#cr-table tbody tr.cr-pinned,
+#cr-cons-table tbody tr:hover,
+#cr-cons-table tbody tr:focus,
+#cr-cons-table tbody tr.cr-pinned {
+    background: var(--surface-3);
+    outline: none;
+}
+
+#sr-table tbody tr.sr-pinned,
+#cr-table tbody tr.cr-pinned,
+#cr-cons-table tbody tr.cr-pinned {
+    box-shadow: inset 2px 0 0 var(--accent-brand);
+}
+
+/* 表ごとの最小幅(列の数が違う) */
+#sr-table {
+    min-width: 640px;
+}
+
+#cr-table {
+    min-width: 760px;
+}
+
+#cr-cons-table {
+    min-width: 560px;
+}
