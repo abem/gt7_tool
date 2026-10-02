@@ -27,7 +27,7 @@ const LP_PREDICT_TICK_MS = 1000;     // API呼び出し周期(race-metrics.js M-
 const LP_DISCONTINUITY_M = 120;      // review-view.js/telemetry-analysis.js等と同じ瞬間移動閾値
 const LP_REFERENCE_CANDIDATE_LIMIT = 30; // 参照距離探索時の候補ラップ上限(car_id絞り込み後)
 const LP_REFERENCE_SAMPLE_COUNT = 6;    // 参照距離に使う同コース周回の本数(距離の塊の中央値を取る。#559)
-const LP_REFERENCE_DIST_TOLERANCE = 0.03; // 同じ周回とみなす距離の許容差(review-view.jsのREVIEW_DIST_TOLERANCEと同じ考え方)
+const LP_REFERENCE_DIST_TOLERANCE = REVIEW_DIST_TOLERANCE; // 同じ周回とみなす距離の許容差(review-view.js の定義をそのまま使う。#576)
 const LP_REFERENCE_NONE_RETRY_MS = 60 * 1000; // 参照ラップが見つからない組み合わせを探し直す間隔(毎秒の全走査を防ぐ)
 const LP_NO_MODEL_RETRY_MS = 5 * 60 * 1000; // モデル無し(404)の組み合わせを再問い合わせするまでの間隔(#558)
 
