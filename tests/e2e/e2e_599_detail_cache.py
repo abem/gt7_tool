@@ -24,7 +24,7 @@ def chk(n, c, x=''): ok[0 if c else 1] += 1; print('PASS' if c else 'FAIL', n, x
 
 COUNT_JS = """() => {
   const c = reviewState.detailCache, files = Object.keys(c);
-  const times = Array.from(document.querySelectorAll('.review-lap-item .review-lap-time')).filter(e => /\\d:\\d\\d\\.\\d{3}/.test(e.textContent)).length;
+  const times = Array.from(document.querySelectorAll('.review-lap-item')).filter(e => /\\d:\\d\\d\\.\\d{3}/.test(e.textContent)).length;   // 取得済みの行にはラップタイム(m:ss.mmm)が出る
   return { meta: files.length, body: files.filter(f => c[f].res !== undefined).length, lru: reviewState.detailLru.length,
            aux: Object.keys(rmState.auxCache).length, auxLru: rmState.auxLru.length, times: times };
 }"""
@@ -71,7 +71,7 @@ with sync_playwright() as pw:
     chk('取り直したあとも本体の件数は上限のまま', c2['body'] == cap, c2)
     # 同じ A/B のまま再通知しても取り直さない(キャッシュが効く)
     before = n_detail[0]
-    pg.evaluate("reviewCompare()"); pg.wait_for_timeout(800)
+    pg.evaluate("reviewUpdateComparison()"); pg.wait_for_timeout(800)
     chk('A/B が変わらない再比較では取り直さない', n_detail[0] == before, n_detail[0] - before)
     chk('pageerror 0', not errs, errs); b.close()
 print('PASS', ok[0], 'FAIL', ok[1])
