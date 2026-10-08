@@ -54,7 +54,9 @@ class _TelemetryProtocol(asyncio.DatagramProtocol):
             except asyncio.QueueEmpty:
                 pass
         try:
-            self._queue.put_nowait((data, addr))
+            # 受信時刻をここで付ける(#602)。取り出し側(main.py)が保存などで待っている間に届いた
+            # パケットが、後からまとめて同じ時刻になるのを防ぐ
+            self._queue.put_nowait((data, addr, time.time()))
         except asyncio.QueueFull:
             # 満杯ならこの1パケットを捨てる（受信レート>>消費レート時の安全装置）
             dropped = True
@@ -106,6 +108,7 @@ class GT7TelemetryClient:
         # デバッグ/観測用に残しており、送信経路の健全性確認等で参照する用途。
         self.last_heartbeat = 0.0
         self.packets_received = 0
+        self.last_recv_ts = None   # receive() が返したパケットの受信時刻(time.time()。#602)
 
         # 非同期受信キュー。connect() 時にイベントループが確定してから生成する。
         self._queue = None
@@ -168,7 +171,8 @@ class GT7TelemetryClient:
         """
         if not self._connected or self._queue is None:
             return None
-        data, _addr = await self._queue.get()
+        data, _addr, recv_ts = await self._queue.get()
+        self.last_recv_ts = recv_ts
         self.packets_received += 1
         return data
 

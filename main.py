@@ -15,7 +15,7 @@ from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
 from decoder import GT7Decoder, CourseEstimator
-from lapstore import LAP_FILE_RE, FEATURE_COLUMNS, FEATURE_QUERY_PARAMS
+from lapstore import LAP_FILE_RE, FEATURE_COLUMNS, FEATURE_QUERY_PARAMS, repace_timestamps
 
 logging.basicConfig(
     level=logging.INFO,
@@ -245,14 +245,20 @@ def ensure_log_dir():
         logger.info(f"Created log directory: {LOG_DIR}")
 
 
-def save_lap_to_file(lap_data, lap_num):
+def save_lap_to_file(lap_parts, lap_num, car_id=0):
+    """ラップの全サンプルを1つの JSON 配列として保存する。
+
+    lap_parts は、配信用に json.dumps 済みのサンプル文字列の一覧(#602)。ここでは結合して
+    書くだけで、出力は json.dump(list) と byte 単位で同一。ラップ全体を改めて json.dump すると
+    (18MB で 0.5 秒超)受信ループが止まり、その間のパケットの受信時刻が詰まっていた。
+    """
     # 記録ON/OFF(P1 B案 #124): config.json の recording_enabled (既定 true=従来どおり)。
     # 入口の1分岐のみで、受信・復号・WS配信(ライブ表示)には影響しない。
     if not CONFIG.get("recording_enabled", True):
         return
     timestamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
-    car_id = lap_data[0].get("car_id", 0) if lap_data else 0
     filename = f"{LOG_DIR}/{timestamp}_CAR-{car_id}_Lap-{lap_num}.json"
+    body = "[" + ", ".join(lap_parts) + "]"   # json.dump(list) の既定の区切り(", ")と同じ
 
     # 書込み失敗時の再試行(#434 P1): 一時的なI/Oエラーの自己解消を想定し、
     # 短い待機を挟んで規定回数まで再試行してから退避処理へ進む。
@@ -260,8 +266,8 @@ def save_lap_to_file(lap_data, lap_num):
     for attempt in range(1, SAVE_RETRY_COUNT + 1):
         try:
             with open(filename, 'w') as f:
-                json.dump(lap_data, f)
-            logger.info(f"Saved lap data: {filename} ({len(lap_data)} samples)")
+                f.write(body)
+            logger.info(f"Saved lap data: {filename} ({len(lap_parts)} samples)")
             return
         except Exception as e:
             last_error = e
@@ -277,31 +283,33 @@ def save_lap_to_file(lap_data, lap_num):
         os.makedirs(LOG_DIR_FAILED, exist_ok=True)
         failed_filename = f"{LOG_DIR_FAILED}/{timestamp}_CAR-{car_id}_Lap-{lap_num}_failed.json"
         with open(failed_filename, 'w') as f:
-            json.dump(lap_data, f)
+            f.write(body)
         logger.error(
             f"Saved lap data to fallback after {SAVE_RETRY_COUNT} failed attempts: "
-            f"{failed_filename} ({len(lap_data)} samples). Last error: {last_error}"
+            f"{failed_filename} ({len(lap_parts)} samples). Last error: {last_error}"
         )
     except Exception as e:
         logger.error(
             f"Lap data LOST: primary and fallback save both failed for lap {lap_num} "
-            f"(car_id={car_id}, {len(lap_data)} samples). "
+            f"(car_id={car_id}, {len(lap_parts)} samples). "
             f"primary_error={last_error} fallback_error={e}",
             exc_info=True
         )
 
 
-def _save_checkpoint(lap_data, lap_num):
+def _save_checkpoint(lap_parts, lap_num):
     """進行中ラップの周期チェックポイントを固定ファイルへ上書き保存する(#434 P1)。
 
     ラップ境界保存(save_lap_to_file)とは独立した安全網であり、失敗しても
     ロギングのみ行い次回間隔で再試行する(例外を上位へ伝播させない)。
+    lap_parts は json.dumps 済みのサンプル文字列(#602)。出力は
+    json.dump({"lap_num": N, "samples": [...]}) と同一。
     """
-    if not lap_data:
+    if not lap_parts:
         return
     try:
         with open(CHECKPOINT_FILE, 'w') as f:
-            json.dump({"lap_num": lap_num, "samples": lap_data}, f)
+            f.write('{"lap_num": %d, "samples": [%s]}' % (lap_num, ", ".join(lap_parts)))
     except Exception as e:
         logger.warning(f"Checkpoint save failed: {e}")
 
@@ -459,7 +467,8 @@ async def telemetry_background_task():
     last_package_id = 0
     last_speed_kmh = 0.0
     last_time = datetime.now()
-    current_lap_data = []
+    current_lap_parts = []      # 進行中ラップのサンプル(配信用に json.dumps 済みの文字列。#602)
+    current_lap_car_id = 0      # 進行中ラップの先頭サンプルの car_id(保存ファイル名に使う)
     current_lap_number = 0
     # コース推定ロックイン(#436 B4フォローアップ): course_estimator.estimate_course()
     # 自体(bounds面積最小選択)は無改変。course_database.jsonの特定コースペアの
@@ -525,7 +534,10 @@ async def telemetry_background_task():
                         packet_loss_count += gap
                 last_package_id = pid
 
-                current_time = datetime.now()
+                # 受信時刻は UDP の受信コールバックで付けたもの(#602)。ここで now() を取ると、
+                # 保存などで待っていた間に届いたパケットが、まとめて同じ時刻になる
+                recv_ts = getattr(client, "last_recv_ts", None)
+                current_time = datetime.fromtimestamp(recv_ts) if recv_ts else datetime.now()
                 parsed["timestamp"] = current_time.isoformat()
 
                 # 加速度計算
@@ -578,15 +590,18 @@ async def telemetry_background_task():
                 )
                 parsed.update(fuel_data)
 
-                # ラップデータ蓄積・保存（lap_count変化検知）
-                current_lap_data.append(parsed)
+                # ラップデータ蓄積・保存(lap_count変化検知)。配信用の JSON 文字列をそのまま貯める(#602)
+                part = json.dumps(parsed)
+                if not current_lap_parts:
+                    current_lap_car_id = parsed.get("car_id", 0)
+                current_lap_parts.append(part)
 
                 # 周期的チェックポイント保存(#434 P1): ラップ境界を待たず一定間隔で
                 # current_lap_data を中間保存する。SIGKILL/OOM等でfinally節を経ずに
                 # 終了した場合の未保存データを縮小する安全網。既存のラップ保存と同じく
                 # ワーカースレッドへオフロードし、受信ループ(イベントループ)を塞がない。
                 if (current_time - last_checkpoint_time).total_seconds() >= CHECKPOINT_INTERVAL_SEC:
-                    await asyncio.to_thread(_save_checkpoint, current_lap_data, current_lap_number)
+                    await asyncio.to_thread(_save_checkpoint, current_lap_parts, current_lap_number)
                     if packet_loss_count > 0:
                         logger.warning(f"Packet loss count (cumulative): {packet_loss_count}")
                     if broadcast_drop_count > 0:
@@ -595,13 +610,14 @@ async def telemetry_background_task():
                     last_checkpoint_time = current_time
 
                 # ラップ境界検出：lap_countが変化したら保存
-                # 同期 json 書込はイベントループを数百ms塞ぐためワーカースレッドへ。
+                # 書込はワーカースレッドへ(結合と write だけ。json.dump はしない。#602)。
                 # 旧リストは保存スレッドに渡し切り、以後はここで新リストへ差し替えるので
                 # 書込み中のリストが変更されることはない。
                 if lap_count > current_lap_number and current_lap_number > 0:
-                    await asyncio.to_thread(save_lap_to_file, current_lap_data, current_lap_number)
+                    await asyncio.to_thread(save_lap_to_file, current_lap_parts, current_lap_number,
+                                            current_lap_car_id)
                     await asyncio.to_thread(_clear_checkpoint)
-                    current_lap_data = []
+                    current_lap_parts = []
                     last_checkpoint_time = current_time
                 current_lap_number = lap_count
 
@@ -609,7 +625,7 @@ async def telemetry_background_task():
                 # 直接awaitせず非ブロッキングでbroadcast_queueへ積む。実際の送信は
                 # broadcast_consumer_taskが独立して行う。満杯時は最古を破棄して
                 # 最新を積む(telemetry.py:50-55と同じ「最新優先」ポリシー)。
-                message = json.dumps(parsed)
+                message = part
                 try:
                     broadcast_queue.put_nowait(message)
                 except asyncio.QueueFull:
@@ -636,8 +652,8 @@ async def telemetry_background_task():
             await broadcast_task
         except asyncio.CancelledError:
             pass
-        if current_lap_data:
-            save_lap_to_file(current_lap_data, current_lap_number)
+        if current_lap_parts:
+            save_lap_to_file(current_lap_parts, current_lap_number, current_lap_car_id)
             _clear_checkpoint()
         client.close()
 
@@ -1174,6 +1190,7 @@ def _load_lap_file(path, fields, every, output_format='json'):
         data = json.load(f)
     if not isinstance(data, list):
         raise ValueError("lap file is not a sample array")
+    _repace_timestamps(data)   # #602: 詰まった受信時刻を並べ直す(間引きの前に、全サンプルで)
     samples = [
         {k: s[k] for k in fields if k in s}
         for s in data[::every]
@@ -1206,6 +1223,7 @@ def _lap_duration_approx_ms(data):
     そのため v1/v2 共通で受信時刻 dt(< LAP_DURATION_GAP_S)の合計を使う。
     ラップ確定値(次ラップの last_laptime)ではない点は「approx」の名で明示する。
     _load_lap_file と同じワーカースレッド内で呼ぶこと(全サンプル走査のため)。
+    受信時刻が詰まった区間は _repace_timestamps で並べ直してから呼ぶ(#602)。
     """
     total_s = 0.0
     prev = None
@@ -1225,6 +1243,26 @@ def _lap_duration_approx_ms(data):
                 total_s += dt
         prev = t
     return round(total_s * 1000) if total_s > 0 else None
+
+
+def _repace_timestamps(data):
+    """受信時刻が詰まった区間(保存中に止まった分。#602)の timestamp を、本来の間隔で並べ直した
+    値に書き換える(間引く前の全サンプルで行う)。再生・REVIEW・CSV・ラップ時間の近似が、
+    そのまま正しい時刻軸を受け取る。書き換えた件数を返す。"""
+    ts = []
+    for s in data:
+        raw = s.get("timestamp") if isinstance(s, dict) else None
+        try:
+            ts.append(datetime.fromisoformat(raw).timestamp() if raw else None)
+        except ValueError:
+            ts.append(None)
+    adj = repace_timestamps(ts, LAP_DURATION_GAP_S)
+    changed = 0
+    for s, raw, a in zip(data, ts, adj):
+        if raw is not None and a is not None and abs(a - raw) > 1e-6:
+            s["timestamp"] = datetime.fromtimestamp(a).isoformat()
+            changed += 1
+    return changed
 
 
 async def api_lap_detail_handler(request):
