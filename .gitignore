@@ -98,3 +98,6 @@ logs/
 # e2e テストの出力(スクリーンショット等)
 tests/e2e/out/
 tests/e2e/__pycache__/
+
+# Claude Code ハーネスが作る作業ツリー(リポジトリ直下に出来る)
+.harness-worktrees/

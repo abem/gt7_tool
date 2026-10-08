@@ -57,7 +57,8 @@ const reviewState = {
     els: null,
     laps: [],               // /api/laps の一覧(メタ)
     lapsByFile: {},         // file -> 一覧メタ
-    detailCache: {},        // file -> {meta, resampled} (取得済み詳細)
+    detailCache: {},        // file -> {meta, res, raw} (取得済み詳細)。古いものは本体(res/raw)を捨てて meta だけ残す
+    detailLru: [],          // detailCache のうち本体を持つ file を、使った順に(末尾が最新)
     selA: null,             // 比較対象ファイル名
     selB: null,             // 基準ファイル名
     overlay: [],            // 重ね書きするファイル名(選択順、最大 REVIEW_OVERLAY_MAX。A/B とは別枠)
@@ -119,11 +120,7 @@ function applyReviewMode(on) {
         }
     }
 
-    try {
-        localStorage.setItem('gt7_view_mode', on ? REVIEW_VIEW_STORAGE_VALUE : 'analysis');
-    } catch (e) {
-        /* プライベートブラウジング等では永続化しない */
-    }
+    gtStorageSet(GT_VIEW_MODE_STORAGE_KEY, on ? REVIEW_VIEW_STORAGE_VALUE : 'analysis');   // 保存できない環境では永続化しない
 
     if (on && !reviewState.initialized) {
         reviewState.initialized = true;
@@ -176,13 +173,7 @@ function initReviewView() {
 
     // 保存ビューの復元。drive-view.js は 'review' を知らないため ANALYSIS で
     // 初期化しており、ここで REVIEW を上書き復元する(読込順で本処理が後)
-    let saved = null;
-    try {
-        saved = localStorage.getItem('gt7_view_mode');
-    } catch (e) {
-        saved = null;
-    }
-    if (saved === REVIEW_VIEW_STORAGE_VALUE) {
+    if (gtStorageGet(GT_VIEW_MODE_STORAGE_KEY) === REVIEW_VIEW_STORAGE_VALUE) {
         applyReviewMode(true);
     }
 }
@@ -727,14 +718,37 @@ function reviewBuildSeries(samples) {
     return { samples: out, cumDist: cum };
 }
 
+// 本体(res/raw、1周あたり数MB)を持ち続ける周回の上限(#599)。A/B + 重ね書き5本 + ばらつきの数周 + 余裕。
+// 超えた分は本体だけ捨て、meta(一覧のタイム・BEST の候補に使う)は残す。再び必要になれば取り直す
+const REVIEW_DETAIL_CACHE_MAX = 32;
+
+/** file を「最近使った」に動かし、上限を超えた古い周回の本体を捨てる。 */
+function reviewTouchDetail(file) {
+    const lru = reviewState.detailLru;
+    const i = lru.indexOf(file);
+    if (i >= 0) {
+        lru.splice(i, 1);
+    }
+    lru.push(file);
+    while (lru.length > REVIEW_DETAIL_CACHE_MAX) {
+        const old = lru.shift();
+        const e = reviewState.detailCache[old];
+        if (e && e.res !== undefined) {
+            reviewState.detailCache[old] = { meta: e.meta };   // 参照中の古いオブジェクトは変えない(使い終われば回収される)
+        }
+    }
+}
+
 /**
  * 単一ラップの詳細を取得し、距離グリッドへリサンプルして返す(キャッシュ付き)。
  * @param {string} file
  * @returns {Promise<Object>} {meta, res} res=resampleByDistの戻り値+totalDist
  */
 function reviewFetchDetail(file) {
-    if (reviewState.detailCache[file]) {
-        return Promise.resolve(reviewState.detailCache[file]);
+    const hit = reviewState.detailCache[file];
+    if (hit && hit.res !== undefined) {
+        reviewTouchDetail(file);
+        return Promise.resolve(hit);
     }
     const els = ensureReviewEls();
     if (els.listStatus) {
@@ -757,6 +771,7 @@ function reviewFetchDetail(file) {
             // raw: 距離グリッドへ間引く前の記録サンプル(約10Hz)。分布(CHANNEL PLOTS のヒストグラム)用
             const entry = { meta: body.meta, res: resampled, raw: series.samples };
             reviewState.detailCache[file] = entry;
+            reviewTouchDetail(file);
             if (els.listStatus) {
                 els.listStatus.textContent = '';
             }

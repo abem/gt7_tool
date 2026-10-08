@@ -51,10 +51,6 @@
         return typeof reviewCourseId === 'function' ? reviewCourseId(entry) : null;
     }
 
-    function fmt(ms) {
-        return typeof formatLapTime === 'function' ? formatLapTime(Math.round(ms)) : (ms / 1000).toFixed(3) + 's';
-    }
-
     function baseEntry() {
         return state.a || state.b;
     }
@@ -207,7 +203,7 @@
                 { stroke: axisStroke, grid: grid, ticks: { show: false }, size: 26,
                   values: function(u, vals) { return vals.map(function(v) { return Number.isInteger(v) ? '#' + v : ''; }); } },
                 { stroke: axisStroke, grid: grid, ticks: { show: false }, size: 64,
-                  values: function(u, vals) { return vals.map(function(v) { return fmt(v * 1000); }); } }
+                  values: function(u, vals) { return vals.map(function(v) { return gtFormatLapMs(v * 1000); }); } }
             ],
             legend: { show: false },
             cursor: { drag: { x: false, y: false } },
@@ -228,7 +224,7 @@
                     const i = u.cursor.idx;
                     const p = i != null ? state.points[i] : null;
                     ro.textContent = p
-                        ? '#' + (i + 1) + ' ／ ' + new Date(p.recordedAt).toLocaleString() + ' ／ ' + fmt(p.lapMs) +
+                        ? '#' + (i + 1) + ' ／ ' + new Date(p.recordedAt).toLocaleString() + ' ／ ' + gtFormatLapMs(p.lapMs) +
                           (p.outlier ? ' ／ 外れ値(統計から除外)' : '')
                         : '';
                 }]
@@ -358,7 +354,7 @@
             state.key = key;
             const inliers = ok.filter(function(r) { return !r.outlier; });
             const st = computeStats(inliers.map(function(r) { return r.lapMs; }));
-            setStats('n=' + st.n + ' ／ ベスト ' + fmt(st.best) + ' ／ 平均 ' + fmt(st.mean) +
+            setStats('n=' + st.n + ' ／ ベスト ' + gtFormatLapMs(st.best) + ' ／ 平均 ' + gtFormatLapMs(st.mean) +
                 ' ／ ばらつき σ=' + (st.sigma / 1000).toFixed(2) + 's' +
                 (outliers ? ' ／ 外れ値 ' + outliers + ' 本を除外' : ''));
             setStatus('同一コース・同一車種の直近 ' + rows.length + ' 本のうち ' + ok.length +

@@ -27,9 +27,8 @@ GT7 Telemetry Dashboardは、グランツーリスモ7 (GT7) のテレメトリ�
 | [APIドキュメント](API.md) | HTTP/WebSocket API、Pythonモジュールの詳細 |
 | [システムアーキテクチャ](architecture.md) | システム構成、ファイル構成、データフロー |
 | [STEER RESPONSE 詳説](steer-response.md) | STEER RESPONSE の物理導出・較正詳細・限界（本機能の正） |
-| [開発ガイド](development.md) | 変更時の検証手順（回帰テスト・コンテナ反映・headless スモーク） |
-| [改修履歴: バックエンド安定化 (2026-07-08)](refactoring-2026-07-08.md) | Salsa20致命バグ修正・UDP非同期化・構成整理の詳細 |
-| [ブロックのリサイズ機能設計 (2026-07-11)](plan-block-resize-2026-07-11.md) | リサイズグリップ・保存スキーマ・クランプ処理の設計（現行card-drag.js実装と一致） |
+| [開発ガイド](development.md) | 変更時の検証手順（`tests/run_all.sh`: 静的チェック・pytest・e2e、コンテナ反映、headless スモーク） |
+| [e2e テスト](../tests/e2e/README.md) | ブラウザでの検証の構成・実行・ゴールデン（保存した期待値）の扱い |
 | [変更履歴 (CHANGELOG)](../CHANGELOG.md) | UI 刷新（CAR ATTITUDE / ブロック配置 / 操作ツールバー等）を含む時系列の一次情報 |
 
 ### 過去の記録（アーカイブ）
@@ -38,12 +37,14 @@ GT7 Telemetry Dashboardは、グランツーリスモ7 (GT7) のテレメトリ�
 
 | ドキュメント | 説明 |
 |------------|------|
-| [refactoring-2026-07-09.md](refactoring-2026-07-09.md) | リファクタリング記録 |
-| [bugfix-duplicate-definitions-2026-07-09.md](bugfix-duplicate-definitions-2026-07-09.md) | 重複定義バグの修正記録 |
-| [bugfix-webgl-graceful-degradation-2026-07-09.md](bugfix-webgl-graceful-degradation-2026-07-09.md) | WebGL 非対応環境でのグレースフルデグラデーション対応記録 |
-| [verification_report.md](verification_report.md) | 検証レポート（「テレメトリー→テレメトリ」表記統一の所見を含む。詳細は下記 terminology_fix_list.md） |
-| [3D_ROTATION_PLAN.md](3D_ROTATION_PLAN.md) | 3D 回転表現の検討計画 |
-| [terminology_fix_list.md](terminology_fix_list.md) | 用語修正リスト（verification_report.md の表記統一所見をファイル別・行別に詳細化したもの。表記統一は対応済み） |
+| [archive/refactoring-2026-07-08.md](archive/refactoring-2026-07-08.md) | 改修履歴: バックエンド安定化（Salsa20 致命バグ修正・UDP 非同期化・構成整理）。当時の比較であり、現行構成は architecture.md を参照 |
+| [archive/plan-block-resize-2026-07-11.md](archive/plan-block-resize-2026-07-11.md) | ブロックのリサイズ機能設計（リサイズグリップ・保存スキーマ・クランプ処理。実装は card-drag.js） |
+| [archive/refactoring-2026-07-09.md](archive/refactoring-2026-07-09.md) | リファクタリング記録 |
+| [archive/bugfix-duplicate-definitions-2026-07-09.md](archive/bugfix-duplicate-definitions-2026-07-09.md) | 重複定義バグの修正記録 |
+| [archive/bugfix-webgl-graceful-degradation-2026-07-09.md](archive/bugfix-webgl-graceful-degradation-2026-07-09.md) | WebGL 非対応環境でのグレースフルデグラデーション対応記録 |
+| [archive/verification_report.md](archive/verification_report.md) | 検証レポート（「テレメトリー→テレメトリ」表記統一の所見を含む。詳細は下記 terminology_fix_list.md） |
+| [archive/3D_ROTATION_PLAN.md](archive/3D_ROTATION_PLAN.md) | 3D 回転表現の検討計画 |
+| [archive/terminology_fix_list.md](archive/terminology_fix_list.md) | 用語修正リスト（verification_report.md の表記統一所見をファイル別・行別に詳細化したもの。表記統一は対応済み） |
 | [archive/CHANGELOG_MOTION_EFFECTS.md](archive/CHANGELOG_MOTION_EFFECTS.md) | 旧 Three.js 3D モデル時代のモーション演出パラメータ変遷記録 |
 | [archive/PLAN_ANGULAR_VELOCITY_IMPROVEMENT.md](archive/PLAN_ANGULAR_VELOCITY_IMPROVEMENT.md) | ANGULAR VELOCITY 3D 表示の改善計画書 |
 | [archive/PLAN_CAR_ATTITUDE_MOUSE_CONTROL.md](archive/PLAN_CAR_ATTITUDE_MOUSE_CONTROL.md) | CAR ATTITUDE マウス操作対応の計画書 |
@@ -87,4 +88,4 @@ MIT License（[README](../README.md#ライセンス) 参照）
 
 ---
 
-**最終更新**: 2026-07-18
+**最終更新**: 2026-10-09

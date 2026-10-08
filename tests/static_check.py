@@ -15,6 +15,8 @@
     5. HTML 内の id の重複。
   Python
     6. 構文、未使用の import、同じスコープでの関数・クラスの重複定義。
+    7. main.py が(間接的にも)import するリポジトリ直下のモジュールが、Dockerfile の COPY に含まれること
+       (lapstore.py のような新しいモジュールを足したとき、本番のイメージだけ ImportError になるのを防ぐ)。
        (ruff 等の外部ツールは、この環境に無く、導入にネットワーク経由のインストールが要るため使っていない)
 
 問題があれば一覧を表示して、終了コード1で終わる。
@@ -115,15 +117,21 @@ def check_js():
             problem('orphan-asset', '%s は、どの HTML からも読み込まれていません' % f)
 
     # Dockerfile の COPY(トップレベルのファイル名・ワイルドカード)で、読み込むファイルがイメージに入るか
+    patterns = dockerfile_copy_patterns()
+    for a in sorted(loaded_js | loaded_css | set(PAGES)):
+        if not any(fnmatch.fnmatch(a, p) for p in patterns):
+            problem('docker-copy', '%s が Dockerfile の COPY に含まれていません(本番のイメージに入りません)' % a)
+    return len(js_files), len(css_files)
+
+
+def dockerfile_copy_patterns():
+    """Dockerfile の COPY の、コピー元(ファイル名・ワイルドカード)の一覧。"""
     patterns = []
     for line in read('Dockerfile').split('\n'):
         m = re.match(r'^\s*COPY\s+(.+)$', line)
         if m and '--from' not in line:
             patterns += m.group(1).split()[:-1]
-    for a in sorted(loaded_js | loaded_css | set(PAGES)):
-        if not any(fnmatch.fnmatch(a, p) for p in patterns):
-            problem('docker-copy', '%s が Dockerfile の COPY に含まれていません(本番のイメージに入りません)' % a)
-    return len(js_files), len(css_files)
+    return patterns
 
 
 # ---------------------------------------------------------------- Python
@@ -169,10 +177,38 @@ def check_python_file(rel):
                 seen[n.name] = n.lineno
 
 
+def local_imports(rel):
+    """rel が import する名前のうち、リポジトリ直下に <名前>.py があるもの。"""
+    tree = ast.parse(read(rel), rel)
+    names = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            names |= {a.name.split('.')[0] for a in n.names}
+        elif isinstance(n, ast.ImportFrom) and n.module and n.level == 0:
+            names.add(n.module.split('.')[0])
+    return sorted(m for m in names if os.path.isfile(os.path.join(REPO, m + '.py')))
+
+
+def check_image_modules(entry='main.py'):
+    """entry が(間接的にも)import するリポジトリ直下のモジュールが、Dockerfile の COPY に含まれるか。"""
+    patterns = dockerfile_copy_patterns()
+    seen, todo = set(), [entry]
+    while todo:
+        rel = todo.pop()
+        if rel in seen:
+            continue
+        seen.add(rel)
+        if not any(fnmatch.fnmatch(rel, p) for p in patterns):
+            problem('docker-copy', '%s が Dockerfile の COPY に含まれていません(本番では import できません)' % rel)
+        todo += [m + '.py' for m in local_imports(rel)]
+    return sorted(seen)
+
+
 def check_python():
     files = tracked_python()
     for rel in files:
         check_python_file(rel)
+    check_image_modules()
     return len(files)
 
 

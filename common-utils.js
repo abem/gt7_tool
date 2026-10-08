@@ -18,6 +18,8 @@
 
 // 1サンプルの移動量がこれを超えたら、瞬間移動(ピット・リスポーン等)とみなして距離に加えない
 const GT_PATH_DISCONTINUITY_M = 120;
+// 表示モード('analysis' / 'drive' / 'review')の保存名。drive-view.js と review-view.js が同じ鍵を読み書きする
+const GT_VIEW_MODE_STORAGE_KEY = 'gt7_view_mode';
 const GT_RETRY_MAX = 20;            // gtRetryUntil のやり直し回数
 const GT_RETRY_INTERVAL_MS = 100;   // gtRetryUntil のやり直し間隔
 
@@ -78,6 +80,29 @@ function gtStorageSet(key, value) {
     } catch (e) {
         return false;
     }
+}
+
+/** localStorage の JSON を読む。無い・読めない・壊れているときは fallback。 */
+function gtStorageGetJSON(key, fallback) {
+    const v = gtStorageGet(key);
+    if (v === null) {
+        return fallback;
+    }
+    try {
+        return JSON.parse(v);
+    } catch (e) {
+        return fallback;
+    }
+}
+
+/** localStorage へ JSON を書く。@returns {boolean} 保存できたか */
+function gtStorageSetJSON(key, value) {
+    return gtStorageSet(key, JSON.stringify(value));
+}
+
+/** ラップタイム[ms]の表示(ui_components.js の formatLapTime。ミリ秒は丸める)。 */
+function gtFormatLapMs(ms) {
+    return formatLapTime(Math.round(ms));
 }
 
 /**

@@ -93,7 +93,8 @@ const RM_SMOOTH_SCORE_MAX = 150;          // スコア上限クランプ
  * ================================================================ */
 const rmState = {
     els: null,
-    auxCache: {},        // file -> {samples} 補助取得キャッシュ
+    auxCache: {},        // file -> {samples} 補助取得キャッシュ(RM_AUX_CACHE_MAX 件まで。古いものから捨てる)
+    auxLru: [],          // auxCache の file を使った順に(末尾が最新)
     reviewToken: 0,      // 比較世代(古い応答破棄)
     replayHlTimer: null, // 再生G-Gの現在位置タイマ
     replayGGBase: null,  // 再生G-Gの事前描画(offscreen canvas)
@@ -494,12 +495,28 @@ function rmRenderHighlightMarkers() {
  *   reviewRenderCharts(a,b) 直後から1行で呼出)
  * ================================================================ */
 
+const RM_AUX_CACHE_MAX = 32;   // 補助データを持ち続ける周回の上限(#599)。超えた分は古いものから捨てる
+
+/** file を「最近使った」に動かし、上限を超えた古い周回を捨てる。 */
+function rmTouchAux(file) {
+    const lru = rmState.auxLru;
+    const i = lru.indexOf(file);
+    if (i >= 0) {
+        lru.splice(i, 1);
+    }
+    lru.push(file);
+    while (lru.length > RM_AUX_CACHE_MAX) {
+        delete rmState.auxCache[lru.shift()];
+    }
+}
+
 /** 補助データ(加速度・舵角)の取得。既存APIの射影を利用しキャッシュ。 */
 function rmFetchAux(file) {
     if (!file) {
         return Promise.resolve(null);
     }
     if (rmState.auxCache[file]) {
+        rmTouchAux(file);
         return Promise.resolve(rmState.auxCache[file]);
     }
     return fetch('/api/laps/' + encodeURIComponent(file) +
@@ -513,6 +530,7 @@ function rmFetchAux(file) {
         .then(function(body) {
             const entry = { samples: body.samples || [] };
             rmState.auxCache[file] = entry;
+            rmTouchAux(file);
             return entry;
         })
         .catch(function() {

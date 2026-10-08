@@ -66,3 +66,7 @@ __pycache__/
 verification_results.json
 visual_regression_results.json
 integration_test_plan.md
+
+# 秘密鍵(#596): イメージに入れず、compose で読み取り専用マウントする。ハーネスの作業ツリーも除く
+ssl/
+.harness-worktrees/

@@ -29,15 +29,11 @@
     ];
 
     function cgLoad() {
-        try {
-            var v = JSON.parse(localStorage.getItem(CG_STORE_KEY));
-            return (v && typeof v === 'object') ? v : {};
-        } catch (e) { return {}; }   // 不正値は全表示へフォールバック
+        var v = gtStorageGetJSON(CG_STORE_KEY, null);
+        return (v && typeof v === 'object') ? v : {};   // 不正値は全表示へフォールバック
     }
     function cgSave(m) {
-        try {
-            localStorage.setItem(CG_STORE_KEY, JSON.stringify(m));
-        } catch (e) {
+        if (!gtStorageSetJSON(CG_STORE_KEY, m)) {
             // #153: 保存失敗の握りつぶしをやめ、実害時のみ非侵襲トーストで知らせる
             // (表示切替自体は cgApply が済ませているため画面は反映済み。
             //  リロードで元に戻る、という事実をユーザーが知れることが目的)

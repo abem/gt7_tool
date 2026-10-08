@@ -15,7 +15,7 @@ const driveViewState = {
     els: null
 };
 
-const DRIVE_VIEW_STORAGE_KEY = 'gt7_view_mode';
+const DRIVE_VIEW_STORAGE_KEY = GT_VIEW_MODE_STORAGE_KEY;   // review-view.js と共有(common-utils.js)
 
 /**
  * DOM 要素をキャッシュ(初回のみ)
@@ -57,11 +57,7 @@ function applyViewMode(driveMode) {
         els.btn.setAttribute('aria-pressed', String(driveMode));
     }
 
-    try {
-        localStorage.setItem(DRIVE_VIEW_STORAGE_KEY, driveMode ? 'drive' : 'analysis');
-    } catch (e) {
-        /* プライベートブラウジング等では永続化しない */
-    }
+    gtStorageSet(DRIVE_VIEW_STORAGE_KEY, driveMode ? 'drive' : 'analysis');   // 保存できない環境では永続化しない
 
     // 表示に戻ったチャートは幅0で setSize されている可能性があるため再リサイズ
     // (charts.js の ResizeObserver も発火するが、レイアウト確定後に明示的に押す)
@@ -84,13 +80,7 @@ function initDriveView() {
         applyViewMode(!driveViewState.active);
     });
 
-    let saved = null;
-    try {
-        saved = localStorage.getItem(DRIVE_VIEW_STORAGE_KEY);
-    } catch (e) {
-        saved = null;
-    }
-    if (saved === 'drive') {
+    if (gtStorageGet(DRIVE_VIEW_STORAGE_KEY) === 'drive') {
         applyViewMode(true);
     }
 

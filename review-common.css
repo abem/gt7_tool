@@ -1,11 +1,32 @@
 /*
- * 共通: レポート系の表(#571/#572 の整理)
+ * 共通: REVIEW のカード枠と、レポート系の表(#572/#598 の整理)
  *
- * 区間レポート(#sr-table)・コーナー別レポート(#cr-table)・ばらつき(#cr-cons-table)は、
- * 見た目が同じなので、ここにまとめた。表ごとに違うのは、最小幅と、固定した行の class 名だけ
- * (それぞれのファイルに残す)。id と class は変えない(JS が参照する)。
- * 横スクロール領域: 表は幅が広いため、カード内のスクロール領域に収める(#435 の教訓)。
+ * カード枠: トラックマップ・区間レポート・ラップ推移・散布図/分布・コーナー別レポートのカードは、
+ *   REVIEW のときだけ表示し、見た目が同じなので、ここにまとめた(RACE METRICS のカードは最小高さなど
+ *   が違うため race-metrics.css に残す)。「REVIEW 以外では隠す」のルールは、各ファイルに残す。
+ * 表: 区間レポート(#sr-table)・コーナー別レポート(#cr-table)・ばらつき(#cr-cons-table)は、
+ *   見た目が同じなので、ここにまとめた。表ごとに違うのは、最小幅と、固定した行の class 名だけ
+ *   (それぞれのファイルに残す)。
+ * id と class は変えない(JS が参照する)。横スクロール領域: 表は幅が広いため、カード内のスクロール
+ * 領域に収める(#435 の教訓)。
  */
+
+/* ---- REVIEW のカード枠 ---- */
+body.review-mode #tm-review-card,
+body.review-mode #sr-review-card,
+body.review-mode #lt-review-card,
+body.review-mode #cp-review-card,
+body.review-mode #cr-review-card {
+    display: block;
+    background: var(--surface-1);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    padding: 8px 10px;
+    /* #165/#435 の教訓: 子の固定幅が親グリッドの最小幅を押し広げないように */
+    min-width: 0;
+}
+
+/* ---- レポート系の表 ---- */
 #sr-scroll,
 #cr-scroll,
 #cr-cons-scroll {

@@ -22,13 +22,6 @@
 
     const SEGMENTS = 20;
 
-    function fmtLap(ms) {
-        if (typeof formatLapTime === 'function') {
-            return formatLapTime(Math.round(ms));
-        }
-        return (ms / 1000).toFixed(3) + 's';
-    }
-
     /**
      * 各ラップの距離連続タイム列(res.time[])から理論ベストの取りこぼしを求める。
      * @param {Array} laps - 2本以上の {res} (A/B と、比較可能な重ね書きの周回)
@@ -113,7 +106,7 @@
         const times = laps.map(function(l) { return l.meta && l.meta.laptime_ms_approx; }).filter(Boolean);
         const fastest = times.length ? Math.min.apply(null, times) : 0;
         const gainMs = r.gainS * 1000;
-        const abs = fastest ? fmtLap(fastest - gainMs) + ' ' : '';
+        const abs = fastest ? gtFormatLapMs(fastest - gainMs) + ' ' : '';
         setText(
             '理論ベスト: ' + abs + '(実ベスト比 −' + r.gainS.toFixed(2) + 's' +
             (laps.length > 2 ? '・' + laps.length + '本から合成' : '') + ')',

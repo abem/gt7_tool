@@ -3,6 +3,7 @@
 実行(コンテナ内、または scikit-learn/pandas がある環境):
     python -m pytest tests/test_lapstore.py
 """
+import ast
 import asyncio
 import os
 import subprocess
@@ -79,3 +80,36 @@ def test_predict_handler_passes_features_in_column_order(monkeypatch):
     assert resp.status == 200
     expected = [distinct_values[col] for col in lapstore.FEATURE_COLUMNS]
     assert captured["feature_values"] == expected
+
+
+# ---------------------------------------------------------------- #600: 手書きのコピーとの一致
+ROOT = os.path.join(os.path.dirname(__file__), "..")
+
+
+def _assigned_regex_pattern(path, name):
+    """path の `name = re.compile(<文字列>)` の文字列を返す(スクリプトを実行せずに読む)。"""
+    tree = ast.parse(open(path, encoding="utf-8").read(), path)
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets):
+            assert isinstance(n.value, ast.Call), "re.compile(...) ではない"
+            return ast.literal_eval(n.value.args[0])
+    raise AssertionError("%s に %s が無い" % (path, name))
+
+
+def test_rotate_script_regex_matches_lapstore():
+    """scripts/gt7data_rotate.py は root の cron がコンテナ外で動かすため lapstore を import しない。
+    手書きのコピーが lapstore.LAP_FILE_RE からずれたら、ここで止める。"""
+    pattern = _assigned_regex_pattern(os.path.join(ROOT, "scripts", "gt7data_rotate.py"), "LAP_FILE_RE")
+    assert pattern == lapstore.LAP_FILE_RE.pattern
+
+
+def test_saved_filename_format_matches_regex():
+    """main.py が書くファイル名の書式(2か所)が、LAP_FILE_RE に一致し続けること。"""
+    src = open(os.path.join(ROOT, "main.py"), encoding="utf-8").read()
+    assert src.count('_CAR-{car_id}_Lap-{lap_num}.json"') == 1          # save_lap_to_file
+    assert src.count('_CAR-{car_id}_Lap-{lap_num + attempt}.json"') == 1  # 取込(_write_imported_lap)
+    assert src.count("strftime('%Y-%m-%d_%H_%M_%S')") + src.count('strftime("%Y-%m-%d_%H_%M_%S")') >= 1
+    name = "2026-10-09_12_34_56_CAR-3346_Lap-7.json"
+    m = lapstore.LAP_FILE_RE.match(name)
+    assert m and m.group(7) == "3346" and m.group(8) == "7"
+    assert not lapstore.LAP_FILE_RE.match(name + ".bak")

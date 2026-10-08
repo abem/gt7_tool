@@ -7,6 +7,29 @@
 
 ---
 
+## 2026-10-09 — リファクタリング 第2回（親 #595）: 秘密鍵のイメージ外出し・残った重複・キャッシュの上限・文書
+
+### fix(security): ssl の秘密鍵をイメージに入れない（#596）
+- Dockerfile の `COPY ssl ./ssl` を外し、`docker-compose.yml` で `./ssl:/app/ssl:ro` をマウント。`.dockerignore` に `ssl/`・`.harness-worktrees/`、`.gitignore` に `.harness-worktrees/` を追加。無ければ従来どおり警告を出して平文 HTTP（`docs/development.md` に明記）。
+- `tests/static_check.py`: `main.py` が（間接的にも）import するリポジトリ直下のモジュールが Dockerfile の COPY に含まれることを検査（`lapstore.py` を外すと検出）。
+
+### refactor: JS の残りの重複（#597）・REVIEW のカード枠の CSS（#598）
+- `common-utils.js` に、JSON 用の `gtStorageGetJSON/SetJSON`、表示モードの保存名 `GT_VIEW_MODE_STORAGE_KEY`、`gtFormatLapMs` を追加。`card-drag.js` / `card-groups.js` / `drive-view.js` / `review-view.js` の localStorage の直呼びを置き換え、`'gt7_view_mode'` の二重定義（review-view.js の直書き）を解消。`fmt(ms)` の3重複（theory-best / lap-trend / persistent-ref）を1つに。未使用の定数（`COLORS.accentPurple`・`ACCEL_CHART_CONFIG.gridColor`・`TYRE_TEMP.OPTIMAL_LOW`）を削除。
+- `report-table.css` を `review-common.css` に改め、5ファイルで同一だった REVIEW のカード枠のルールを集約（RACE METRICS のカードは違いがあるため残す）。読み込み順は `review.css` の直後。ゴールデン（算出スタイル・属性・:hover）は整理前と同一。
+
+### fix(review): 詳細キャッシュの件数の上限（#599）
+- `reviewState.detailCache` は、本体（距離グリッドと記録サンプル。1周あたり数MB）を 32 件まで持ち、古い周回は本体だけ捨てて meta（一覧のタイム・BEST の候補）を残す。`rmState.auxCache` も 32 件で打ち切る。REVIEW を長く使っても増え続けない。`tests/e2e/e2e_599_detail_cache.py` で、上限・meta の残存・捨てた周回の取り直し・同じ A/B での再比較が取り直さないことを確認。
+
+### test: 手書きのコピーの一致を固定（#600）
+- `tests/test_lapstore.py`: `scripts/gt7data_rotate.py` の `LAP_FILE_RE`（cron がコンテナ外で動かすため import しない）が `lapstore.LAP_FILE_RE` と一致すること、`main.py` の保存ファイル名の書式（2か所）が正規表現に一致することを固定。
+
+### docs: 現状に合わせる（#601）
+- `docs/architecture.md`: 図と表に無かったファイル（common-utils.js・review-common.css・laptime-predict.js・sector-time.js・pit-wall.js/engineer.*・voice-command.js・replay-diag.js・lapstore.py・train_laptime_model.py・テスト一式）と、読み込み順の要点・新しいファイルの足し方・ssl のマウントを追記。
+- `docs/index.md`: 日付入りの計画・修正記録 8 本を `docs/archive/` へ移動（過去の CHANGELOG の本文に残る旧パスは、当時の位置）。
+
+### 見送り（親 #595 に理由）
+- race-metrics.js / main.py の分割、car-3d.js の IIFE 化、登録方式: テストの網（e2e は main.py を動かさない・ゴールデンはライブのフレームを流さない）が無い場所の大きな移動のため、特性テストが先。画面の文字を読み直す経路の置き換え: 書き手が websocket.js で、値の意味が変わるため不採用。
+
 ## 2026-10-09 — REVIEW: 幅 1400px 未満で画面が件数ぶん伸びる不具合（#594）
 
 ### fix: ラップ一覧を画面の高さに収め、チャートの巨大化を止める

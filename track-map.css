@@ -10,15 +10,7 @@
     display: none;
 }
 
-body.review-mode #tm-review-card {
-    display: block;
-    background: var(--surface-1);
-    border: 1px solid var(--border-hairline);
-    border-radius: 8px;
-    padding: 8px 10px;
-    /* #165/#435 の教訓: 子の固定幅が親グリッドの最小幅へ伝播しないよう解除 */
-    min-width: 0;
-}
+/* REVIEW のときの枠(表示・背景・余白)は review-common.css にまとめてある(#598) */
 
 #tm-head {
     display: flex;

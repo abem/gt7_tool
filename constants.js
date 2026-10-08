@@ -20,9 +20,7 @@ const COLORS = Object.freeze({
     /** 速度チャート線（azure-deep, --series-speed） */
     accentBlue: '#2F80D6',
     /** RPMチャート線（帯域内アンバー, --series-rpm） */
-    rpmLine: '#BD8410',
-    /** セッションベスト（紫, --session-best） */
-    accentPurple: '#B37BFF'
+    rpmLine: '#BD8410'
 });
 
 /* ================================================================
@@ -52,9 +50,7 @@ const ACCEL_CHART_CONFIG = Object.freeze({
     /** ライン色 */
     lineColor: COLORS.accentGreen,
     /** ライン太さ */
-    lineWidth: 2,
-    /** グリッド色 */
-    gridColor: 'rgba(255, 255, 255, 0.06)'
+    lineWidth: 2
 });
 
 /* ================================================================
@@ -63,8 +59,6 @@ const ACCEL_CHART_CONFIG = Object.freeze({
 const TYRE_TEMP = Object.freeze({
     /** 低温閾値（摂氏） - これ未満はシアン */
     COLD_THRESHOLD: 40,
-    /** 最適温度下限（摂氏） */
-    OPTIMAL_LOW: 40,
     /** 最適温度上限（摂氏） */
     OPTIMAL_HIGH: 80,
     /** 高温閾値（摂氏） - これ以上は赤 */

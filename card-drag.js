@@ -40,8 +40,8 @@
     function slug(s) {
         return (s || 'card').trim().replace(/\s+/g, '-').replace(/[^\w\-]/g, '').toLowerCase().slice(0, 24) || 'card';
     }
-    function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; } }
-    function saveStore(m) { try { localStorage.setItem(STORE_KEY, JSON.stringify(m)); } catch (e) {} }
+    function loadStore() { return gtStorageGetJSON(STORE_KEY, {}) || {}; }
+    function saveStore(m) { gtStorageSetJSON(STORE_KEY, m); }   // 保存できなくても、その場の配置は動く
     function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
     // スクロール量とドキュメント境界（浮遊は position:absolute でドキュメント基準に置く）
     function scrollX() { return window.pageXOffset || document.documentElement.scrollLeft || 0; }

@@ -426,7 +426,7 @@ docker logs -f gt7_tool-gt7_tool-1
 
 ## 関連
 
-- [CHANGELOG.md](../CHANGELOG.md) — 変更履歴（本ドキュメントの要約版）
-- [architecture.md](architecture.md) — システムアーキテクチャ全体像
-- [common-issues.md](common-issues.md) — よくあるトラブルと対処
+- [CHANGELOG.md](../../CHANGELOG.md) — 変更履歴（本ドキュメントの要約版）
+- [architecture.md](../architecture.md) — システムアーキテクチャ全体像
+- [common-issues.md](../common-issues.md) — よくあるトラブルと対処
 - `archive/_snapshots/README.md` — 旧dockerリポジトリ未コミット変更のスナップショット

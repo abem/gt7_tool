@@ -140,10 +140,6 @@
         return best ? buildRef(best) : null;
     }
 
-    function fmt(ms) {
-        return typeof formatLapTime === 'function' ? formatLapTime(Math.round(ms)) : (ms / 1000).toFixed(3) + 's';
-    }
-
     function setLabel(text) {
         const el = byId('ref-source');
         if (el) {
@@ -166,7 +162,7 @@
         }
         const cur = analysisState.refLap;
         if (cur === entry.r) {
-            setLabel('基準: 過去のベスト ' + fmt(entry.lapMs) + (entry.recordedAt ? ' (' + entry.recordedAt.slice(0, 10) + ')' : ''));
+            setLabel('基準: 過去のベスト ' + gtFormatLapMs(entry.lapMs) + (entry.recordedAt ? ' (' + entry.recordedAt.slice(0, 10) + ')' : ''));
             return;
         }
         if (!cur || entry.r.totalTime < cur.totalTime) {
@@ -174,9 +170,9 @@
                 state.replaced = cur;
             }
             analysisState.refLap = entry.r;
-            setLabel('基準: 過去のベスト ' + fmt(entry.lapMs) + (entry.recordedAt ? ' (' + entry.recordedAt.slice(0, 10) + ')' : ''));
+            setLabel('基準: 過去のベスト ' + gtFormatLapMs(entry.lapMs) + (entry.recordedAt ? ' (' + entry.recordedAt.slice(0, 10) + ')' : ''));
         } else {
-            setLabel('基準: このセッションのベスト ' + fmt(cur.totalTime * 1000) + '（過去のベスト ' + fmt(entry.lapMs) + ' より速い）');
+            setLabel('基準: このセッションのベスト ' + gtFormatLapMs(cur.totalTime * 1000) + '（過去のベスト ' + gtFormatLapMs(entry.lapMs) + ' より速い）');
         }
     }
 

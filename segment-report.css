@@ -10,14 +10,7 @@
     display: none;
 }
 
-body.review-mode #sr-review-card {
-    display: block;
-    background: var(--surface-1);
-    border: 1px solid var(--border-hairline);
-    border-radius: 8px;
-    padding: 8px 10px;
-    min-width: 0;
-}
+/* REVIEW のときの枠(表示・背景・余白)は review-common.css にまとめてある(#598) */
 
 #sr-summary {
     margin: 4px 0 8px;

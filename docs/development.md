@@ -40,6 +40,8 @@ docker compose up --build -d
 
 `docker compose restart` ではイメージが更新されず、変更は反映されない点に注意してください。
 
+`ssl/`（自己署名の証明書と秘密鍵）はイメージに入れず、`docker-compose.yml` がホストの `./ssl` を読み取り専用でマウントします（#596）。ディレクトリが無いと、起動ログに `SSL cert/key not found` の警告が出て平文 HTTP で起動します（ブラウザの音声コマンドは https でしか動きません）。
+
 ## 4. headless スモークテスト（TEST MODE）
 
 PS5 なしでダッシュボードの動作確認ができます:
