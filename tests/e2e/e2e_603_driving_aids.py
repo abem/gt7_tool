@@ -46,6 +46,28 @@ with sync_playwright() as pw:
     chk('フレームが 2 秒来なければ全て消灯', pg.evaluate(STATE) == [False, False, False], pg.evaluate(STATE))
     feed({'speed_kmh': 100})
     chk('旗や車輪の情報が無いフレームでも落ちない(全て消灯のまま)', pg.evaluate(STATE) == [False, False, False])
+    feed(frame(wheel_rps=[-150, -150], tyre_radius=[0.3, 0.3], brake_pct=100, brake_filtered_pct=100))
+    chk('車輪の配列が 4 つ未満なら ABS のスリップ判定をしない', pg.evaluate(STATE) == [False, False, False])
+    # 全カード再生の一時停止中は消灯しない(他のカードと同じく最後の表示を保つ)
+    pg.evaluate("replayActive = true; replayState.playing = false")
+    feed(frame(flags=dict(BASE_FRAME['flags'], tcs_active=True)))
+    pg.wait_for_timeout(2700)
+    chk('全カード再生の一時停止中は 2 秒たっても消灯しない', pg.evaluate(STATE) == [True, False, False], pg.evaluate(STATE))
+    pg.evaluate("replayActive = false"); pg.wait_for_timeout(1200)
+    chk('再生を終えれば消灯する', pg.evaluate(STATE) == [False, False, False], pg.evaluate(STATE))
     chk('pageerror 0', not errs, errs); b.close()
+
+    # 幅 390px: 表示がカードの中に収まり、タイトル行の中にある
+    b = pw.chromium.launch(args=['--no-sandbox', '--use-gl=swiftshader'])
+    pg = b.new_context(viewport={'width': 390, 'height': 844}).new_page(); errs = []
+    pg.on('pageerror', lambda e: errs.append(str(e)))
+    pg.route('**/api/**', lambda r: r.fulfill(status=404, body='{}'))
+    pg.goto(BASE + '/'); pg.wait_for_timeout(1200)
+    m = pg.evaluate("""() => { const r = (e) => e.getBoundingClientRect(); const card = r(document.querySelector('.car-3d-card')),
+        title = r(document.querySelector('.car-3d-card .card-title')), row = r(document.getElementById('da-aids'));
+        return { inCard: row.right <= card.right + 0.5 && row.left >= card.left, inTitle: row.top >= title.top - 1 && row.bottom <= title.bottom + 1,
+                 oneLine: title.height < 30, w: Math.round(row.width) }; }""")
+    chk('390px: 表示がカードの中に収まり、タイトルの行の中にある(タイトルが 2 行にならない)', m['inCard'] and m['inTitle'] and m['oneLine'], m)
+    chk('390px: pageerror 0', not errs, errs); b.close()
 print('PASS', ok[0], 'FAIL', ok[1])
 raise SystemExit(1 if ok[1] else 0)

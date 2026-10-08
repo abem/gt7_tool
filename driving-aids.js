@@ -9,7 +9,7 @@
  *    (GT7 の ABS が制動を調整している状態)。惰行中のスリップは 4% 未満。
  *
  * 経路: ライブ・全カード再生・TEST MODE のどれも handleTelemetryMessage → daOnFrame(typeof ガード付き)。
- * フレームが STALE_MS 来なければ全て消灯する(切断・再生終了・REVIEW)。
+ * フレームが STALE_MS 来なければ全て消灯する(切断・再生終了・REVIEW)。全カード再生の一時停止中は保つ。
  * IIFE で隔離。公開は window.daOnFrame のみ。既存の id・class は変えない。
  */
 (function() {
@@ -75,7 +75,8 @@
             return true;
         }
         const v = d.speed_ms != null ? d.speed_ms : (d.speed_kmh || 0) / 3.6;
-        if (v < ABS_MIN_SPEED_MS || !Array.isArray(d.wheel_rps) || !Array.isArray(d.tyre_radius)) {
+        if (v < ABS_MIN_SPEED_MS || !Array.isArray(d.wheel_rps) || !Array.isArray(d.tyre_radius) ||
+            d.wheel_rps.length < 4 || d.tyre_radius.length < 4) {
             return false;
         }
         for (let i = 0; i < 4; i++) {
@@ -99,8 +100,14 @@
         state.lastFrameMs = performance.now();
     };
 
+    /** 全カード再生の一時停止中は、他のカードと同じく最後のフレームの表示を保つ。 */
+    function replayPaused() {
+        return typeof replayActive !== 'undefined' && replayActive &&
+            typeof replayState !== 'undefined' && replayState && !replayState.playing;
+    }
+
     setInterval(function() {
-        if (state.els && performance.now() - state.lastFrameMs > STALE_MS) {
+        if (state.els && !replayPaused() && performance.now() - state.lastFrameMs > STALE_MS) {
             set('tcs', false);
             set('abs', false);
             set('asm', false);
