@@ -35,8 +35,10 @@ const MIN_PROM = 15;           // ピーク顕著性[km/h]
 const MIN_SPEED_MS = 3;        // 空転判定の下限速度[m/s]
 const TOPSPEED_MARGIN = 1;     // 新トップスピード発火マージン[km/h]
 const CHART_CADENCE_MS = 100;  // 解析チャート再描画スロットル(10fps)
-const WHEEL_SPEED_K = 2 * Math.PI; // ホイール回転数→周速の厳密換算(1回転=2πr)。|rps|*radius*K [m/s]。
-                                   // 任意係数ではない: 変更すると updateGrip の slip 比(1.0=グリップ)の物理的意味が崩れる。
+const WHEEL_SPEED_K = 1;       // ホイール周速 = |wheel_rps| * tyre_radius [m/s]。wheel_rps は名前に反して rad/s
+                               // (docs/API.md)。実データ: 周速/車速は惰行で 1.00、全開制動で 0.93、ホイール
+                               // スピン時 1.1。旧値 2π は rev/s と誤解したもので、比が常に約 6 となり、スロットル
+                               // を踏むと常に SPIN と出ていた(#604)。
 const PROM_WINDOW = 8;         // ピーク顕著性評価窓(±8サンプル=±80m)
 const LAP_CLOCK_GAP_S = 2.0;   // ラップ内クロック: サンプル間dtがこれ以上は記録中断として
                                // 加算しない(review-view.js REVIEW_TIME_GAP_S / main.py

@@ -7,6 +7,14 @@
 
 ---
 
+## 2026-10-09 — GRIP 表示が、スロットルを踏むと常に SPIN になっていた（#604）
+
+### fix(ui): 車輪の周速の換算を直す
+- **症状**: ライブの GRIP 表示（`#grip-status`: GRIP OK / SPIN / LOCK）が、スロットル 50% 超でほぼ常に SPIN。実データで 75% のサンプルが誤判定。
+- **原因**: `telemetry-analysis.js` の `WHEEL_SPEED_K = 2π` が `wheel_rps` を rev/s と誤解していた。実際は rad/s（docs/API.md のとおり）で、周速/車速の比が常に約 6 になっていた。#603 で ABS の推定に同じ計算を書いた際に食い違いが分かった。
+- **対処**: `WHEEL_SPEED_K = 1`。実データの比は惰行 1.00・全開制動 0.93・ホイールスピン 1.1 で、既存のしきい値（SPIN > 1.10、LOCK < 0.85）がそのまま意味を持つ。
+- **テスト**: `tests/e2e/e2e_604_grip_status.py`（合成フレームで GRIP OK / SPIN / LOCK と、rad/s の値で SPIN にならないこと）。
+
 ## 2026-10-09 — CAR ATTITUDE に TCS / ABS / ASM の作動表示（#603）
 
 ### feat: 運転支援の作動を常設表示し、作動中だけ点灯する
