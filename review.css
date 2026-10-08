@@ -355,3 +355,15 @@ body.review-mode #review-root {
         max-height: 40vh;
     }
 }
+
+/* 901〜1399px(#594): この幅では body がスクロールし、グリッドに高さの上限が無いため、
+   ラップ一覧が件数ぶん(本番で約1,000件 → 約5万px)伸び、行の高さに揃う右列のチャート3本まで
+   巨大化していた。一覧は画面の高さに収めて枠内でスクロールさせ、ページをスクロールしても
+   見える位置に留める。1400px以上(.dashboard が 100vh 固定)と 900px以下(40vh)は従来どおり。 */
+@media (min-width: 901px) and (max-width: 1399px) {
+    body.review-mode #review-sidebar {
+        position: sticky;
+        top: 12px;
+        max-height: calc(100vh - 24px);
+    }
+}
