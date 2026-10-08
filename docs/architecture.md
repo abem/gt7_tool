@@ -159,6 +159,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `pit-wall.js` / `engineer.html` + `engineer.js` + `engineer.css` | バーチャルピットウォール（#434 P4） | エンジニア役の端末（`/engineer`）から `/ws` へ送った伝言を、ドライバー側で通知トーストに表示し読み上げる |
 | `voice-command.js` + `voice-command.css` | 音声コマンド（#436 B3） | ツールバーの VOICE で1発話を認識し、DRIVE/ANALYSIS とカードのグループを切り替える。非対応ブラウザではボタンを作らない |
 | `replay-diag.js` | REVIEW 再生の診断ログ（#558） | 再生中の計測値（実際の再生倍率・描画レート・タイマーの遅れ等）を `POST /api/diag` へ送り、`logs/replay_diag.jsonl` に残す |
+| `driving-aids.js` + `driving-aids.css` | 運転支援の作動表示（#603） | CAR ATTITUDE のタイトル右に TCS / ABS / ASM を常設し、作動中だけ点灯。TCS/ASM はパケットの旗、ABS は推定（ペダル値より ABS 補正後の制動が 3% 以上弱い、または制動中の車輪のスリップが 5% 以上）。`websocket.js` から typeof ガード付きで `daOnFrame` を呼ぶ。フレームが 2 秒来なければ消灯。IIFE で隔離 |
 | `websocket.js` | WebSocket通信 | 接続管理、テレメトリデータ処理（ライブの受信・描画の入口。整理の対象外） |
 | `test-mode.js` | テストモード | デモデータ生成、PS5なしの動作確認 |
 | `app.js` | エントリーポイント | テストモード・DRIVE/ANALYSIS ビューの初期化（メイン初期化は websocket.js の DOMContentLoaded。`card-drag.js` / `menu.js` は各自 DOMContentLoaded で自己初期化） |

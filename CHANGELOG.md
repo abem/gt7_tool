@@ -7,6 +7,14 @@
 
 ---
 
+## 2026-10-09 — CAR ATTITUDE に TCS / ABS / ASM の作動表示（#603）
+
+### feat: 運転支援の作動を常設表示し、作動中だけ点灯する
+- **表示**: CAR ATTITUDE のタイトル右に TCS（橙）・ABS（青）・ASM（紫）の小さな表示を常設。ライブ・全カード再生・TEST MODE で同じ経路（`handleTelemetryMessage` → typeof ガード付きの `daOnFrame`）。フレームが 2 秒来なければ消灯。
+- **判定**: TCS / ASM はパケットの旗（`flags.tcs_active` / `flags.asm_active`、0x8E の bit 11 / 10）。ABS は旗が無いため推定: 制動中に、ペダル値（`brake_pct`）より ABS 補正後（`brake_filtered_pct`）が 3% 以上弱い、または車輪のスリップ（1 − 車輪速/車速、`wheel_rps × tyre_radius`）が 5% 以上。実データで、全開制動中はスリップが 7% 前後で安定し（GT7 の ABS が調整中）、惰行中は 4% 未満。表示のホバーに推定である旨を書いた。
+- **実装**: `driving-aids.js` / `driving-aids.css`（IIFE、公開は `daOnFrame` のみ）。`websocket.js` は typeof ガード付きの呼び出し 1 行のみ。既存の id・class は不変。ゴールデンは要素が増えるため、差分（追加要素のみ）を確認して作り直した。
+- **テスト**: `tests/e2e/e2e_603_driving_aids.py`（常設・旗での点灯・ABS の (a)(b)・低速/非制動の除外・2 秒で消灯・不完全なフレーム）。
+
 ## 2026-10-09 — 再生が「最初だけ速く、だんだん遅くなる」: 記録の受信時刻が詰まる（#602、#558 の再発）
 
 ### fix(server): 受信時刻は UDP の受信コールバックで付け、保存で大きな json.dump をしない

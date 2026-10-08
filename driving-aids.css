@@ -1,0 +1,28 @@
+/* 運転支援の作動表示(#603): CAR ATTITUDE のタイトル右の TCS / ABS / ASM。作動中だけ点灯 */
+.da-aids {
+    float: right;
+    display: inline-flex;
+    gap: 4px;
+    margin-top: -1px;
+}
+
+.da-aid {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    padding: 2px 6px;
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--r-pill);
+    color: var(--text-muted);
+    opacity: 0.45;
+}
+
+.da-aid.da-on {
+    opacity: 1;
+    color: #0B0D10;
+}
+
+.da-tcs.da-on { background: #E8A13D; border-color: #E8A13D; }
+.da-abs.da-on { background: #3D9BFF; border-color: #3D9BFF; }
+.da-asm.da-on { background: #B37BFF; border-color: #B37BFF; }

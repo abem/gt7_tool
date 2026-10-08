@@ -534,6 +534,11 @@ function handleTelemetryMessage(data, nowTs) {
         data.susp_height
     );
 
+    // 運転支援の作動表示(#603)。後から読み込まれるファイルのため typeof で確かめてから呼ぶ(pit-wall と同じ)
+    if (typeof daOnFrame === 'function') {
+        daOnFrame(data);
+    }
+
     if (doRotation) {
         updateSteeringGauge(data.wheel_rotation || 0);
         wsState.lastRotationTs = now;
