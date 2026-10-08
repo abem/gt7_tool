@@ -158,3 +158,10 @@ def test_load_lap_file_leaves_well_paced_recording_unchanged(tmp_path):
     out = json.loads(body)
     assert [s["timestamp"] for s in out] == [s["timestamp"] for s in data]
     assert abs(duration_ms - round(319 / 60.0 * 1000)) <= 2
+
+
+def test_repace_ignores_non_string_timestamps():
+    """壊れた記録(timestamp が数値など)でも例外にせず、その値は触らない。"""
+    data = [{"timestamp": 123}, {"timestamp": None}, {"timestamp": "bad"}] + _lap_with_initial_burst(40, 1)
+    changed = main._repace_timestamps(data)
+    assert changed == 0 and data[0]["timestamp"] == 123 and data[2]["timestamp"] == "bad"

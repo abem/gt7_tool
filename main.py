@@ -597,7 +597,7 @@ async def telemetry_background_task():
                 current_lap_parts.append(part)
 
                 # 周期的チェックポイント保存(#434 P1): ラップ境界を待たず一定間隔で
-                # current_lap_data を中間保存する。SIGKILL/OOM等でfinally節を経ずに
+                # current_lap_parts を中間保存する。SIGKILL/OOM等でfinally節を経ずに
                 # 終了した場合の未保存データを縮小する安全網。既存のラップ保存と同じく
                 # ワーカースレッドへオフロードし、受信ループ(イベントループ)を塞がない。
                 if (current_time - last_checkpoint_time).total_seconds() >= CHECKPOINT_INTERVAL_SEC:
@@ -1253,7 +1253,7 @@ def _repace_timestamps(data):
     for s in data:
         raw = s.get("timestamp") if isinstance(s, dict) else None
         try:
-            ts.append(datetime.fromisoformat(raw).timestamp() if raw else None)
+            ts.append(datetime.fromisoformat(raw).timestamp() if isinstance(raw, str) and raw else None)
         except ValueError:
             ts.append(None)
     adj = repace_timestamps(ts, LAP_DURATION_GAP_S)
