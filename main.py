@@ -619,6 +619,7 @@ async def telemetry_background_task():
                     current_lap_parts = []
                     checkpoint_written = 0
                     last_checkpoint_time = current_time
+                    fuel_tracker = FuelTracker()    # 燃料の集計も別の走行として始める(ラップ数が戻っても負にならない)
                     logger.info(f"Recording split: reason={split_reason}, lap {current_lap_number} -> {lap_count}")
                     current_lap_number = lap_count
 
