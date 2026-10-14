@@ -484,7 +484,8 @@ function reviewBuildLapItem(lap) {
     const laptime = detail && detail.meta.laptime_ms_approx;
     label.textContent = 'Lap' + lap.lap_number +
         (laptime && typeof formatLapTime === 'function'
-            ? ' ' + formatLapTime(laptime) : '');
+            ? ' ' + formatLapTime(laptime) : '') +
+        (detail && detail.meta.multi_course ? ' ⚠複数コース' : '');   // セッションをまたいだ古い記録(#617)
 
     const meta = document.createElement('span');
     meta.className = 'review-lap-meta';

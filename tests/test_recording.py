@@ -52,13 +52,24 @@ def test_save_lap_to_file_output_identical_to_json_dump(tmp_path, monkeypatch):
     assert json.loads(body) == SAMPLES
 
 
-def test_checkpoint_output_identical_to_json_dump(tmp_path, monkeypatch):
-    path = str(tmp_path / ".checkpoint.json")
+def test_checkpoint_appends_only_new_samples(tmp_path, monkeypatch):
+    """#621: 5 秒ごとに全体を書き直さず、前回以降のサンプルだけを追記する。"""
+    path = str(tmp_path / ".checkpoint.jsonl")
     monkeypatch.setattr(main, "CHECKPOINT_FILE", path)
+    monkeypatch.setattr(main, "CHECKPOINT_FILE_LEGACY", str(tmp_path / ".checkpoint.json"))
     parts = [json.dumps(s) for s in SAMPLES]
-    main._save_checkpoint(parts, 3)
-    body = open(path).read()
-    assert body == json.dumps({"lap_num": 3, "samples": SAMPLES})
+    written = main._append_checkpoint(parts[:2], 3, 0)
+    assert written == 2
+    size1 = os.path.getsize(path)
+    written = main._append_checkpoint(parts, 3, written)
+    assert written == 3
+    size2 = os.path.getsize(path)
+    assert size2 - size1 == len(parts[2]) + 1                      # 増えた分だけ(3 件目 + 改行)
+    assert main._append_checkpoint(parts, 3, written) == 3          # 新しいものが無ければ書かない
+    assert os.path.getsize(path) == size2
+    lines = open(path).read().splitlines()
+    assert json.loads(lines[0]) == {"lap_num": 3}
+    assert [json.loads(l) for l in lines[1:]] == SAMPLES
     main._clear_checkpoint()
     assert not os.path.exists(path)
 
@@ -140,7 +151,7 @@ def test_load_lap_file_repaces_initial_burst_before_decimation(tmp_path):
     data = _lap_with_initial_burst()
     path = tmp_path / "2026-10-08_17_41_46_CAR-63_Lap-3.json"
     path.write_text(json.dumps(data))
-    body, n_out, n_all, first, duration_ms = main._load_lap_file(str(path), ["timestamp", "speed_kmh"], 6)
+    body, n_out, n_all, first, duration_ms, courses = main._load_lap_file(str(path), ["timestamp", "speed_kmh"], 6)
     out = json.loads(body)
     assert n_all == 320 and n_out == len(out) == 54
     ts = [datetime.fromisoformat(s["timestamp"]).timestamp() for s in out]
@@ -154,7 +165,7 @@ def test_load_lap_file_leaves_well_paced_recording_unchanged(tmp_path):
     data = _lap_with_initial_burst(burst=1)
     path = tmp_path / "2026-10-08_17_41_46_CAR-63_Lap-3.json"
     path.write_text(json.dumps(data))
-    body, _n, _a, _f, duration_ms = main._load_lap_file(str(path), ["timestamp"], 1)
+    body, _n, _a, _f, duration_ms, _c = main._load_lap_file(str(path), ["timestamp"], 1)
     out = json.loads(body)
     assert [s["timestamp"] for s in out] == [s["timestamp"] for s in data]
     assert abs(duration_ms - round(319 / 60.0 * 1000)) <= 2
@@ -165,3 +176,40 @@ def test_repace_ignores_non_string_timestamps():
     data = [{"timestamp": 123}, {"timestamp": None}, {"timestamp": "bad"}] + _lap_with_initial_burst(40, 1)
     changed = main._repace_timestamps(data)
     assert changed == 0 and data[0]["timestamp"] == 123 and data[2]["timestamp"] == "bad"
+
+
+# ---------------------------------------------------------------- #617 記録の区切り / #618 コース判定
+
+def _pos(x, z, speed_kmh=100):
+    return {"position_x": x, "position_z": z, "speed_kmh": speed_kmh}
+
+
+def test_split_on_lap_count_decrease():
+    assert main._record_split_reason((0, 0), _pos(1, 0), 1, 5, 0.017) == "lap_reset"
+    assert main._record_split_reason((0, 0), _pos(1, 0), 6, 5, 0.017) is None       # 増えるのは通常の境界
+    assert main._record_split_reason(None, _pos(1, 0), 1, 0, 0.017) is None         # 起動直後(0 → 1)
+
+
+def test_split_on_long_receive_gap():
+    assert main._record_split_reason((0, 0), _pos(1, 0), 3, 3, main.RECORD_SPLIT_GAP_S) == "gap"
+    assert main._record_split_reason((0, 0), _pos(1, 0), 3, 3, 59.0) is None
+
+
+def test_split_on_teleport_but_not_on_packet_loss():
+    # 瞬間移動: 0.017 秒で 500m
+    assert main._record_split_reason((0, 0), _pos(500, 0), 3, 3, 0.017) == "jump"
+    # パケットロス: 5 秒間に 200km/h(55m/s)で 320m 進んだ → あり得る距離なので区切らない
+    assert main._record_split_reason((0, 0), _pos(320, 0, speed_kmh=200), 3, 3, 5.0) is None
+    # 位置が無いサンプルでは判定しない
+    assert main._record_split_reason((0, 0), {"speed_kmh": 100}, 3, 3, 0.017) is None
+    assert main._record_split_reason(None, _pos(500, 0), 3, 3, 0.017) is None
+
+
+def test_multi_course_flag_ignores_small_strays():
+    data = [{"course": {"id": "spa"}}] * 100 + [{"course": {"id": "nurburgring"}}] * 3
+    counts = main._course_counts(data)
+    assert counts == {"spa": 100, "nurburgring": 3}
+    assert main._is_multi_course(counts) is False
+    data += [{"course": {"id": "goodwood"}}] * 50
+    assert main._is_multi_course(main._course_counts(data)) is True
+    assert main._course_counts([{"x": 1}, {"course": None}]) == {"unknown": 2}

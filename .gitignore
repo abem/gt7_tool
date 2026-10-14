@@ -101,3 +101,6 @@ tests/e2e/__pycache__/
 
 # Claude Code ハーネスが作る作業ツリー(リポジトリ直下に出来る)
 .harness-worktrees/
+
+# Claude Code のセッション状態(どの階層でも)
+.claude/

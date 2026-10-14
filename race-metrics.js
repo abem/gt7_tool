@@ -1313,6 +1313,33 @@ function rmUpdateEnergyTorque(frame) {
     els.energyBox.innerHTML = html;
 }
 
+/** A/B が未選択のときの表示(#620)。古い値・「加速度データなし」の文言を残さない。 */
+function rmResetReview(els) {
+    const note = 'A/B のラップを選択すると表示します';
+    if (els.ggReview) {
+        const g = rmSetupCanvas(els.ggReview);
+        rmDrawGGBase(g);
+        g.ctx.fillStyle = '#828B99';
+        g.ctx.font = '12px sans-serif';
+        g.ctx.fillText(note, 12, 24);
+    }
+    if (els.suspReview) {
+        const g = rmSetupCanvas(els.suspReview);
+        g.ctx.clearRect(0, 0, g.w, g.h);
+        g.ctx.fillStyle = '#828B99';
+        g.ctx.font = '12px sans-serif';
+        g.ctx.fillText(note, 12, 24);
+    }
+    rmSmoothUpdateReviewSpans(null, null);
+    if (els.phaseTable) {
+        els.phaseTable.innerHTML =
+            '<div class="rm-note">フェーズ別デルタ: AとBの2本を選択すると表示されます</div>';
+    }
+    if (els.cornerList) {
+        els.cornerList.innerHTML = '';
+    }
+}
+
 /** REVIEW比較の確定データからカードを更新する(フック唯一の入口)。 */
 function rmOnReviewCompare(a, b) {
     const els = rmEnsureEls();
@@ -1320,6 +1347,10 @@ function rmOnReviewCompare(a, b) {
         return;
     }
     const token = ++rmState.reviewToken;
+    if (!a && !b) {
+        rmResetReview(els);     // A/B を全て外した(#620): 取得せずに初期表示へ戻す
+        return;
+    }
 
     // G-G(取得後に描画)・M-2 は A/B の揃い方に応じて段階表示
     const fileA = a && a.meta && a.meta.file;

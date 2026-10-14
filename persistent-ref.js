@@ -128,7 +128,7 @@
             }
             const meta = body && body.meta;
             const lapMs = meta && meta.laptime_ms_approx;
-            if (!meta || !meta.course || meta.course.id !== courseId || !(lapMs > 0)) {
+            if (!meta || !meta.course || meta.course.id !== courseId || !(lapMs > 0) || meta.multi_course) {
                 continue;
             }
             const dist = gtPathDistance(body.samples);

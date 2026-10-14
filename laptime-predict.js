@@ -213,7 +213,8 @@ async function lpFetchReferenceDistance(courseId, carId) {
                 continue;
             }
             const detail = await detailResp.json();
-            if (!detail.meta || !detail.meta.course || detail.meta.course.id !== courseId) {
+            if (!detail.meta || !detail.meta.course || detail.meta.course.id !== courseId ||
+                detail.meta.multi_course) {   // 複数コースの混在(#617)は参照距離に使わない
                 continue;
             }
             const dist = gtPathDistance(detail.samples);

@@ -42,6 +42,14 @@ docker compose up --build -d
 
 `ssl/`（自己署名の証明書と秘密鍵）はイメージに入れず、`docker-compose.yml` がホストの `./ssl` を読み取り専用でマウントします（#596）。ディレクトリが無いと、起動ログに `SSL cert/key not found` の警告が出て平文 HTTP で起動します（ブラウザの音声コマンドは https でしか動きません）。
 
+## 3.1 進行中ラップのチェックポイント（#621）
+
+記録中、5 秒ごとに `gt7data/.checkpoint_current_lap.jsonl` へ、前回以降のサンプルだけを追記します（1 行目 `{"lap_num": N}`、以降 1 サンプル 1 行の JSON）。ラップ切替・記録の区切りで消え、正常終了でも消えます。残っていれば、異常終了で保存されなかった周回です。手作業で復旧するときは、2 行目以降を配列にまとめると通常の記録ファイルと同じ形式になります:
+
+```bash
+python3 -c "import json,sys; L=open('gt7data/.checkpoint_current_lap.jsonl').read().splitlines(); json.dump([json.loads(x) for x in L[1:]], open(sys.argv[1],'w'))" recovered.json
+```
+
 ## 4. headless スモークテスト（TEST MODE）
 
 PS5 なしでダッシュボードの動作確認ができます:

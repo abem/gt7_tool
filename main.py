@@ -228,7 +228,8 @@ LOG_DIR_FAILED = "gt7data_failed"
 # 上書きすることで、SIGKILL/OOM等でfinally節を経ずに終了した場合の未保存データを
 # 一定間隔ごとに縮小する。ファイル名はLAP_FILE_REと一致しない固定名のため
 # /api/laps一覧走査には現れない。
-CHECKPOINT_FILE = f"{LOG_DIR}/.checkpoint_current_lap.json"
+CHECKPOINT_FILE = f"{LOG_DIR}/.checkpoint_current_lap.jsonl"       # 増分追記(#621)。1行目 {"lap_num": N}、以降1サンプル1行
+CHECKPOINT_FILE_LEGACY = f"{LOG_DIR}/.checkpoint_current_lap.json"  # 旧形式(全体を書き直す方式)。残っていれば消す
 CHECKPOINT_INTERVAL_SEC = 5.0
 
 # save_lap_to_file の書込み失敗時リトライ回数・待機秒数(#434 P1)。
@@ -297,21 +298,28 @@ def save_lap_to_file(lap_parts, lap_num, car_id=0):
         )
 
 
-def _save_checkpoint(lap_parts, lap_num):
-    """進行中ラップの周期チェックポイントを固定ファイルへ上書き保存する(#434 P1)。
+def _append_checkpoint(lap_parts, lap_num, written):
+    """進行中ラップのチェックポイントへ、前回以降のサンプルだけを追記する(#434 P1、#621)。
 
-    ラップ境界保存(save_lap_to_file)とは独立した安全網であり、失敗しても
-    ロギングのみ行い次回間隔で再試行する(例外を上位へ伝播させない)。
-    lap_parts は json.dumps 済みのサンプル文字列(#602)。出力は
-    json.dump({"lap_num": N, "samples": [...]}) と同一。
+    ラップ境界保存(save_lap_to_file)とは独立した安全網(SIGKILL/OOM 等で finally を経ずに
+    終了したときの未保存分を減らす)。以前はラップ全体(18MB)を 5 秒ごとに書き直していた。
+    形式: 1 行目 {"lap_num": N}、以降は 1 サンプル 1 行(json)。読み手は無い(手作業の復旧用)。
+    lap_parts は json.dumps 済みのサンプル文字列(#602)。written は書き込み済みの件数。
+    失敗してもロギングのみ行い、次回の間隔で再試行する。
+    @return 新しい書き込み済みの件数。
     """
-    if not lap_parts:
-        return
+    end = len(lap_parts)          # 先に数える(受信ループが同時に追加しても、その分は次回に回る)
+    if end <= written:
+        return written
     try:
-        with open(CHECKPOINT_FILE, 'w') as f:
-            f.write('{"lap_num": %d, "samples": [%s]}' % (lap_num, ", ".join(lap_parts)))
+        with open(CHECKPOINT_FILE, 'a' if written > 0 else 'w') as f:
+            if written == 0:
+                f.write('{"lap_num": %d}\n' % lap_num)
+            f.write("\n".join(lap_parts[written:end]) + "\n")
+        return end
     except Exception as e:
         logger.warning(f"Checkpoint save failed: {e}")
+        return written
 
 
 def _clear_checkpoint():
@@ -320,11 +328,43 @@ def _clear_checkpoint():
     ラップ境界での正規保存成功時・正常シャットダウン時に呼び、既に完全保存済み
     ラップの残骸をチェックポイントとして誤認しないようにする。
     """
-    try:
-        if os.path.exists(CHECKPOINT_FILE):
-            os.remove(CHECKPOINT_FILE)
-    except Exception as e:
-        logger.warning(f"Checkpoint clear failed: {e}")
+    for path in (CHECKPOINT_FILE, CHECKPOINT_FILE_LEGACY):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception as e:
+            logger.warning(f"Checkpoint clear failed: {e}")
+
+
+# 記録の区切り(#617): ラップ数が増えた時だけ保存していたため、セッション再開(ラップ 1 に戻る)や
+# 別コースでの走り直しが同じファイルに混ざっていた(直近 300 本中 55 本)。
+RECORD_SPLIT_JUMP_M = 300.0     # 位置がこれ以上飛び、かつ車速×経過時間の 3 倍を超えたら別の走行(ピットへ戻す・コース変更)
+RECORD_SPLIT_GAP_S = 60.0       # 受信がこれ以上途切れたら別の走行
+RECORD_MIN_SAMPLES = 120        # これ未満の断片(約 2 秒)は保存しない
+
+
+def _record_split_reason(last_pos, sample, lap_count, current_lap_number, dt_s):
+    """新しい記録を始めるべき理由を返す(無ければ None)。
+
+    'lap_reset': ラップ数が減った(セッション再開)
+    'gap':       受信が RECORD_SPLIT_GAP_S 以上途切れた
+    'jump':      位置が RECORD_SPLIT_JUMP_M 超、かつその車速ではあり得ない距離を飛んだ(パケットロスは除く)
+    """
+    if current_lap_number > 0 and lap_count < current_lap_number:
+        return "lap_reset"
+    if dt_s is not None and dt_s >= RECORD_SPLIT_GAP_S:
+        return "gap"
+    x = sample.get("position_x")
+    z = sample.get("position_z")
+    if last_pos and last_pos[0] is not None and last_pos[1] is not None and x is not None and z is not None:
+        moved = math.hypot(x - last_pos[0], z - last_pos[1])
+        speed_ms = sample.get("speed_ms")
+        if speed_ms is None:
+            speed_ms = (sample.get("speed_kmh") or 0) / 3.6
+        possible = 3.0 * max(abs(speed_ms), 1.0) * max(dt_s or 0.0, 0.0)
+        if moved > RECORD_SPLIT_JUMP_M and moved > possible:
+            return "jump"
+    return None
 
 
 def calculate_acceleration(speed_kmh, last_speed_kmh, time_delta):
@@ -470,6 +510,9 @@ async def telemetry_background_task():
     current_lap_parts = []      # 進行中ラップのサンプル(配信用に json.dumps 済みの文字列。#602)
     current_lap_car_id = 0      # 進行中ラップの先頭サンプルの car_id(保存ファイル名に使う)
     current_lap_number = 0
+    checkpoint_written = 0      # チェックポイントへ書き込み済みのサンプル数(#621)
+    last_pos = None             # 直前のサンプルの位置(x, z)。記録の区切り(瞬間移動)の判定に使う(#617)
+    course_provisional = None   # ラップ切替直後、投票が終わるまで仮に使う前ラップの確定値(#618)
     # コース推定ロックイン(#436 B4フォローアップ): course_estimator.estimate_course()
     # 自体(bounds面積最小選択)は無改変。course_database.jsonの特定コースペアの
     # バウンディングボックス重複により、1ラップ中に生の推定値が頻繁に入れ替わる
@@ -559,7 +602,31 @@ async def telemetry_background_task():
                 # (増減とも)でロックをリセットし、開始からCOURSE_LOCK_VOTE_WINDOW件の
                 # 生推定値を多数決、以後そのラップ中は確定値に凍結する(析調査で実績の
                 # ある「先頭サンプル=100%内部一貫」をラップ単位の粒度で拡張する設計)。
-                if lap_count != current_lap_number:
+                # 記録の区切り(#617): ラップ数の減少(セッション再開)・位置の瞬間移動(ピットへ
+                # 戻す・コース変更)・受信の長い中断では、それまでの蓄積を別の記録として保存し、
+                # このサンプルから新しい記録を始める(短すぎる断片は捨てる)。
+                split_reason = _record_split_reason(
+                    last_pos, parsed, lap_count, current_lap_number, time_delta
+                ) if current_lap_parts else None
+                if split_reason:
+                    if len(current_lap_parts) >= RECORD_MIN_SAMPLES:
+                        await asyncio.to_thread(save_lap_to_file, current_lap_parts,
+                                                current_lap_number, current_lap_car_id)
+                    else:
+                        logger.info(f"Dropped short recording fragment: {len(current_lap_parts)} samples "
+                                    f"(reason={split_reason})")
+                    await asyncio.to_thread(_clear_checkpoint)
+                    current_lap_parts = []
+                    checkpoint_written = 0
+                    last_checkpoint_time = current_time
+                    logger.info(f"Recording split: reason={split_reason}, lap {current_lap_number} -> {lap_count}")
+                    current_lap_number = lap_count
+
+                if lap_count != current_lap_number or split_reason:
+                    # ラップ切替: 位置が連続なら前のラップの確定値を、投票が終わるまでの仮の値として
+                    # 引き継ぐ(#618。白紙に戻すと、境界ボックスの重なりで揺れる生の推定値が先頭に入る)。
+                    # 区切り(瞬間移動・セッション再開・中断)では白紙に戻す
+                    course_provisional = None if split_reason else course_lock_result
                     course_lock_id = None
                     course_lock_result = None
                     course_vote_counts = {}
@@ -578,7 +645,9 @@ async def telemetry_background_task():
                     if course_vote_count >= COURSE_LOCK_VOTE_WINDOW:
                         course_lock_id = max(course_vote_counts, key=course_vote_counts.get)
                         course_lock_result = course_vote_samples[course_lock_id]
-                    parsed["course"] = raw_course
+                        course_provisional = None
+                    parsed["course"] = course_lock_result if course_lock_id is not None \
+                        else (course_provisional or raw_course)
                 else:
                     parsed["course"] = course_lock_result
 
@@ -595,13 +664,15 @@ async def telemetry_background_task():
                 if not current_lap_parts:
                     current_lap_car_id = parsed.get("car_id", 0)
                 current_lap_parts.append(part)
+                last_pos = (parsed.get("position_x"), parsed.get("position_z"))
 
                 # 周期的チェックポイント保存(#434 P1): ラップ境界を待たず一定間隔で
                 # current_lap_parts を中間保存する。SIGKILL/OOM等でfinally節を経ずに
                 # 終了した場合の未保存データを縮小する安全網。既存のラップ保存と同じく
                 # ワーカースレッドへオフロードし、受信ループ(イベントループ)を塞がない。
                 if (current_time - last_checkpoint_time).total_seconds() >= CHECKPOINT_INTERVAL_SEC:
-                    await asyncio.to_thread(_save_checkpoint, current_lap_parts, current_lap_number)
+                    checkpoint_written = await asyncio.to_thread(
+                        _append_checkpoint, current_lap_parts, current_lap_number, checkpoint_written)
                     if packet_loss_count > 0:
                         logger.warning(f"Packet loss count (cumulative): {packet_loss_count}")
                     if broadcast_drop_count > 0:
@@ -618,6 +689,7 @@ async def telemetry_background_task():
                                             current_lap_car_id)
                     await asyncio.to_thread(_clear_checkpoint)
                     current_lap_parts = []
+                    checkpoint_written = 0
                     last_checkpoint_time = current_time
                 current_lap_number = lap_count
 
@@ -1198,13 +1270,32 @@ def _load_lap_file(path, fields, every, output_format='json'):
     ]
     first = data[0] if data and isinstance(data[0], dict) else {}
     duration_ms = _lap_duration_approx_ms(data)
+    courses = _course_counts(data)
     if output_format == 'csv':
         body = _samples_to_csv(samples, fields)
     elif output_format == 'fastf1':
         body = _samples_to_fastf1_csv(samples, fields)
     else:
         body = json.dumps(samples)
-    return body, len(samples), len(data), first, duration_ms
+    return body, len(samples), len(data), first, duration_ms, courses
+
+
+MULTI_COURSE_MIN_SAMPLES = 10   # これ以下のサンプルしか無いコースは、推定の揺れとみなして混在に数えない
+
+
+def _course_counts(data):
+    """コース id ごとのサンプル数(#617)。記録が複数コースを含むか(multi_course)の判定に使う。"""
+    counts = {}
+    for s in data:
+        course = s.get("course") if isinstance(s, dict) else None
+        cid = course.get("id") if isinstance(course, dict) else None
+        cid = cid or "unknown"
+        counts[cid] = counts.get(cid, 0) + 1
+    return counts
+
+
+def _is_multi_course(courses):
+    return sum(1 for n in courses.values() if n > MULTI_COURSE_MIN_SAMPLES) > 1
 
 
 # 受信時刻差がこれ以上のサンプル間は「記録の中断」(メニュー放置・一時停止等)と
@@ -1309,7 +1400,7 @@ async def api_lap_detail_handler(request):
     cache_key = (filepath, st.st_mtime_ns, st.st_size, fields, every, output_format)
     cached = _lap_detail_cache.get(cache_key)
     if cached is not None:
-        body_data, samples_returned, samples_total, first, duration_ms = cached
+        body_data, samples_returned, samples_total, first, duration_ms, courses = cached
     else:
         try:
             result = await asyncio.to_thread(
@@ -1318,7 +1409,7 @@ async def api_lap_detail_handler(request):
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
             logger.error(f"Corrupt lap file {name}: {e}")
             return web.json_response({"error": "corrupt file"}, status=500)
-        body_data, samples_returned, samples_total, first, duration_ms = result
+        body_data, samples_returned, samples_total, first, duration_ms, courses = result
         # 単一エントリがLAP_RESPONSE_CACHE_MAX_ENTRY_BYTESを超える場合は put() 内部で
         # 保持されない(大型ラップでメモリを圧迫しないため)。
         _lap_detail_cache.put(cache_key, result, len(body_data.encode('utf-8')))
@@ -1358,6 +1449,10 @@ async def api_lap_detail_handler(request):
         "schema": schema,
         "course": course,
         "laptime_ms_approx": duration_ms,
+        # #617: 記録が複数のコースを含むか(セッションをまたいだ古い記録)。REVIEW の一覧に印を出し、
+        # ラップ推移・過去ベスト・予測の参照距離の候補から外す
+        "courses": courses,
+        "multi_course": _is_multi_course(courses),
     })
     # samples は to_thread 内で直列化済み。meta だけここで dumps して結合する
     body = '{"meta": ' + json.dumps(meta) + ', "samples": ' + body_data + '}'
@@ -1774,12 +1869,12 @@ def build_ssl_context():
     return ctx
 
 
-def main():
-    port = CONFIG.get("http_port", 8080)
-    ssl_context = build_ssl_context()
-    scheme = "https" if ssl_context else "http"
-    ws_scheme = "wss" if ssl_context else "ws"
+def build_app(with_telemetry=True):
+    """HTTP/WS のルートを登録したアプリを返す(#622)。
 
+    with_telemetry=False では UDP の受信(telemetry_supervisor)を起動しない。テスト
+    (tests/test_http_api.py)が HTTP の挙動だけを確かめるために使う。
+    """
     app = web.Application(middlewares=[logging_middleware])
     # 読み出しAPIはワイルドカード静的ルート(/{filename})より前に登録する
     app.router.add_get('/api/laps', api_laps_list_handler)
@@ -1791,9 +1886,19 @@ def main():
     app.router.add_get('/engineer', engineer_handler)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/{filename:.*}', static_handler)
+    if with_telemetry:
+        app.on_startup.append(on_startup)
+        app.on_cleanup.append(on_cleanup)
+    return app
 
-    app.on_startup.append(on_startup)
-    app.on_cleanup.append(on_cleanup)
+
+def main():
+    port = CONFIG.get("http_port", 8080)
+    ssl_context = build_ssl_context()
+    scheme = "https" if ssl_context else "http"
+    ws_scheme = "wss" if ssl_context else "ws"
+
+    app = build_app()
 
     logger.info(f"Starting GT7 Dashboard Server on port {port}...")
     logger.info(f"{scheme.upper()}: {scheme}://0.0.0.0:{port}")

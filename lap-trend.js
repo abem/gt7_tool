@@ -119,6 +119,7 @@
                     recordedAt: Date.parse(lap.recorded_at) || 0,
                     lapMs: m.laptime_ms_approx || 0,
                     course: m.course ? (m.course.id || m.course.name_ja || m.course.name_en || null) : null,
+                    multi: !!m.multi_course,   // 複数コースの混在(セッションをまたいだ古い記録。#617)
                     dist: gtPathDistance(body.samples)   // 詳細(間引き)サンプルからの概算
                 };
             });
@@ -338,7 +339,7 @@
             const baseDist = (cur && cur.res && cur.res.totalDist) ? cur.res.totalDist : base.res.totalDist;
             const tol = typeof REVIEW_DIST_TOLERANCE === 'number' ? REVIEW_DIST_TOLERANCE : DIST_TOLERANCE_FALLBACK;
             const ok = rows.filter(function(r) {
-                return r.lapMs > 0 && r.course === course && baseDist &&
+                return r.lapMs > 0 && r.course === course && !r.multi && baseDist &&
                     Math.abs(r.dist - baseDist) / Math.max(r.dist, baseDist) <= tol;
             }).sort(function(x, y) { return x.recordedAt - y.recordedAt; });
             const excluded = rows.length - ok.length;
