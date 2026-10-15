@@ -35,13 +35,14 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 │                              │                                    │
 │                              ▼                                    │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │  WebSocket Server                                         │   │
+│  │  WebSocket Server / 記録 (lapstore.py の共有定義を使う)    │   │
 │  │    • クライアント接続管理                                  │   │
 │  │    • データ配信                                           │   │
-│  │    • HTTPサーバー (ダッシュボード配信)                    │   │
+│  │    • HTTPサーバー (ダッシュボード配信・読み出し API)      │   │
+│  │    • 周回ごとの記録 (gt7data/、セッションをまたげば分割)  │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └────────────────────────────┬────────────────────────────────────┘
-                             │ WebSocket (ws://)
+                             │ WebSocket (wss://、ssl/ が無ければ ws://)
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Web Browser                                │
@@ -82,12 +83,14 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 │  │  REVIEW 系: review-view.js (一覧・A/B・チャート3本)       │   │
 │  │    track-map / theory-best / segment-report / lap-trend  │   │
 │  │    channel-plots / corner-report / race-metrics (REVIEW) │   │
+│  │    session-summary (日×車種のまとめ)                      │   │
 │  │    replay-mode (全カード再生) / replay-diag (診断ログ)   │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  ライブ補助: laptime-predict (予測) / sector-time (区間)  │   │
 │  │    persistent-ref (過去ベスト基準) / audio-callout (音声) │   │
 │  │    pit-wall (エンジニア伝言の受信) / voice-command (音声) │   │
+│  │    driving-aids (TCS/ABS/ASM の作動表示)                  │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  test-mode.js - テストモード (デモデータ生成)            │   │
@@ -98,6 +101,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  card-drag.js - ブロックのドラッグ移動 (自由配置)        │   │
 │  │  menu.js - フラット1段操作ツールバー (プロキシ駆動)      │   │
+│  │  card-groups.js - カード表示グループ (CARDS)             │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -108,10 +112,10 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 
 | ファイル名 | 説明 | 主要なクラス/関数 |
 |-----------|------|-----------------|
-| `main.py` | エントリーポイント・HTTP/WSサーバ | `FuelTracker`, `websocket_handler`, `telemetry_background_task`, `telemetry_supervisor`, `_heartbeat_loop`, `on_startup`, `on_cleanup` |
+| `main.py` | エントリーポイント・HTTP/WSサーバ・周回の記録 | `build_app`（#622、テストから受信なしで組み立てる）, `FuelTracker`, `websocket_handler`, `telemetry_background_task`, `telemetry_supervisor`, `_heartbeat_loop`, `_record_split_reason`（#617）, `_append_checkpoint`（#621）, `_load_lap_file`, `on_startup`, `on_cleanup` |
 | `telemetry.py` | UDP通信管理（非同期・`asyncio.DatagramProtocol` ベース） | `GT7TelemetryClient`, `_TelemetryProtocol` |
 | `decoder.py` | パケット復号・解析 (A/B/~ 対応) | `GT7Decoder`, `CourseEstimator` |
-| `lapstore.py` | ラップファイル名の規則と、予測の特徴量の列の共有定義（標準ライブラリのみ。`main.py` と `train_laptime_model.py` が参照。#574） | `LAP_FILE_RE`, `FEATURE_COLUMNS`, `FEATURE_QUERY_PARAMS` |
+| `lapstore.py` | 記録ファイルに関する共有定義（標準ライブラリのみ。`main.py` と `train_laptime_model.py` が参照。#574）: ファイル名の規則、予測の特徴量の列、詰まった受信時刻の並べ直し（#602）、運転支援の作動ビット（#628） | `LAP_FILE_RE`, `FEATURE_COLUMNS`, `FEATURE_QUERY_PARAMS`, `repace_timestamps`, `aid_bits` |
 | `train_laptime_model.py` | ラップタイム予測モデルのオフライン学習（コース×車種ごと。時系列の検証と品質ゲート。イメージには入れず、`docker compose run` でマウントして実行。[API.md](API.md) 参照） | `filter_group_outliers`, `_time_ordered_split` |
 
 `main.py` の読み出し API は、周回の詳細の応答・`models/gated_groups.json`・学習済みモデルを、ファイルの更新時刻とサイズを鍵にキャッシュする（#573。再起動なしで新しい内容が使われる）。
@@ -124,7 +128,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 - **単一グローバルスコープ共有**: 全ファイルのトップレベル関数・変数は同一のグローバルスコープを共有する。同名のトップレベル定義は、後から読み込まれた側が先の定義を上書き（シャドウ）する。
 - **ES モジュール不使用（意図的）**: `import` / `export` は使わない。モジュール化はリスクの高い構造変更として意図的に見送っている（[CHANGELOG](../CHANGELOG.md) の 2026-07-09 挙動保存リファクタリング参照）。
 - **トップレベルシンボルの追加・リネームは全ファイル横断確認が必要**: 名前衝突・シャドウイングが実害バグを生んだ前例（`getSectorClass` の二重定義等）があるため、追加・変更時は全 `*.js` / `*.html` を grep で横断確認すること。`tests/static_check.py` が、ページごとのトップレベルの名前の重複を検出する。
-- **読み込み順の要点**: `constants.js` → `common-utils.js`（共通の小さな処理。以降のどのファイルからも使える）→ `ui_components.js` → 各機能 → `websocket.js`（ライブの受信・描画の入口）→ `app.js` → ツールバー系（`card-drag.js` / `menu.js` / `card-groups.js` / `voice-command.js` / `audio-callout.js` / `persistent-ref.js`）。後から読み込まれる機能は、先のファイルの関数を `typeof` で確かめてから呼ぶ（機能が無くても止まらない）。
+- **読み込み順の要点**: `constants.js` → `common-utils.js`（共通の小さな処理。以降のどのファイルからも使える）→ `ui_components.js` → 各機能 → `websocket.js`（ライブの受信・描画の入口）→ `app.js` → ツールバー系とライブ補助（`card-drag.js` / `menu.js` / `card-groups.js` / `voice-command.js` / `audio-callout.js` / `persistent-ref.js` / `driving-aids.js`）→ `session-summary.js`。後から読み込まれる機能は、先のファイルの関数を `typeof` で確かめてから呼ぶ（機能が無くても止まらない）。
 - **新しいファイルの追加**: `index.html` の `<script>` / `<link>` に足すだけでよい（Dockerfile は `*.html *.js *.css` を一括でコピーする。#575）。Python のモジュールは Dockerfile の `COPY` に名前を足す（`tests/static_check.py` が、`main.py` が import するモジュールの不足を検出する）。
 
 ### フロントエンド (HTML/JS/CSS)
@@ -143,22 +147,23 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `lap-manager.js` | ラップ管理 | ラップタイム記録・履歴管理 |
 | `telemetry-analysis.js` | 距離基準ラップ解析 | 距離索引、ライブ・タイムデルタ、推定ラップタイム、リファレンス速度重畳、レースエンジニア通知 |
 | `drive-view.js` | DRIVE/ANALYSIS ビュー切替 | 走行用最小表示（DRIVE）と解析表示（ANALYSIS）の切替、選択は localStorage に永続化 |
-| `review-view.js` + `review.css` | REVIEW ビュー | 過去ラップの一覧（日付グループ・フィルタ）・A/B選択・重ね書き（#554、行の「＋」で最大5本を速度・ペダル入力のチャートへ追加。A/Bと同じ比較可否判定で、比較できない周回は凡例に理由つきで除外）・距離基準チャート3種（速度重畳/タイムデルタ/スロットル・ブレーキ）・比較サマリ。読み出しAPI `/api/laps` を使用 |
+| `review-view.js` + `review.css` | REVIEW ビュー | 過去ラップの一覧（日付グループ・日付と車種の絞り込み・日ごとの折りたたみ #627・複数コース混在の印 #617）・A/B選択・ペダル入力チャートの TCS/ABS 作動帯（#628、`/api/laps/{file}` の仮想フィールド `aids`）・重ね書き（#554、行の「＋」で最大5本を速度・ペダル入力のチャートへ追加。A/Bと同じ比較可否判定で、比較できない周回は凡例に理由つきで除外）・距離基準チャート3種（速度重畳/タイムデルタ/スロットル・ブレーキ）・比較サマリ。読み出しAPI `/api/laps` を使用 |
 | `replay-mode.js` + `replay.css` | 全カード再生モード | 記録済みラップを既存の単一入口 `handleTelemetryMessage` へ供給し、走行中と同一の全カードで時間/距離スクラバー再生。2段ロード（10Hz先行→60Hz背景差替）・倍速・シーク対応 |
 | `race-metrics.js` + `race-metrics.css` | RACE METRICS | G-Gダイアグラム・コーナーフェーズ別デルタ・サスペンション変位ヒストグラム・タイヤデグ率+ピットウィンドウ・滑らかさスコア・回生エネルギー/トルク配分。REVIEW/全カード再生下部とライブ（STRATEGYミニカード）に表示。ライブでは、アウトライヤー警告の1枠集約（#555 T8: `rmRaiseAlert`。ANALYSISのみ、DRIVE/REVIEWは従来のトースト）と、FUELカードの目標燃費差分（T9）も担う |
 | `track-map.js` + `track-map.css` | REVIEW トラックマップ（#552） | A/B の走行ラインを速度・ブレーキ・スロットルで色分け（Bは白の破線）して描く Canvas2D。`review-view.js` の `reviewNotifyExtras()` から `tmOnReviewCompare` が呼ばれる。区間強調用に `tmHighlightRange` も公開。IIFE で隔離 |
 | `theory-best.js` | REVIEW 理論ベスト（#552） | 距離を20等分した仮想区間ごとに A/B の速い方を合成した近似値と、実ベストとの差を要約帯へ表示。コース不一致・走行距離差3%超は算出しない。`tbOnReviewCompare` が唯一のフック |
-| `segment-report.js` + `segment-report.css` | REVIEW 区間レポート（#552 T5） | 距離20等分の区間ごとに A/B のタイム・最高速・最低速・最大ブレーキ・平均スロットルを表で表示。行ホバー/タップで `tmHighlightRange` を呼び地図の区間を強調。`srOnReviewCompare` が唯一のフック。トラックマップとの左右並び（`#tm-sr-row`）もここで定義 |
+| `segment-report.js` + `segment-report.css` | REVIEW 区間レポート（#552 T5） | 距離20等分の区間ごとに A/B のタイム・最高速・最低速・最大ブレーキ・平均スロットル・TCS/ABS の作動距離（#628）を表で表示。行ホバー/タップで `tmHighlightRange` を呼び地図の区間を強調。`srOnReviewCompare` が唯一のフック。トラックマップとの左右並び（`#tm-sr-row`）もここで定義 |
 | `channel-plots.js` + `channel-plots.css` | REVIEW 散布図・チャンネル分布（#555 T6/T7） | 任意の2チャンネルの散布図（速度・スロットル・ブレーキ・距離・縦加速度・タイム差）と、1チャンネルの分布（スロットル・ブレーキ・速度・ギア）を A/B で描く Canvas2D。散布図は距離10m格子、分布は記録サンプル（`reviewFetchDetail` の `raw`）から作る。`cpOnReviewCompare` が唯一のフック。IIFE で隔離 |
 | `corner-report.js` + `corner-report.css` | REVIEW コーナー別レポート（#561）＋ばらつき CONSISTENCY（#562: 同コース・同車種の直近の周回のコーナーごとの σ と、トラックマップの STABILITY 色分け `tmSetStability`） | A/B の速度の平均の谷からコーナーを検出し、ブレーキ位置・踏み込み・離す位置・最低速度・スロットル位置・立ち上がり速度を A/B で比較。損失の大きい順に、操作の違いを走行順につないだ文章を出す。行ホバーで `tmHighlightRange`。`crOnReviewCompare` が唯一のフック。IIFE で隔離 |
 | `audio-callout.js` | 音声の通知（#564） | ブラウザの音声合成で、serious/critical の通知と、ラップ完了のタイム・ベストとの差を読み上げる（ツールバーの AUDIO、既定オフ、再生・REVIEW 中は無効）。`telemetry-analysis.js`・`race-metrics.js` から `acOnNotification` / `acOnLapComplete` を呼ぶ。IIFE で隔離 |
 | `persistent-ref.js` + `persistent-ref.css` | 過去の自己ベストを基準にするライブのデルタ（#563） | 車種・コースの DOM 表示を1秒ごとに監視し、過去の同コース・同車種の最速の単独周回を、`analysisState.refLap`（ライブのデルタ・推定ラップの基準）に、その日のベストより速い間だけ入れる。ライブの受信・描画経路には触れない。DELTA VS BEST カードに由来と「過去BEST」の切替。IIFE で隔離（グローバルなし） |
 | `lap-trend.js` + `lap-trend.css` | REVIEW ラップ推移（#552 T3） | 同一コース・同一車種のラップタイム推移（uPlot）。ボタン操作時のみ `/api/laps/{file}?every=60` を最大40本・3並列で取得し、距離±3%外を除外。`ltOnReviewCompare` が唯一のフック |
-| `laptime-predict.js` | ラップタイム予測（#434 P5） | 画面の表示値を1秒ごとに読み、同コース・同車種の参照距離（複数周回の距離の塊の中央値。#559）から進行度を求めて `/api/predict/laptime` に問い合わせる。モデル無し(404)は5分、該当なしは60秒あけて再試行 |
+| `laptime-predict.js` | ラップタイム予測（#434 P5） | 画面の表示値を1秒ごとに読み、同コース・同車種の参照距離（複数周回の距離の塊の中央値。#559）から進行度を求めて `/api/predict/laptime` に問い合わせる。モデル無し(404)は5分、該当なしは60秒あけて再試行。応答の `trained_at` から「学習 N 日前」を併記（#626） |
 | `sector-time.js` + `sector-time.css` | 仮想セクタータイム（#436 B4） | 参照ラップの総距離をN等分した「仮想」区間のタイム。`laptime-predict.js` の進行度を読み取り専用で使う |
 | `pit-wall.js` / `engineer.html` + `engineer.js` + `engineer.css` | バーチャルピットウォール（#434 P4） | エンジニア役の端末（`/engineer`）から `/ws` へ送った伝言を、ドライバー側で通知トーストに表示し読み上げる |
 | `voice-command.js` + `voice-command.css` | 音声コマンド（#436 B3） | ツールバーの VOICE で1発話を認識し、DRIVE/ANALYSIS とカードのグループを切り替える。非対応ブラウザではボタンを作らない |
 | `replay-diag.js` | REVIEW 再生の診断ログ（#558） | 再生中の計測値（実際の再生倍率・描画レート・タイマーの遅れ等）を `POST /api/diag` へ送り、`logs/replay_diag.jsonl` に残す |
+| `session-summary.js` + `session-summary.css` | REVIEW「今日の走行」まとめ（#629） | 一覧の絞り込み（日付・車種）か A の周回の日×車種について、最大 16 周を `reviewFetchDetail` で読み、周回数・ベスト・中央値・ばらつき σ・前回セッションとの差・ベスト比で時間を失っている上位 3 コーナー（`corner-report.js` と同じ谷検出）・TCS/ABS の周回数を表示。ボタン操作時だけ動く。IIFE で隔離 |
 | `driving-aids.js` + `driving-aids.css` | 運転支援の作動表示（#603） | CAR ATTITUDE のタイトル右に TCS / ABS / ASM を常設し、作動中だけ点灯。TCS/ASM はパケットの旗、ABS は推定（ペダル値より ABS 補正後の制動が 3% 以上弱い、または制動中の車輪のスリップが 5% 以上）。`websocket.js` から typeof ガード付きで `daOnFrame` を呼ぶ。フレームが 2 秒来なければ消灯。IIFE で隔離 |
 | `websocket.js` | WebSocket通信 | 接続管理、テレメトリデータ処理（ライブの受信・描画の入口。整理の対象外） |
 | `test-mode.js` | テストモード | デモデータ生成、PS5なしの動作確認 |
@@ -188,6 +193,9 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `tests/test_train_laptime_model.py` | 学習パイプライン（外れ値の除外・時系列の分割・品質ゲート） |
 | `tests/test_lapstore.py` | 共有定義の同一性、`scripts/gt7data_rotate.py` の手書きの正規表現との一致、保存ファイル名の書式との一致 |
 | `tests/test_api_cache.py` | 読み出し API のキャッシュ（鍵・上限・ファイル更新時の読み直し・応答の同一性） |
+| `tests/test_recording.py` | 記録の分割の判定（#617）・コース判定の引き継ぎ（#618）・チェックポイントの増分追記（#621）・時刻の並べ直し（#602）・運転支援ビットと仮想フィールド `aids`（#628） |
+| `tests/test_http_api.py` | `build_app(with_telemetry=False)` で組み立てた HTTP API の特性（一覧・詳細・CSV の BOM・パストラバーサルの拒否。#622） |
+| `tests/test_retrain_cron_wrapper.py` | 再学習ラッパー（#626）: 失敗・例外・タイムアウト時も通知して終了コード 0、排他、ログの整理 |
 | `tests/e2e/` | ヘッドレスのブラウザでの検証（実際に記録した周回のフィクスチャ、独立した Python 実装との照合、ゴールデン）。[tests/e2e/README.md](../tests/e2e/README.md) |
 
 ### その他
@@ -196,10 +204,10 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 |-----------|------|
 | `Dockerfile` | Dockerイメージ定義（Python は名前で、画面のファイルは `*.html *.js *.css` を一括でコピー。`.dockerignore` で開発用の物・`ssl/` を除く） |
 | `docker-compose.yml` | Docker Compose設定（`network_mode: host`。ボリューム: `gt7data` / `gt7data_imported` / `models` / `logs` / `ssl`(読み取り専用)） |
-| `requirements.txt` | Python依存パッケージ（aiohttp / pycryptodome / pytest） |
+| `requirements.txt` | Python依存パッケージ（aiohttp / pycryptodome、予測の推論に scikit-learn / numpy / joblib、学習に pandas、テストに pytest）。e2e 用の playwright / Pillow は `requirements-dev.txt`（イメージに入れない） |
 | `uplot.min.js` | uPlotグラフライブラリ |
 | `uplot.min.css` | uPlotスタイルシート |
-| `scripts/` | 運用・開発用スクリプト（`gt7data_rotate.py`: 記録の世代管理。root の cron でコンテナ外から実行するため `lapstore.py` を import せず、正規表現の一致は `tests/test_lapstore.py` で固定。[scripts/README.md](../scripts/README.md)）。本番のイメージには入れない |
+| `scripts/` | ホストの cron で動く運用スクリプト（`gt7data_rotate.py` + `rotate_cron_wrapper.py`: 記録の世代管理（root の cron でコンテナ外から実行するため `lapstore.py` を import せず、正規表現の一致は `tests/test_lapstore.py` で固定）、`disk_guard.py`: ディスク監視、`retrain_cron_wrapper.py`: 予測モデルの週次再学習（#626）、`alert_notify.py`: 通知の共通部）と、開発用の使い捨てスクリプト。[scripts/README.md](../scripts/README.md)。本番のイメージには入れない |
 
 ## データフロー
 
@@ -291,14 +299,22 @@ PS5がなくてもダッシュボードの動作を確認できる機能です�
 
 ### 保存条件
 
-- ラップが完了したとき
+- ラップが完了したとき（ラップ数が増えたとき）
 - 車種IDが変わったとき
+- **記録の区切り（#617）**: ラップ数の減少（セッションのやり直し）・受信の 60 秒超の中断・位置の瞬間移動（300 m 超かつ車速ではあり得ない距離）を検知すると、それまでの分を別ファイルに保存して新しい記録を始める（120 サンプル未満の断片は捨てる。燃料の集計もやり直す）。区切りの直後はコース判定を前の記録から引き継ぐ（#618）
+- 各サンプルの `timestamp` は UDP の受信コールバックで付ける（#602）。保存中に詰まった古い記録は、読み出し時に `lapstore.repace_timestamps` で本来の間隔に並べ直す
+
+### 進行中ラップのチェックポイント（#621）
+
+記録中は 5 秒ごとに `gt7data/.checkpoint_current_lap.jsonl` へ前回以降のサンプルだけを追記する（異常終了時の復旧用。手順は [development.md](development.md)）。
 
 ### ファイル名形式
 
 ```
 {timestamp}_CAR-{car_id}_Lap-{lap_num}.json
 ```
+
+2026-10-15 より前の記録には、セッションをまたいで複数のコースが混在したファイルがある。読み出し API は `meta.courses` / `meta.multi_course` でそれを示し、REVIEW は一覧に印を出して、ラップ推移・過去ベスト・予測の参照から外す（#617）。
 
 ## スケーラビリティ
 
@@ -328,4 +344,4 @@ PS5がなくてもダッシュボードの動作を確認できる機能です�
 
 ---
 
-**最終更新**: 2026-10-09
+**最終更新**: 2026-10-15

@@ -9,6 +9,9 @@
 
 ## 2026-10-15 — 改善提案 第3回（親 #625）: 自動再学習・一覧の絞り込み・TCS/ABS の帯・今日の走行まとめ
 
+### docs: 文書の陳腐化の一掃
+- README（構成は 4 ファイル＋学習、`scripts/` は運用スクリプトとして追跡、ブランチ運用は `main` + チケット単位、HTTP フォールバック、10-09 / 10-15 の更新履歴）、architecture（lapstore の共有定義、記録の分割・チェックポイント、session-summary / driving-aids / card-groups、テストファイル一覧、requirements）、test-mode / API（仮想セクターは「非対応」ではなく参照ラップ依存）、development（再学習の手順、pytest の範囲）、common-issues（REVIEW・記録 / 予測 / 容量の節を追加、SSL の差し替え）、USER_GUIDE（HTTP フォールバック、記録の分割、トラブルシューティングの参照先）、index（運用スクリプトへの導線、無い文書の行を削除）、tests/e2e/README（Chromium 更新とゴールデン、`全テスト成功` の見方）。
+
 ### feat(ops): 予測モデルの週次再学習（#626）
 - `scripts/retrain_cron_wrapper.py`: `docker compose run` で `train_laptime_model.py` を実行し、`scripts/logs/retrain_*.log` に記録。失敗・品質ゲートを通る組の減少を `alert_notify` で通知（排他ロック、--dry-run）。利用者の crontab に日曜 04:00 で登録（scripts/README.md）。独立レビューの指摘で補強: docker が見つからない等どんな例外でもログと通知を出して終了コード 0、タイムアウト時は名前付きコンテナ `gt7_tool_retrain` を `docker rm -f`、ログは最新 12 本だけ残す。`tests/test_retrain_cron_wrapper.py`（8 件）。
 - `/api/predict/laptime` に `trained_at`、予測欄に「学習 N 日前」。初回の手動実行で 932 ファイルから 17 組を学習、ゲート通過 11 組（9/30 時点の 15 組から更新。通知も動作）。

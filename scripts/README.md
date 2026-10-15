@@ -2,7 +2,7 @@
 
 このディレクトリは、本番動作に不要なデバッグ・検証・キャプチャ系スクリプトと、
 **ホストの cron で稼働する運用スクリプト**（後述「運用スクリプト」）を置いています。
-ダッシュボード本体（`main.py` / `decoder.py` / `telemetry.py`）や Docker イメージには含まれません。
+ダッシュボード本体（`main.py` / `decoder.py` / `telemetry.py` / `lapstore.py`）や Docker イメージには含まれません。
 デバッグ系は `.gitignore` / `.dockerignore` の対象、運用スクリプトは git追跡対象です。
 
 ## 運用スクリプト（git追跡対象・ホストの cron で稼働）
@@ -19,6 +19,8 @@
 | `disk_guard.py` | ディスク使用率の監視（85% 警告 / 90% 緊急）。**「/」と、gt7data が載るファイルシステム（現在は /data）の両方**を見る。緊急時は gt7data の新規対象を trash へ退避（物理削除はしない） | root の cron（`0 */4 * * *`、4時間ごと。**稼働を確認済み**、`scripts/logs/disk_guard.log` に「/」と gt7data の両方の使用率が出る） |
 | `alert_notify.py` | 通知の共通部。`~/DISK_ALERT.txt` への追記と `notify-send` の二経路 | 上記から呼ばれる |
 | `disk_guard_test.py` | `disk_guard.py` のモックテスト（ディスク・通知・削除に触れない）。`python3 -B scripts/disk_guard_test.py` | 手動 |
+
+`retrain_cron_wrapper.py` のテストは `tests/test_retrain_cron_wrapper.py`（`bash tests/run_all.sh` の pytest に含まれる）。
 
 - スクリプト内のパス（`/home/abem/Projects/gt7/gt7_tool` 等）は、このホスト専用の固定値です。
 - 通知先: `~/DISK_ALERT.txt`（一次記録）と、abem の GNOME セッションへのデスクトップ通知。

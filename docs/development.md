@@ -14,7 +14,7 @@ bash tests/run_all.sh
 | 段階 | 内容 | 単体での実行 |
 |---|---|---|
 | 静的チェック | JS の構文、**トップレベルの名前の重複**（単一グローバルスコープでの上書き）、HTML が読み込むファイルの存在と Dockerfile の COPY への包含、id の重複、Python の構文・未使用 import・重複定義 | `python3 tests/static_check.py` |
-| Python の単体テスト | `tests/test_*.py`（復号・コース推定・学習パイプライン・予測 API）。scikit-learn 等が要るため、**コンテナのイメージ内**で実行（リポジトリを読み取り専用でマウント） | `docker compose run --rm --no-deps -T -v "$PWD:/src:ro" -w /src gt7_tool python -B -m pytest tests -q -p no:cacheprovider` |
+| Python の単体テスト | `tests/test_*.py`（復号・コース推定・記録の分割とチェックポイント・読み出し API のキャッシュ・HTTP API の特性・学習パイプライン・再学習ラッパー）。scikit-learn 等が要るため、**コンテナのイメージ内**で実行（リポジトリを読み取り専用でマウント） | `docker compose run --rm --no-deps -T -v "$PWD:/src:ro" -w /src gt7_tool python -B -m pytest tests -q -p no:cacheprovider` |
 | e2e | ヘッドレスのブラウザで、REVIEW・ライブ表示を、実際に記録した周回のフィクスチャで検証（約4分）。詳細は [tests/e2e/README.md](../tests/e2e/README.md) | `python3 tests/e2e/run_e2e.py` |
 
 - e2e には、ホストに `playwright`（chromium）と `Pillow` が必要です（`requirements-dev.txt`）。
@@ -62,10 +62,21 @@ PS5 なしでダッシュボードの動作確認ができます:
 
 このスモークは Playwright による headless 自動化でも継続実施しています。TEST MODE 自体の詳細は [test-mode.md](test-mode.md) を参照してください。
 
-## 5. コースデータベースの再生成
+## 5. 予測モデルの再学習
+
+学習パイプライン `train_laptime_model.py` はイメージに入れていません。ホストの `models/` に出力し、サーバーはファイルの更新を検知して読み込み直します（再起動不要。#573）:
+
+```bash
+python3 scripts/retrain_cron_wrapper.py            # 本番と同じ手順(ログは scripts/logs/retrain_*.log、失敗は通知)
+python3 scripts/retrain_cron_wrapper.py --dry-run  # 実行する docker compose run のコマンドを表示するだけ
+```
+
+週次の自動実行（日曜 04:00、利用者の crontab）と通知の仕組みは [scripts/README.md](../scripts/README.md) を参照してください。学習の中身（時系列の分割・品質ゲート）は [API.md](API.md) の「ラップタイム予測」節にあります。
+
+## 6. コースデータベースの再生成
 
 手順は [USER_GUIDE.md](USER_GUIDE.md) の「新しいコースを学習させる」節を参照してください（`--regenerate` は本番 `course_database.json` を上書きする破壊的操作。`--output` で別ファイルに出力して試せます）。
 
 ---
 
-**最終更新**: 2026-07-11
+**最終更新**: 2026-10-15

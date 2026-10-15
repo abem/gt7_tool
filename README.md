@@ -13,7 +13,7 @@ PS5/PS4 から送信されるテレメトリパケットを受信・Salsa20 復�
 | カテゴリ | 内容 |
 |----------|------|
 | **速度・駆動系** | 速度、RPM、ギア（推奨ギア）、ステアリング角度、ギア比、トルクベクタリング、回生エネルギー |
-| **ペダル入力** | スロットル / ブレーキ / クラッチの生値 + TCS/ABS 補正後の値 |
+| **ペダル入力** | スロットル / ブレーキ / クラッチの生値 + TCS/ABS 補正後の値。CAR ATTITUDE のタイトル右に TCS / ABS / ASM の作動表示（#603） |
 | **タイヤ** | 4 輪の温度（色分け）、サスペンション高さ、ホイール回転速度、タイヤ半径 |
 | **車体姿勢 (CAR ATTITUDE)** | Canvas2D クォータービュー可視化 — ダブルウィッシュボーン・サスペンション、タイヤ（ステア連動で前輪が実際に切れる）、重心点 CoG（横 G / 前後 G の荷重移動）、pitch/yaw/roll、路面勾配（GRADE % / CANT °、車体姿勢とは別枠表示）。車体加速度（sway/heave/surge）は BODY ACCEL に表示 |
 | **燃料** | 残量、タンク容量、1 周消費量、残り周回予測 |
@@ -21,11 +21,12 @@ PS5/PS4 から送信されるテレメトリパケットを受信・Salsa20 復�
 | **ラップ** | ラップタイム記録、ベストラップ、距離基準ライブ・タイムデルタ、推定ラップタイム、仮想セクタータイム（S1/S2/S3、詳細は後述） |
 | **解析** | 距離索引ラップ解析、リファレンス速度重畳チャート、レースエンジニア通知、グリップ状態、一貫性σ |
 | **バーチャルピットウォール** | 別端末（`/engineer`）からエンジニア役が「FUEL MAP 3」「LIFT & COAST」等の指示を送信し、ドライバー側画面へ通知表示＋音声読み上げ（ブラウザ標準 SpeechSynthesis）で伝達。DRIVE ビューにはドライバーからエンジニアへ「OK / COPY / RE-PLAN」を返信するタップボタンがあり、応答はエンジニア側画面に別リスト表示される |
-| **過去ラップ活用** | REVIEW ビュー（記録済みラップの一覧・距離基準の2ラップ重畳比較・ベスト比較・**トラックマップ**・**理論ベスト**・**区間レポート**・**ラップ推移**）と**全カード再生**（過去ラップを走行時と同じ全カードで時間/距離スクラバー再生。倍速・シーク対応、再生中もライブ受信・記録は継続。**AIハイライト自動生成**でGフォース急変等の地点をスクラバー上にマーカー表示し、クリックで即ジャンプ） |
+| **過去ラップ活用** | REVIEW ビュー（記録済みラップの一覧（日付・車種の絞り込み、日ごとの折りたたみ）・距離基準の2ラップ重畳比較・ベスト比較・**トラックマップ**・**理論ベスト**・**区間レポート**・**ラップ推移**・**コーナー別レポート**・**散布図/分布**・**TCS/ABS の作動帯**・**SESSION SUMMARY（日×車種のまとめ）**）と**全カード再生**（過去ラップを走行時と同じ全カードで時間/距離スクラバー再生。倍速・シーク対応、再生中もライブ受信・記録は継続。**AIハイライト自動生成**でGフォース急変等の地点をスクラバー上にマーカー表示し、クリックで即ジャンプ） |
 | **ビュー切替** | DRIVE（走行用最小表示: ギア/シフトライト/デルタ中心、F1 ディスプレイ流）と ANALYSIS（全パネル解析表示）をワンクリック切替 |
 | **レイアウト操作** | 全ブロック（カード / チャートタイル / 上部レーシングバー）をドラッグで自由配置（配置は localStorage に保存・ページスクロールに追従）、ヘッダーのフラット 1 段ツールバー（ANALYSIS│DRIVE 切替 / TEST MODE / CARDS / ALIGN / FULLSCREEN / VOICE） |
+| **音声の通知** | ツールバーの AUDIO をオンにすると、重大な警告とラップ完了のタイムをブラウザの音声合成で読み上げ（既定オフ、#564） |
 | **音声コマンド** | ツールバーの VOICE ボタンを押している間だけ（ワンショット）音声認識し、「ドライブ」「アナリシス」でビュー切替、「チャート」「ペダル」等でカード表示グループ（CARDS の g1〜g6）を単独表示に切替。対応ブラウザ（Chrome/Edge/Safari）のみボタンを表示（`SpeechRecognition` Web API非対応環境では非表示） |
-| **インフラ** | Docker Compose 対応、HTTPS/WSS、テストモード（PS5 不要で動作確認可能）、全パケット対応（A/B/~） |
+| **インフラ** | Docker Compose 対応、HTTPS/WSS、テストモード（PS5 不要で動作確認可能）、全パケット対応（A/B/~）、記録の自動分割（セッションをまたいだ記録を別ファイルに。#617）、週次の保存ローテーションと予測モデルの自動再学習（#626） |
 
 ## クイックスタート
 
@@ -126,10 +127,10 @@ Canvas2D のクォータービュー（固定アングルの疑似 3D）で描�
 
 ## 構成
 
-- **バックエンド (Python)**: `main.py`（HTTP/WebSocket サーバ）、`telemetry.py`（PS5 との UDP 通信）、`decoder.py`（Salsa20 復号・パケット解析・コース推定）の 3 ファイル構成
-- **フロントエンド (HTML/CSS/JS)**: `index.html` + `styles.css` と、プレーン `<script>` で読み込む JS 群（charts / steer-response / car-3d / lap-manager / telemetry-analysis / drive-view / websocket / test-mode / card-drag / menu ほか）。全ファイルが単一グローバルスコープを共有（ES モジュール不使用）
+- **バックエンド (Python)**: `main.py`（HTTP/WebSocket サーバ・記録）、`telemetry.py`（PS5 との UDP 通信）、`decoder.py`（Salsa20 復号・パケット解析・コース推定）、`lapstore.py`（記録ファイルの規則・時刻の並べ直し・運転支援ビットなどの共有定義）。`train_laptime_model.py`（予測モデルの学習）はイメージに入れず `docker compose run` で実行
+- **フロントエンド (HTML/CSS/JS)**: `index.html` + `styles.css` と、プレーン `<script>` で読み込む JS 群（charts / steer-response / car-3d / lap-manager / telemetry-analysis / drive-view / review-view / replay-mode / websocket / test-mode / card-drag / menu ほか 30 本超）。全ファイルが単一グローバルスコープを共有（ES モジュール不使用）
 - **設定・データ**: `config.json` と `.env`（env 優先・config.json フォールバック）、コース推定用の `course_database.json`
-- **テスト・スクリプト**: 回帰テストは `tests/`、開発・検証用スクリプトは `scripts/`（gitignore 対象）
+- **テスト・スクリプト**: 回帰テストは `tests/`（静的チェック・pytest・e2e を `bash tests/run_all.sh` で一括実行。[開発ガイド](docs/development.md)）、ホストの cron で動く運用スクリプト（ローテーション・ディスク監視・再学習）は `scripts/`（[scripts/README.md](scripts/README.md)。デバッグ用の使い捨てスクリプトだけ gitignore 対象）
 
 ファイル別の役割一覧・実行モデルの制約・データフローの詳細は [システムアーキテクチャ](docs/architecture.md) を参照してください。
 
@@ -147,12 +148,12 @@ Canvas2D のクォータービュー（固定アングルの疑似 3D）で描�
 
 | 症状 | 原因 | 対処 |
 |------|------|------|
-| ブラウザで接続できない | `http://` でアクセスしている | サーバーは HTTPS 専用。**`https://`** でアクセスし、自己署名証明書の警告は「詳細設定」から続行 |
+| ブラウザで接続できない | `http://` でアクセスしている | 既定は HTTPS。**`https://`** でアクセスし、自己署名証明書の警告は「詳細設定」から続行（`ssl/` が無いときだけ平文 HTTP で起動し、起動ログに警告が出る） |
 | 証明書の警告が出る | 自己署名証明書のため正常な動作 | 「詳細設定」→「アクセスする（安全ではありません）」で続行（ローカル利用のため問題なし） |
-| "Client connected" が出ない | PS5 IP が間違い / テレメトリ送信が OFF | `.env` または `config.json` の `ps5_ip` を確認、PS5 設定でテレメトリ送信を ON |
+| ログに `Started receiving data` が出ない | PS5 IP が間違い / テレメトリ送信が OFF | `.env` または `config.json` の `ps5_ip` を確認、PS5 設定でテレメトリ送信を ON |
 | データが表示されない | GT7 未起動 / レース画面でない | GT7 を起動しレースまたはタイムアタックで走行開始 |
 | ネットワークエラー | コンテナの状態異常 | `docker compose down && docker compose up --build` |
-| `Address already in use` | 別の GT7 ツールが同一ポートを使用中 | `docker ps` で他のコンテナ（例: gt7_tool_car_attitude2）を確認し停止、または `.env` でポート変更 |
+| `Address already in use` | 別の GT7 ツールが同一ポートを使用中 | `docker ps` で他のコンテナを確認し停止、または `.env` でポート変更 |
 
 詳細は [トラブルシューティング](docs/common-issues.md) を参照してください。
 
@@ -181,7 +182,7 @@ python3 scripts/gt7data_rotate.py            # dry-run(既定): 対象一覧の�
 sudo python3 scripts/gt7data_rotate.py --apply   # 実行(gt7data が root 所有のため sudo)
 ```
 
-- 設定は `config.json` の `data_retention`（`enabled` / `max_total_gb` / `max_age_days` / `trash_days`）。**ソースコードの既定値は安全側の `enabled: false`**（この場合 `--apply` を拒否）ですが、**本ツールの現在の運用設定では `enabled: true` に変更して稼働しています**（`max_total_gb: 20` / `max_age_days: 180` / `trash_days: 14`）。加えて `root` の cron に毎週日曜 03:00 の `--apply` 定期実行が登録済みです（週1回、自動でローテーションが走ります）。
+- 設定は `config.json` の `data_retention`（`enabled` / `max_total_gb` / `max_age_days` / `trash_days`）。**ソースコードの既定値は安全側の `enabled: false`**（この場合 `--apply` を拒否）ですが、**本ツールの現在の運用設定では `enabled: true` に変更して稼働しています**（`max_total_gb: 20` / `max_age_days: 180` / `trash_days: 14`）。加えて `root` の cron に毎週日曜 03:00 の `--apply` 定期実行（`scripts/rotate_cron_wrapper.py` 経由。失敗は通知）が登録済みです。4 時間ごとのディスク監視（`scripts/disk_guard.py`）と、日曜 04:00 の予測モデルの再学習（`scripts/retrain_cron_wrapper.py`、利用者の crontab）も同じ仕組みで動きます（[scripts/README.md](scripts/README.md)）。
 - 対象は即削除ではなく `gt7data_trash/日付/` へ移動し、`trash_days`（現在14日）経過後に物理削除（2段階削除）。
 - `gt7data/.rotate_keep` に記載したファイルは常に保護。対象が候補の50%を超える場合は誤設定とみなし中断します。
 - 自動削除を止めたい場合は `config.json` の `data_retention.enabled` を `false` に戻してください（cron自体は残るため、次回実行時は `--apply` が拒否される形になります）。
@@ -191,11 +192,20 @@ sudo python3 scripts/gt7data_rotate.py --apply   # 実行(gt7data が root 所�
 
 | ブランチ | 用途 |
 |----------|------|
-| `main` | 安定版（バグ修正・ドキュメント更新） |
-| `dev` | 開発統合ブランチ |
-| `feature/*` | 個別機能の開発 |
+| `main` | 本番に反映する唯一のブランチ（abem2 の Docker はここを `--build` で再ビルド） |
+| `feat/<チケット>-*` / `fix/<チケット>-*` / `refactor/<チケット>-*` | Redmine のチケット単位の作業ブランチ。テストと独立レビューを通してから `main` へ fast-forward でマージし、削除 |
+| `dev` | 旧・開発統合ブランチ（2026-09-30 以降は使っていない） |
 
 ## 更新履歴
+
+### 2026-10-15
+- **改善提案 第3回**（#625〜#629）: 予測モデルの**週次自動再学習**（`scripts/retrain_cron_wrapper.py`。失敗や品質ゲート通過組の減少を通知。予測欄に「学習 N 日前」）、REVIEW 一覧の**車種絞り込みと日ごとの折りたたみ**、ペダル入力チャートの **TCS / ABS 作動帯**と区間レポートの作動距離の列、**SESSION SUMMARY**（日×車種のまとめ: 周回数・ベスト・中央値・ばらつき・前回との差・時間を失っている上位コーナー）。
+- **記録の健全化**（#616〜#624）: セッションをまたいだ記録を**自動で別ファイルに分割**（ラップ数の減少・60 秒超の中断・位置の瞬間移動。#617）、コース判定の引き継ぎ（#618）、RACE METRICS の選択解除時のリセット（#620）、進行中ラップのチェックポイントを増分追記に（#621）、HTTP API の特性テスト（#622）。
+- **再生が最初だけ速い問題の是正**（#602）: 受信コールバックで時刻を付け、保存中に詰まった区間は読み出し時に本来の間隔で並べ直す。
+- **整理（リファクタリング）2 回**（#568〜#576、#595〜#601）: 共通処理の `common-utils.js` / `review-common.css` への集約、`lapstore.py` の共有定義、読み出し API のキャッシュ、SSL 鍵をイメージから外す（`./ssl` のマウント）、静的チェックの拡充。挙動は e2e のゴールデンで前後一致を確認。
+
+### 2026-10-09
+- **CAR ATTITUDE に TCS / ABS / ASM の作動表示**（#603。ABS は推定）、GRIP 表示の車輪速の単位誤り（rad/s）を修正（#604）。
 
 ### 2026-09-30
 - **REVIEW にトラックマップと理論ベストを追加**（#552 T1/T2）: 実レース向け解析ソフト（MoTeC i2 の Track Report、AiM RaceStudio3 の Track Map・best theoretical time）の定番表示を取り込みました。**TRACK MAP**は、A/B の走行ラインを速度・ブレーキ・スロットルで色分け（B は白の破線）して重ね、制動点や加速区間を空間的に把握できます。**理論ベスト**は、距離を 20 等分した仮想区間ごとに A/B の速い方を合成した近似値と、実ベストとの差を要約帯に表示します（コースや走行距離が大きく異なる組は算出しません）。新規ファイルのみで完結し、バックエンド・デコーダは無変更です。続けて、**SEGMENT REPORT**（距離20等分の区間ごとに A/B のタイム・最高速・最低速・最大ブレーキ・平均スロットルを並べた表。行にカーソルを合わせると地図の該当区間が光ります）と、**LAP TIME TREND**（同一コース・同一車種のラップタイム推移。ボタン操作で読み込み）を追加しました（#552 T3/T5）。併せて、1400px 以上の REVIEW で下部（RACE METRICS）へ到達できなかった既存の不具合を、縦スクロールを許可して是正しました。
@@ -252,4 +262,4 @@ GT7/GT Sport テレメトリの Salsa20 復号ロジックを使用していま�
 暗号化キー: `Simulator Interface Packet GT7 ver 0.0`
 
 ---
-**最終更新**: 2026-09-30
+**最終更新**: 2026-10-15

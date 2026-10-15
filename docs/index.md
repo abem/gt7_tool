@@ -29,6 +29,7 @@ GT7 Telemetry Dashboardは、グランツーリスモ7 (GT7) のテレメトリ�
 | [STEER RESPONSE 詳説](steer-response.md) | STEER RESPONSE の物理導出・較正詳細・限界（本機能の正） |
 | [開発ガイド](development.md) | 変更時の検証手順（`tests/run_all.sh`: 静的チェック・pytest・e2e、コンテナ反映、headless スモーク） |
 | [e2e テスト](../tests/e2e/README.md) | ブラウザでの検証の構成・実行・ゴールデン（保存した期待値）の扱い |
+| [運用スクリプト](../scripts/README.md) | ホストの cron で動く保存ローテーション・ディスク監視・予測モデルの再学習と、その通知 |
 | [変更履歴 (CHANGELOG)](../CHANGELOG.md) | UI 刷新（CAR ATTITUDE / ブロック配置 / 操作ツールバー等）を含む時系列の一次情報 |
 
 ### 過去の記録（アーカイブ）
@@ -64,7 +65,6 @@ GT7 Telemetry Dashboardは、グランツーリスモ7 (GT7) のテレメトリ�
 |------------|------|------|
 | README | プロジェクト概要、クイックスタート | ルートディレクトリ |
 | CHANGELOG.md | 変更履歴（時系列・最新の一次情報） | ルートディレクトリ |
-| DOCS_PLAN.md | ドキュメント整備計画（旧・参考） | ルートディレクトリ |
 
 ## クイックスタート
 
@@ -88,4 +88,4 @@ MIT License（[README](../README.md#ライセンス) 参照）
 
 ---
 
-**最終更新**: 2026-10-09
+**最終更新**: 2026-10-15
