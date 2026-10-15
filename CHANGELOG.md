@@ -10,14 +10,14 @@
 ## 2026-10-15 — 改善提案 第3回（親 #625）: 自動再学習・一覧の絞り込み・TCS/ABS の帯・今日の走行まとめ
 
 ### feat(ops): 予測モデルの週次再学習（#626）
-- `scripts/retrain_cron_wrapper.py`: `docker compose run` で `train_laptime_model.py` を実行し、`scripts/logs/retrain_*.log` に記録。失敗・品質ゲートを通る組の減少を `alert_notify` で通知（排他ロック、--dry-run）。利用者の crontab に日曜 04:00 で登録（scripts/README.md）。
+- `scripts/retrain_cron_wrapper.py`: `docker compose run` で `train_laptime_model.py` を実行し、`scripts/logs/retrain_*.log` に記録。失敗・品質ゲートを通る組の減少を `alert_notify` で通知（排他ロック、--dry-run）。利用者の crontab に日曜 04:00 で登録（scripts/README.md）。独立レビューの指摘で補強: docker が見つからない等どんな例外でもログと通知を出して終了コード 0、タイムアウト時は名前付きコンテナ `gt7_tool_retrain` を `docker rm -f`、ログは最新 12 本だけ残す。`tests/test_retrain_cron_wrapper.py`（8 件）。
 - `/api/predict/laptime` に `trained_at`、予測欄に「学習 N 日前」。初回の手動実行で 932 ファイルから 17 組を学習、ゲート通過 11 組（9/30 時点の 15 組から更新。通知も動作）。
 
 ### feat(review): 一覧の車種絞り込みと日ごとの折りたたみ（#627）
 - 一覧ヘッダに車種のセレクト（件数つき）。日付の見出しで開閉（既定は最新日だけ開く。状態は localStorage）。折りたたみは隠すだけで、A/B・重ね書き・再生の参照は保つ。BEST 基準は絞り込みに従う。e2e_627（1,000 件・3 車種・125 日）。
 
 ### feat(review): TCS / ABS の作動区間をチャートの帯と区間レポートの列に（#628）
-- `/api/laps/{file}` に仮想フィールド `aids`（TCS=1 / ASM=2 / ABS=4。`lapstore.aid_bits`、ABS は #603 と同じ推定）。生の `flags` 等を返すより小さい（+10KB。生なら 303KB → 829KB）。
+- `/api/laps/{file}` に仮想フィールド `aids`（TCS=1 / ASM=2 / ABS=4。`lapstore.aid_bits`、ABS は #603 と同じ推定）。生の `flags` 等を返すより小さい（+10KB。生なら 303KB → 829KB）。間引き（`every`）で飛ばすサンプルの作動は OR で残すサンプルに畳み込み、短い作動が消えない（レビュー指摘）。
 - ペダル入力チャートの上端に A（上段）/ B（下段）の帯、区間レポートに「TCS A/B (m)」「ABS A/B (m)」列。e2e_628 で独立実装と区間・距離が一致、帯の画素を確認。
 
 ### feat(review): SESSION SUMMARY「今日の走行」まとめ（#629）

@@ -251,3 +251,20 @@ def test_load_lap_file_adds_virtual_aids_field_only_when_requested(tmp_path):
     assert "flags" not in out[0]
     body, n, _a, _f, _d, _c = main._load_lap_file(str(path), ["speed_kmh"], 1)
     assert "aids" not in json.loads(body)[0]
+
+
+def test_load_lap_file_aids_or_across_decimation_window(tmp_path):
+    """every>1 のとき、残すサンプルの間に収まる短い作動(1〜2 サンプル)も消えずに帯に残る。"""
+    data = _lap_with_initial_burst(60, 1)
+    for i, s in enumerate(data):
+        s["flags"] = {"tcs_active": i in (22, 23)}          # 残らないサンプル(18,24 が残る)だけで作動
+        s["brake_pct"] = 50 if i == 45 else 0                # 1 サンプルだけの ABS
+        s["brake_filtered_pct"] = 40 if i == 45 else 0
+    path = tmp_path / "2026-10-08_17_41_46_CAR-63_Lap-3.json"
+    path.write_text(json.dumps(data))
+    body, n, _a, _f, _d, _c = main._load_lap_file(str(path), ["speed_kmh", "aids"], 6)
+    out = json.loads(body)
+    assert n == 10 and len(out) == 10
+    aids = [s["aids"] for s in out]
+    assert aids[3] == lapstore.AID_TCS and aids[7] == lapstore.AID_ABS      # 18..23 と 42..47 の窓
+    assert sum(1 for a in aids if a) == 2

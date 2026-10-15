@@ -1266,12 +1266,18 @@ def _load_lap_file(path, fields, every, output_format='json'):
     _repace_timestamps(data)   # #602: 詰まった受信時刻を並べ直す(間引きの前に、全サンプルで)
     want_aids = "aids" in fields   # 仮想フィールド(#628): 運転支援の作動ビット(flags 等を送るより小さい)
     samples = []
-    for s in data[::every]:
+    for i in range(0, len(data), every):
+        s = data[i]
         if not isinstance(s, dict):
             continue
         o = {k: s[k] for k in fields if k in s}
         if want_aids:
-            o["aids"] = aid_bits(s)
+            # 間引きで飛ばすサンプルの作動も OR で拾う(短い ABS/TCS の作動が消えないように。レビュー指摘)
+            bits = 0
+            for t in data[i:i + every]:
+                if isinstance(t, dict):
+                    bits |= aid_bits(t)
+            o["aids"] = bits
         samples.append(o)
     first = data[0] if data and isinstance(data[0], dict) else {}
     duration_ms = _lap_duration_approx_ms(data)
