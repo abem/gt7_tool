@@ -61,7 +61,8 @@ body.review-mode #review-root {
     gap: 8px;
 }
 
-#review-filter-date {
+#review-filter-date,
+#review-filter-car {
     flex: 1;
     background: var(--surface-3);
     color: var(--text-primary);
@@ -139,6 +140,20 @@ body.review-mode #review-root {
     letter-spacing: 0.06em;
     padding: 8px 4px 2px;
     border-bottom: 1px solid var(--border-hairline);
+}
+
+/* 日ごとの折りたたみ(#627): 見出しを押すと開閉。既定は最新の日だけ開く */
+.review-day-head[data-day] {
+    cursor: pointer;
+    user-select: none;
+}
+
+.review-day-head[data-day]:hover {
+    color: var(--text-primary);
+}
+
+.review-lap-item.day-collapsed {
+    display: none;
 }
 
 .review-lap-item {

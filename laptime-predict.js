@@ -153,6 +153,16 @@ function lpSampleTick() {
  *
  * 距離の配列から参照距離を決める(純関数)。最大の塊の中央値。同数なら先に現れた(=新しい)塊。
  */
+/** モデルを学習した日時(ISO)から「 / 学習 N 日前」の表示を作る(無ければ空。#626)。 */
+function lpTrainedAgoText(trainedAt) {
+    const t = trainedAt ? Date.parse(trainedAt) : NaN;
+    if (isNaN(t)) {
+        return '';
+    }
+    const days = Math.max(0, Math.floor((Date.now() - t) / 86400000));
+    return ' / 学習 ' + days + '日前';
+}
+
 function lpPickReferenceDistance(dists) {
     if (!dists.length) {
         return 0;
@@ -319,7 +329,8 @@ async function lpPredictTick() {
             ? formatLapTime(predictedMsInt)
             : (predictedMsInt / 1000).toFixed(3) + 's';
         if (els.predictMeta) {
-            els.predictMeta.textContent = 'MAE ' + data.mae_pct.toFixed(2) + '% / n=' + data.n_laps;
+            els.predictMeta.textContent = 'MAE ' + data.mae_pct.toFixed(2) + '% / n=' + data.n_laps +
+                lpTrainedAgoText(data.trained_at);
         }
     } catch (e) {
         console.error('lpPredictTick fetch failed:', e);

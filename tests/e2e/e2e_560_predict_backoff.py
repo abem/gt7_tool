@@ -3,6 +3,7 @@
 記録済みラップの再生でライブ経路を駆動し、約12秒間の予測 API への問い合わせ回数と、表示を確かめる。
 """
 import json, re
+from datetime import datetime, timedelta
 from urllib.parse import unquote
 from playwright.sync_api import sync_playwright
 from e2e_env import S, BASE
@@ -11,6 +12,7 @@ idx=json.load(open(f'{S}/fx_trend/index.json')); lap=[r['lap'] for r in idx]; fi
 det={f:json.load(open(f'{S}/fx_trend/{f}')) for f in files}
 carof={m['file']:m['car_id'] for m in lap}
 F=files[10]
+TRAINED_AT=(datetime.now()-timedelta(days=3, hours=1)).isoformat()   # 3 日前に学習したモデル(#626)
 ok=[0,0]
 def chk(n,c,x=''): ok[0 if c else 1]+=1; print('PASS' if c else 'FAIL',n,x)
 
@@ -30,7 +32,7 @@ def run(pw,mode,secs=12):
             n[0]+=1
             if mode=='404': r.fulfill(status=404,body='{}')
             elif mode=='422': r.fulfill(status=422,content_type='application/json',body='{"error":"implausible"}')
-            else: r.fulfill(status=200,content_type='application/json',body=json.dumps({'predicted_laptime_ms':83800.0,'mae_pct':1.95,'n_laps':14}))
+            else: r.fulfill(status=200,content_type='application/json',body=json.dumps({'predicted_laptime_ms':83800.0,'mae_pct':1.95,'n_laps':14,'trained_at':TRAINED_AT}))
         else: r.fulfill(status=404,body='{}')
     pg.route('**/api/**',h); pg.goto(BASE+'/'); pg.wait_for_timeout(1500)
     pg.evaluate("document.getElementById('review-mode-btn').click()"); pg.wait_for_timeout(1200)
@@ -46,6 +48,6 @@ with sync_playwright() as pw:
     c,shown,meta,errs=run(pw,'422')
     chk('非現実的な予測(422): 毎秒の問い合わせを続ける(5分の停止にしない)・表示は「--」',c>=8 and shown=='--',(c,shown)); chk('422: pageerror 0',not errs,errs)
     c,shown,meta,errs=run(pw,'200')
-    chk('モデル有り(200): 毎秒の問い合わせ・予測タイムと根拠(MAE・n)を表示',c>=8 and shown=='1:23.800' and meta=='MAE 1.95% / n=14',(c,shown,meta)); chk('200: pageerror 0',not errs,errs)
+    chk('モデル有り(200): 毎秒の問い合わせ・予測タイムと根拠(MAE・n・学習 N 日前)を表示',c>=8 and shown=='1:23.800' and meta=='MAE 1.95% / n=14 / 学習 3日前',(c,shown,meta)); chk('200: pageerror 0',not errs,errs)
 print('PASS',ok[0],'FAIL',ok[1])
 raise SystemExit(1 if ok[1] else 0)

@@ -14,6 +14,7 @@
 | ファイル | 役割 | 稼働 |
 |----------|------|------|
 | `gt7data_rotate.py` | gt7data の保存ポリシー（期限切れの trash 退避・削除）。既定は dry-run、`--apply` で実行 | `rotate_cron_wrapper.py` 経由で、root の cron（週次、日曜 03:00）が実行。実行ごとのログは `scripts/logs/rotate_*.log` |
+| `retrain_cron_wrapper.py` | ラップタイム予測モデルの週次再学習（#626）。`docker compose run` で `train_laptime_model.py` を実行し、`scripts/logs/retrain_*.log` に記録。失敗・品質ゲートを通る組の減少を通知 | **利用者 abem の crontab**（docker を使えるため root 不要）に `0 4 * * 0 /usr/bin/python3 /home/abem/Projects/gt7/gt7_tool/scripts/retrain_cron_wrapper.py`（週次ローテーションの後） |
 | `rotate_cron_wrapper.py` | 週次 rotate の終了コードを見て、0 以外なら通知する | **稼働を確認済み（2026-09-30）**: root の crontab に `0 3 * * 0 python3 …/rotate_cron_wrapper.py >> scripts/logs/rotate_cron.log 2>&1`（週次、日曜 03:00）が登録済み |
 | `disk_guard.py` | ディスク使用率の監視（85% 警告 / 90% 緊急）。**「/」と、gt7data が載るファイルシステム（現在は /data）の両方**を見る。緊急時は gt7data の新規対象を trash へ退避（物理削除はしない） | root の cron（`0 */4 * * *`、4時間ごと。**稼働を確認済み**、`scripts/logs/disk_guard.log` に「/」と gt7data の両方の使用率が出る） |
 | `alert_notify.py` | 通知の共通部。`~/DISK_ALERT.txt` への追記と `notify-send` の二経路 | 上記から呼ばれる |

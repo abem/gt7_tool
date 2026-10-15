@@ -82,6 +82,7 @@ function ensureReviewEls() {
         root: document.getElementById('review-root'),
         sidebarHead: document.getElementById('review-sidebar-head'),
         filterDate: document.getElementById('review-filter-date'),
+        filterCar: document.getElementById('review-filter-car'),
         btnBest: document.getElementById('review-btn-best'),
         listStatus: document.getElementById('review-list-status'),
         lapList: document.getElementById('review-lap-list'),
@@ -161,6 +162,11 @@ function initReviewView() {
     // 一覧ペインの配線(A-4)
     if (els.filterDate) {
         els.filterDate.addEventListener('change', function() {
+            reviewRenderList();
+        });
+    }
+    if (els.filterCar) {
+        els.filterCar.addEventListener('change', function() {
             reviewRenderList();
         });
     }
@@ -400,6 +406,70 @@ function reviewPopulateDateFilter() {
     if (current && days.indexOf(current) !== -1) {
         els.filterDate.value = current;
     }
+    reviewPopulateCarFilter(els);
+}
+
+/** 車種の絞り込みの候補(#627)。一覧に出る順(新しい順)で、件数つき。既存の選択は保つ。 */
+function reviewPopulateCarFilter(els) {
+    if (!els.filterCar) {
+        return;
+    }
+    const counts = {};
+    const order = [];
+    reviewState.laps.forEach(function(lap) {
+        const id = String(lap.car_id);
+        if (!(id in counts)) {
+            counts[id] = 0;
+            order.push(id);
+        }
+        counts[id]++;
+    });
+    const current = els.filterCar.value;
+    els.filterCar.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = '';
+    optAll.textContent = '全車種';
+    els.filterCar.appendChild(optAll);
+    order.forEach(function(id) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = 'CAR ' + id + ' (' + counts[id] + ')';
+        els.filterCar.appendChild(opt);
+    });
+    if (current && order.indexOf(current) !== -1) {
+        els.filterCar.value = current;
+    }
+}
+
+/** 一覧の絞り込み(日付・車種)に、この周回が合うか。 */
+function reviewMatchesFilter(lap, els) {
+    const day = els.filterDate ? els.filterDate.value : '';
+    const car = els.filterCar ? els.filterCar.value : '';
+    if (day && lap.recorded_at.slice(0, 10) !== day) {
+        return false;
+    }
+    if (car && String(lap.car_id) !== car) {
+        return false;
+    }
+    return true;
+}
+
+// 日ごとの折りたたみ(#627): 開閉の状態(day -> true=折りたたみ)を保存する。記録が無い日は、最新の日だけ開く
+const REVIEW_COLLAPSE_STORAGE_KEY = 'gt7.reviewCollapsedDays';
+
+function reviewIsDayCollapsed(day, newestDay) {
+    const saved = gtStorageGetJSON(REVIEW_COLLAPSE_STORAGE_KEY, {}) || {};
+    if (typeof saved[day] === 'boolean') {
+        return saved[day];
+    }
+    return day !== newestDay;
+}
+
+function reviewToggleDay(day, newestDay) {
+    const saved = gtStorageGetJSON(REVIEW_COLLAPSE_STORAGE_KEY, {}) || {};
+    saved[day] = !reviewIsDayCollapsed(day, newestDay);
+    gtStorageSetJSON(REVIEW_COLLAPSE_STORAGE_KEY, saved);
+    reviewRenderList();
 }
 
 /**
@@ -410,23 +480,37 @@ function reviewRenderList() {
     if (!els.lapList) {
         return;
     }
-    const filter = els.filterDate ? els.filterDate.value : '';
     els.lapList.innerHTML = '';
 
-    let currentDay = null;
-    reviewState.laps.forEach(function(lap) {
+    const visible = reviewState.laps.filter(function(lap) { return reviewMatchesFilter(lap, els); });
+    const perDay = {};
+    visible.forEach(function(lap) {
         const day = lap.recorded_at.slice(0, 10);
-        if (filter && day !== filter) {
-            return;
-        }
+        perDay[day] = (perDay[day] || 0) + 1;
+    });
+    const newestDay = visible.length ? visible[0].recorded_at.slice(0, 10) : null;
+
+    let currentDay = null;
+    let collapsed = false;
+    visible.forEach(function(lap) {
+        const day = lap.recorded_at.slice(0, 10);
         if (day !== currentDay) {
             currentDay = day;
+            collapsed = reviewIsDayCollapsed(day, newestDay);
             const head = document.createElement('div');
             head.className = 'review-day-head';
-            head.textContent = day;
+            head.dataset.day = day;
+            head.setAttribute('role', 'button');
+            head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            head.textContent = (collapsed ? '▸ ' : '▾ ') + day + ' (' + perDay[day] + ')';
+            head.addEventListener('click', function() { reviewToggleDay(day, newestDay); });
             els.lapList.appendChild(head);
         }
-        els.lapList.appendChild(reviewBuildLapItem(lap));
+        const item = reviewBuildLapItem(lap);
+        if (collapsed) {
+            item.classList.add('day-collapsed');   // 折りたたみ中は隠すだけ(A/B・重ね書きの参照は保つ)
+        }
+        els.lapList.appendChild(item);
     });
 
     if (!els.lapList.children.length) {
@@ -604,7 +688,6 @@ function reviewToggleOverlay(file) {
  */
 function reviewSelectBest() {
     const els = ensureReviewEls();
-    const filter = els.filterDate ? els.filterDate.value : '';
     let best = null;
     let bestMs = Infinity;
     Object.keys(reviewState.detailCache).forEach(function(file) {
@@ -613,7 +696,7 @@ function reviewSelectBest() {
         if (!listMeta) {
             return;
         }
-        if (filter && listMeta.recorded_at.slice(0, 10) !== filter) {
+        if (!reviewMatchesFilter(listMeta, els)) {   // 日付・車種の絞り込み(#627)に合う周回だけ
             return;
         }
         const ms = meta.laptime_ms_approx;

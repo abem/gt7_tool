@@ -286,7 +286,8 @@ ws.onmessage = (event) => {
   "mae_ms": 940.6,
   "mae_pct": 0.84,
   "n_laps": 99,
-  "algorithm": "random_forest"
+  "algorithm": "random_forest",
+  "trained_at": "2026-09-30T15:57:12"
 }
 ```
 

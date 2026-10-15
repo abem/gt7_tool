@@ -1767,6 +1767,7 @@ async def api_predict_laptime_handler(request):
             "mae_pct": group["mae_pct"],
             "n_laps": group["n_laps"],
             "algorithm": group.get("algorithm"),
+            "trained_at": group.get("trained_at"),   # 学習した日時(ISO)。画面で「学習 N 日前」に使う(#626)
         },
         headers={'Cache-Control': 'no-cache'},
     )
