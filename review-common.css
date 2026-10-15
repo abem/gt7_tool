@@ -16,7 +16,8 @@ body.review-mode #tm-review-card,
 body.review-mode #sr-review-card,
 body.review-mode #lt-review-card,
 body.review-mode #cp-review-card,
-body.review-mode #cr-review-card {
+body.review-mode #cr-review-card,
+body.review-mode #ss-review-card {
     display: block;
     background: var(--surface-1);
     border: 1px solid var(--border-hairline);

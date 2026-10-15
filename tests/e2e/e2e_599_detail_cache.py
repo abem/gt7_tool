@@ -43,7 +43,7 @@ with sync_playwright() as pw:
         elif p.startswith('/api/laps/'):
             f = unquote(p[10:]); d = det.get(real_of.get(f, f))
             if d is None: r.fulfill(status=404, body='{}'); return
-            if 'fields' not in q: n_detail[0] += 1
+            if 'fields' not in q or 'aids' in q['fields'][0]: n_detail[0] += 1   # REVIEW の詳細取得(補助データの取得は数えない)
             r.fulfill(status=200, content_type='application/json', body=json.dumps(d))
         else: r.fulfill(status=404, body='{}')
     pg.route('**/api/**', h)

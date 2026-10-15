@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="/voice-command.css">
     <link rel="stylesheet" href="/sector-time.css">
     <link rel="stylesheet" href="/driving-aids.css">
+    <link rel="stylesheet" href="/session-summary.css">
 </head>
 <body>
     <div class="dashboard">
@@ -151,6 +152,16 @@
                             <table id="cr-cons-table" aria-label="コーナーごとのばらつきの表"></table>
                         </div>
                     </div>
+                </div>
+                <!-- #629: 「今日の走行」まとめ(日×車種の統計・前回比・時間を失っているコーナー)。session-summary.js が描画 -->
+                <div id="ss-review-card" class="card">
+                    <div id="ss-head">
+                        <div class="card-title review-chart-title">SESSION SUMMARY (日 × 車種のまとめ)</div>
+                        <button type="button" id="ss-load" title="一覧の絞り込み(日付・車種)か、A の周回の日と車種でまとめる">まとめを作る</button>
+                    </div>
+                    <div id="ss-status" aria-live="polite"></div>
+                    <div id="ss-stats"></div>
+                    <ul id="ss-corners"></ul>
                 </div>
                 <!-- #555 T6/T7: 散布図(任意の2チャンネル)とチャンネル分布(ヒストグラム)。channel-plots.js が描画 -->
                 <div id="cp-review-card" class="card">
@@ -824,5 +835,6 @@
     <script src="/audio-callout.js"></script>
     <script src="/persistent-ref.js"></script>
     <script src="/driving-aids.js"></script>
+    <script src="/session-summary.js"></script>
 </body>
 </html>

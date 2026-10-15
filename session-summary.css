@@ -1,0 +1,60 @@
+/* REVIEW「今日の走行」まとめ(#629)。カード枠は review-common.css */
+#ss-review-card {
+    display: none;
+}
+
+#ss-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#ss-load {
+    background: var(--surface-3);
+    color: var(--accent-brand);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+#ss-load:hover {
+    background: var(--surface-4);
+}
+
+#ss-status {
+    margin: 4px 0 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+#ss-table {
+    border-collapse: collapse;
+    font-size: 12px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+#ss-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-align: left;
+    padding: 2px 10px 2px 0;
+    white-space: nowrap;
+}
+
+#ss-table td {
+    padding: 2px 0;
+}
+
+#ss-corners {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
