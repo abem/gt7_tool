@@ -213,3 +213,41 @@ def test_multi_course_flag_ignores_small_strays():
     data += [{"course": {"id": "goodwood"}}] * 50
     assert main._is_multi_course(main._course_counts(data)) is True
     assert main._course_counts([{"x": 1}, {"course": None}]) == {"unknown": 2}
+
+
+# ---------------------------------------------------------------- #628 運転支援の作動ビット
+
+def test_aid_bits_flags_and_abs_estimate():
+    base = {"brake_pct": 0, "speed_kmh": 180, "wheel_rps": [-170] * 4, "tyre_radius": [0.3] * 4,
+            "flags": {"tcs_active": False, "asm_active": False}}
+    assert lapstore.aid_bits(base) == 0
+    assert lapstore.aid_bits(dict(base, flags={"tcs_active": True})) == lapstore.AID_TCS
+    assert lapstore.aid_bits(dict(base, flags={"asm_active": True, "tcs_active": True})) == lapstore.AID_TCS | lapstore.AID_ASM
+    # (a) ペダル値より補正後が 3% 以上弱い
+    assert lapstore.aid_bits(dict(base, brake_pct=60, brake_filtered_pct=52)) == lapstore.AID_ABS
+    assert lapstore.aid_bits(dict(base, brake_pct=60, brake_filtered_pct=58.5)) == 0
+    # (b) 制動中の車輪のスリップ 10%(車速 50m/s、前輪 45m/s)
+    assert lapstore.aid_bits(dict(base, brake_pct=100, brake_filtered_pct=100, wheel_rps=[-150, -150, -170, -170])) == lapstore.AID_ABS
+    assert lapstore.aid_bits(dict(base, brake_pct=100, brake_filtered_pct=100, wheel_rps=[-164] * 4)) == 0
+    # 制動していない・低速・配列が短い → スリップでは判定しない
+    assert lapstore.aid_bits(dict(base, brake_pct=0, wheel_rps=[-100] * 4)) == 0
+    assert lapstore.aid_bits(dict(base, speed_kmh=5, brake_pct=100, wheel_rps=[0] * 4)) == 0
+    assert lapstore.aid_bits(dict(base, brake_pct=100, wheel_rps=[-150, -150], tyre_radius=[0.3, 0.3])) == 0
+    assert lapstore.aid_bits({"speed_kmh": 100}) == 0
+
+
+def test_load_lap_file_adds_virtual_aids_field_only_when_requested(tmp_path):
+    data = _lap_with_initial_burst(60, 1)
+    for i, s in enumerate(data):
+        s["flags"] = {"tcs_active": 20 <= i < 30}
+        s["brake_pct"] = 50 if i >= 40 else 0
+        s["brake_filtered_pct"] = 40 if i >= 40 else 0
+    path = tmp_path / "2026-10-08_17_41_46_CAR-63_Lap-3.json"
+    path.write_text(json.dumps(data))
+    body, n, _a, _f, _d, _c = main._load_lap_file(str(path), ["speed_kmh", "aids"], 1)
+    out = json.loads(body)
+    assert [s["aids"] for s in out[18:32]] == [0, 0] + [lapstore.AID_TCS] * 10 + [0, 0]
+    assert all(s["aids"] == lapstore.AID_ABS for s in out[40:])
+    assert "flags" not in out[0]
+    body, n, _a, _f, _d, _c = main._load_lap_file(str(path), ["speed_kmh"], 1)
+    assert "aids" not in json.loads(body)[0]

@@ -15,7 +15,7 @@ from datetime import datetime
 from aiohttp import web
 from telemetry import GT7TelemetryClient
 from decoder import GT7Decoder, CourseEstimator
-from lapstore import LAP_FILE_RE, FEATURE_COLUMNS, FEATURE_QUERY_PARAMS, repace_timestamps
+from lapstore import LAP_FILE_RE, FEATURE_COLUMNS, FEATURE_QUERY_PARAMS, repace_timestamps, aid_bits
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1264,11 +1264,15 @@ def _load_lap_file(path, fields, every, output_format='json'):
     if not isinstance(data, list):
         raise ValueError("lap file is not a sample array")
     _repace_timestamps(data)   # #602: 詰まった受信時刻を並べ直す(間引きの前に、全サンプルで)
-    samples = [
-        {k: s[k] for k in fields if k in s}
-        for s in data[::every]
-        if isinstance(s, dict)
-    ]
+    want_aids = "aids" in fields   # 仮想フィールド(#628): 運転支援の作動ビット(flags 等を送るより小さい)
+    samples = []
+    for s in data[::every]:
+        if not isinstance(s, dict):
+            continue
+        o = {k: s[k] for k in fields if k in s}
+        if want_aids:
+            o["aids"] = aid_bits(s)
+        samples.append(o)
     first = data[0] if data and isinstance(data[0], dict) else {}
     duration_ms = _lap_duration_approx_ms(data)
     courses = _course_counts(data)

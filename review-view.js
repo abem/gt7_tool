@@ -40,6 +40,11 @@ const REVIEW_TIME_GAP_S = 2.0;
 const REVIEW_LIST_PAGE = 1000;
 // 詳細取得の間引き(60Hz→約10Hz)
 const REVIEW_FETCH_EVERY = 6;
+// 取得するフィールド(既定の集合 + 運転支援の作動ビット aids。#628)
+const REVIEW_FETCH_FIELDS = 'timestamp,current_laptime,speed_kmh,throttle_pct,brake_pct,position_x,position_z,' +
+    'gear,lap_count,last_laptime,aids';
+const REVIEW_AID_COLORS = { tcs: 'rgba(232, 161, 61, 0.6)', abs: 'rgba(61, 155, 255, 0.6)' };   // #603 と同じ色
+const REVIEW_AID_STRIP_PX = 5;   // 帯の高さ(CSS px)。A を上段、B を下段に描く
 
 const REVIEW_VIEW_STORAGE_VALUE = 'review';
 
@@ -63,6 +68,7 @@ const reviewState = {
     selB: null,             // 基準ファイル名
     overlay: [],            // 重ね書きするファイル名(選択順、最大 REVIEW_OVERLAY_MAX。A/B とは別枠)
     segMarks: { bounds: null, band: null },   // #565: チャート上の区間の境界(距離グリッド index の配列)と、強調中の区間 [i0, i1]
+    aidBands: null,         // #628: ペダル入力チャートに描く TCS / ABS の作動区間 {a: ranges, b: ranges}
     charts: null            // {speed, delta, inputs} uPlot インスタンス(A-5)
 };
 
@@ -796,10 +802,79 @@ function reviewBuildSeries(samples) {
             throttle: s.throttle_pct || 0,
             brake: s.brake_pct || 0,
             x: s.position_x || 0,
-            z: s.position_z || 0
+            z: s.position_z || 0,
+            aids: s.aids || 0           // 運転支援の作動ビット(TCS=1 / ASM=2 / ABS=4。#628)
         });
     });
     return { samples: out, cumDist: cum };
+}
+
+/**
+ * 記録サンプルから、TCS / ABS が作動していた距離の区間を作る(#628)。
+ * 作動中のサンプルから次のサンプルまでを 1 区間とし、連続する区間はつなぐ。
+ * @returns {{tcs: Array<Array<number>>, abs: Array<Array<number>>}}
+ */
+function reviewAidRanges(samples) {
+    const out = { tcs: [], abs: [] };
+    const bits = { tcs: 1, abs: 4 };
+    Object.keys(bits).forEach(function(key) {
+        let cur = null;
+        for (let i = 0; i < samples.length; i++) {
+            const on = (samples[i].aids & bits[key]) !== 0;
+            const d0 = samples[i].dist;
+            const d1 = i + 1 < samples.length ? samples[i + 1].dist : d0;
+            if (on) {
+                if (cur && cur[1] >= d0) {
+                    cur[1] = d1;
+                } else {
+                    cur = [d0, d1];
+                    out[key].push(cur);
+                }
+            }
+        }
+    });
+    return out;
+}
+
+/** 区間 [d0, d1] と重なる作動の長さ[m]。 */
+function reviewAidOverlap(ranges, d0, d1) {
+    let total = 0;
+    (ranges || []).forEach(function(r) {
+        total += Math.max(0, Math.min(r[1], d1) - Math.max(r[0], d0));
+    });
+    return total;
+}
+
+/** ペダル入力チャートに、A(上段)・B(下段)の TCS / ABS の作動区間を帯で描く(uPlot の draw フック。#628)。 */
+function reviewDrawAidBands(u) {
+    const bands = reviewState.aidBands;
+    if (!bands || (!bands.a && !bands.b)) {
+        return;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    const h = Math.round(REVIEW_AID_STRIP_PX * dpr);
+    const bb = u.bbox;
+    const ctx = u.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(bb.left, bb.top, bb.width, bb.height);
+    ctx.clip();
+    [['a', 0], ['b', 1]].forEach(function(row) {
+        const r = bands[row[0]];
+        if (!r) {
+            return;
+        }
+        const y = bb.top + row[1] * (h + Math.round(dpr));
+        ['tcs', 'abs'].forEach(function(key) {
+            ctx.fillStyle = REVIEW_AID_COLORS[key];
+            (r[key] || []).forEach(function(seg) {
+                const x0 = u.valToPos(seg[0], 'x', true);
+                const x1 = u.valToPos(seg[1], 'x', true);
+                ctx.fillRect(Math.min(x0, x1), y, Math.max(1, Math.abs(x1 - x0)), h);
+            });
+        });
+    });
+    ctx.restore();
 }
 
 // 本体(res/raw、1周あたり数MB)を持ち続ける周回の上限(#599)。A/B + 重ね書き5本 + ばらつきの数周 + 余裕。
@@ -838,7 +913,8 @@ function reviewFetchDetail(file) {
     if (els.listStatus) {
         els.listStatus.textContent = file + ' を読込中…';
     }
-    return fetch('/api/laps/' + encodeURIComponent(file) + '?every=' + REVIEW_FETCH_EVERY)
+    return fetch('/api/laps/' + encodeURIComponent(file) + '?every=' + REVIEW_FETCH_EVERY +
+                 '&fields=' + REVIEW_FETCH_FIELDS)
         .then(function(res) {
             if (!res.ok) {
                 throw new Error('HTTP ' + res.status);
@@ -853,7 +929,8 @@ function reviewFetchDetail(file) {
                 resampled.totalDist = series.cumDist;
             }
             // raw: 距離グリッドへ間引く前の記録サンプル(約10Hz)。分布(CHANNEL PLOTS のヒストグラム)用
-            const entry = { meta: body.meta, res: resampled, raw: series.samples };
+            // aids: TCS / ABS の作動区間 [距離の始点, 終点] の一覧(#628。チャートの帯と区間レポートに使う)
+            const entry = { meta: body.meta, res: resampled, raw: series.samples, aids: reviewAidRanges(series.samples) };
             reviewState.detailCache[file] = entry;
             reviewTouchDetail(file);
             if (els.listStatus) {
@@ -989,7 +1066,7 @@ function reviewEnsureCharts() {
                 series: [{}, { stroke: C.delta, width: 1.25 }]
             }), [[0], [null]], de),
             inputs: new uPlot(Object.assign({}, base, {
-                hooks: { draw: [reviewDrawSegmentMarks] },     // #565: 区間の境界と、強調中の区間の帯
+                hooks: { draw: [reviewDrawSegmentMarks, reviewDrawAidBands] },   // #565 区間の境界 / #628 作動の帯
                 scales: { x: { time: false }, y: { auto: false, range: [0, 100] } },
                 series: [
                     {},
@@ -1031,6 +1108,7 @@ function reviewEnsureCharts() {
  */
 function reviewRenderCharts(a, b, ovs) {
     ovs = ovs || [];
+    reviewState.aidBands = { a: a ? a.aids : null, b: b ? b.aids : null };   // #628
     const charts = reviewEnsureCharts();
     if (!charts) {
         return;

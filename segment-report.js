@@ -140,7 +140,8 @@
         const table = byId('sr-table');
         const thead = document.createElement('thead');
         const hr = document.createElement('tr');
-        ['区間', '距離 (m)', 'タイム A', 'タイム B', 'Δ (A−B)', '最高速 A/B', '最低速 A/B', '最大ブレーキ A/B', '平均スロットル A/B']
+        ['区間', '距離 (m)', 'タイム A', 'タイム B', 'Δ (A−B)', '最高速 A/B', '最低速 A/B', '最大ブレーキ A/B', '平均スロットル A/B',
+         'TCS A/B (m)', 'ABS A/B (m)']
             .forEach(function(h) {
                 const th = document.createElement('th');
                 th.textContent = h;
@@ -177,6 +178,9 @@
             cell(tr, fmtPair(x && x.vmin, y && y.vmin, 0));
             cell(tr, fmtPair(x && x.bmax, y && y.bmax, 0));
             cell(tr, fmtPair(x && x.thr, y && y.thr, 0));
+            // #628: 区間内で TCS / ABS が作動していた距離(取得済みの作動区間との重なり)
+            cell(tr, fmtPair(aidLen(a, 'tcs', m.d0, m.d1), aidLen(b, 'tcs', m.d0, m.d1), 0));
+            cell(tr, fmtPair(aidLen(a, 'abs', m.d0, m.d1), aidLen(b, 'abs', m.d0, m.d1), 0));
             tbody.appendChild(tr);
         }
         table.appendChild(tbody);
@@ -196,6 +200,14 @@
         } else {
             setSummary('片方のラップのみ選択中です。A/B の両方を選ぶと差分を表示します。');
         }
+    }
+
+    /** 区間 [d0, d1] で key(tcs/abs)が作動していた距離[m]。周回が無ければ undefined(表示は --)。 */
+    function aidLen(entry, key, d0, d1) {
+        if (!entry || !entry.aids || typeof reviewAidOverlap !== 'function') {
+            return undefined;
+        }
+        return reviewAidOverlap(entry.aids[key], d0, d1);
     }
 
     function rowRange(tr) {

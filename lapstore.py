@@ -111,3 +111,47 @@ def pace_timestamps(ts, gap_s):
             prev_adj = a
         t[i] = clock
     return t, gaps
+
+
+# ---------------------------------------------------------------- 運転支援の作動(#628)
+AID_TCS = 1
+AID_ASM = 2
+AID_ABS = 4
+ABS_FILTER_DIFF_PCT = 3.0        # ペダル値より ABS 補正後の制動がこれ以上弱い[%]
+ABS_SLIP_MIN = 0.05              # 制動中の車輪のスリップ(1 − 車輪速/車速)がこれ以上
+ABS_MIN_SPEED_MS = 10 / 3.6      # この車速未満ではスリップを見ない
+
+
+def aid_bits(s):
+    """1 サンプルの運転支援の作動をビットで返す(TCS=1 / ASM=2 / ABS=4)。
+
+    TCS / ASM はパケットの旗。ABS は旗が無いため推定(driving-aids.js と同じ規則):
+    制動中に、ペダル値より ABS 補正後の制動が ABS_FILTER_DIFF_PCT 以上弱い、または
+    車輪のスリップが ABS_SLIP_MIN 以上。/api/laps/{file} の仮想フィールド `aids` に使う。
+    """
+    bits = 0
+    flags = s.get("flags")
+    if isinstance(flags, dict):
+        if flags.get("tcs_active"):
+            bits |= AID_TCS
+        if flags.get("asm_active"):
+            bits |= AID_ASM
+    brake = s.get("brake_pct") or 0
+    if brake > 0:
+        filtered = s.get("brake_filtered_pct")
+        if isinstance(filtered, (int, float)) and brake - filtered >= ABS_FILTER_DIFF_PCT:
+            bits |= AID_ABS
+        else:
+            v = s.get("speed_ms")
+            if v is None:
+                v = (s.get("speed_kmh") or 0) / 3.6
+            rps = s.get("wheel_rps")
+            rad = s.get("tyre_radius")
+            if v >= ABS_MIN_SPEED_MS and isinstance(rps, list) and isinstance(rad, list) \
+                    and len(rps) >= 4 and len(rad) >= 4:
+                for i in range(4):
+                    wheel = abs(rps[i] or 0) * (rad[i] or 0)
+                    if 1 - wheel / v >= ABS_SLIP_MIN:
+                        bits |= AID_ABS
+                        break
+    return bits
