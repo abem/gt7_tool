@@ -7,6 +7,15 @@
 
 ---
 
+## 2026-10-16 — 改善提案 第4回（親 #630）: 運用スクリプトの堅牢化
+
+### feat(ops): rotate ラッパーの例外・タイムアウト通知（#631）
+- `scripts/rotate_cron_wrapper.py` を `main()` に切り出し、本家 `gt7data_rotate.py` を起動できない例外（python3 が無い・スクリプトの移動・OSError。終了コード -2）と 2 時間のタイムアウト（-1）でも通知して終了コード 0。exit 2 / 3 の既存の通知文言は不変（#626 の retrain 側と同じ形）。`tests/test_rotate_cron_wrapper.py`（6 件）。
+
+### feat(ops): 週次ジョブの見張り（#632）
+- `scripts/disk_guard.py`（root の cron、4 時間ごと）が `scripts/logs/rotate_*.log` / `retrain_*.log` の最新の更新時刻を見て、8 日より古ければ「週次ジョブが実行されていない」を通知（24 時間に 1 回、既存の状態ファイル）。ログが 1 本も無い種類は見ない。`rotate_cron.log` は対象外。ディスク使用率の判定とは独立。`scripts/disk_guard_test.py` に 5 件追加（計 13 件）。
+- いずれもホスト側のスクリプトのみで、本番イメージの再ビルドは不要。root の crontab の行は変更不要。
+
 ## 2026-10-15 — 改善提案 第3回（親 #625）: 自動再学習・一覧の絞り込み・TCS/ABS の帯・今日の走行まとめ
 
 ### docs: 文書の陳腐化の一掃

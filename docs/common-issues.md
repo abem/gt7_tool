@@ -363,6 +363,7 @@
 
 **解決方法:**
 - `crontab -l` に `retrain_cron_wrapper.py` の行があるか確認（登録方法は [scripts/README.md](../scripts/README.md)）
+- 8 日以上実行されていないと、`disk_guard.py`（4 時間ごと）が「週次ジョブが実行されていない」を通知します（#632）。この通知が来たら cron の行と cron 自体の稼働を確認します
 - `scripts/logs/retrain_*.log` の先頭の `# exit=` と末尾のエラーを確認。通知の本文は `~/DISK_ALERT.txt` にも残ります
 - 「品質ゲートを通る組が減った」の通知は失敗ではありません。新しい記録を加えた検証で誤差が 3% を超えた組が外れただけで、その組の予測が `--` に戻ります
 
@@ -378,6 +379,16 @@
 **解決方法:**
 - `scripts/logs/disk_guard.log` で、どちらのファイルシステムが増えたかを確認します。`gt7data` 以外（別の作業のファイル移動など）が原因なら、ダッシュボードの設定は変えずにそちらを片付けます
 - `gt7data` が原因なら、`config.json` の `data_retention`（`max_total_gb` / `max_age_days`）を見直して、`sudo python3 scripts/gt7data_rotate.py --apply` を実行します（dry-run で対象を先に確認できます）
+
+### 問題: 「週次ジョブが実行されていない」の通知が来た
+
+**原因:**
+- 週次ローテーション（root の cron、日曜 03:00）または再学習（利用者の cron、日曜 04:00）の実行ログ（`scripts/logs/rotate_*.log` / `retrain_*.log`）の最新が 8 日より古い。crontab の行の消失、cron の停止、ラッパーの起動失敗のどれか（#632）
+
+**解決方法:**
+- `crontab -l`（abem）と `sudo crontab -l`（root）に該当の行があるか確認します（行の内容は [scripts/README.md](../scripts/README.md)）
+- 行があるのに動いていないなら、`systemctl status cron` と `scripts/logs/rotate_cron.log` の末尾を確認します
+- ラッパー自体の失敗（python3 が無い等）は別の通知「gt7data rotate: ラッパー例外」「予測モデルの再学習: 失敗」として届きます（#631 / #626）
 
 ### 問題: 記録が消えた
 

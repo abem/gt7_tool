@@ -207,7 +207,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `requirements.txt` | Python依存パッケージ（aiohttp / pycryptodome、予測の推論に scikit-learn / numpy / joblib、学習に pandas、テストに pytest）。e2e 用の playwright / Pillow は `requirements-dev.txt`（イメージに入れない） |
 | `uplot.min.js` | uPlotグラフライブラリ |
 | `uplot.min.css` | uPlotスタイルシート |
-| `scripts/` | ホストの cron で動く運用スクリプト（`gt7data_rotate.py` + `rotate_cron_wrapper.py`: 記録の世代管理（root の cron でコンテナ外から実行するため `lapstore.py` を import せず、正規表現の一致は `tests/test_lapstore.py` で固定）、`disk_guard.py`: ディスク監視、`retrain_cron_wrapper.py`: 予測モデルの週次再学習（#626）、`alert_notify.py`: 通知の共通部）と、開発用の使い捨てスクリプト。[scripts/README.md](../scripts/README.md)。本番のイメージには入れない |
+| `scripts/` | ホストの cron で動く運用スクリプト（`gt7data_rotate.py` + `rotate_cron_wrapper.py`: 記録の世代管理（root の cron でコンテナ外から実行するため `lapstore.py` を import せず、正規表現の一致は `tests/test_lapstore.py` で固定）、`disk_guard.py`: ディスク監視と週次ジョブの見張り（#632）、`retrain_cron_wrapper.py`: 予測モデルの週次再学習（#626）、`alert_notify.py`: 通知の共通部）と、開発用の使い捨てスクリプト。[scripts/README.md](../scripts/README.md)。本番のイメージには入れない |
 
 ## データフロー
 
