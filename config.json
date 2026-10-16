@@ -7,6 +7,7 @@
     "ssl_cert": "ssl/server-cert.pem",
     "ssl_key": "ssl/server-key.pem",
     "recording_enabled": true,
+    "telemetry_accept_any_source": false,
     "data_retention": {
         "enabled": true,
         "max_total_gb": 20,

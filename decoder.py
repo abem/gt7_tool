@@ -144,6 +144,9 @@ class GT7Decoder:
     MAGIC_G7S0 = 0x47375330
     MIN_PACKET_SIZE = 0x100
     MIN_PARSE_SIZE = 0x128  # 296 bytes (Packet A)
+    # 受け付ける最大長(#641)。現行の最大は Packet ~ の 0x158=344 バイト。これより大きい
+    # データグラムは復号せずに捨てる(任意長のデータを 3 回ずつ復号させられないように)
+    MAX_PACKET_SIZE = 1024
 
     # ペダル値(0-255)をパーセント(0-100)へ変換する除数 (255 / 100)
     PEDAL_PCT_DIVISOR = 2.55
@@ -157,6 +160,7 @@ class GT7Decoder:
 
     def __init__(self, heartbeat_type=b'~'):
         self._parse_count = 0
+        self._non_finite_count = 0   # 非有限 float で捨てたパケット数(#641)
         self.heartbeat_type = heartbeat_type
         self._xor_value = self.XOR_MAP.get(heartbeat_type, 0xDEADBEAF)
 
@@ -179,6 +183,9 @@ class GT7Decoder:
 
     def decrypt(self, data: bytes) -> bytes:
         """GT7パケットをSalsa20で復号（XOR自動フォールバック付き）"""
+        if len(data) > self.MAX_PACKET_SIZE:
+            logger.warning(f"Packet too large: {len(data)} bytes (max {self.MAX_PACKET_SIZE})")
+            return b''
         if len(data) < self.MIN_PACKET_SIZE:
             logger.warning(f"Packet too small: {len(data)} bytes")
             return b''
@@ -216,6 +223,15 @@ class GT7Decoder:
             d = decrypted_data
             result = self._extract_fields(d)
 
+            # 非有限の float(NaN / ±Infinity)を含むパケットは捨てる(#641)。json.dumps は
+            # これらを NaN / Infinity という JSON ではない字句で書き出し、ブラウザ側の
+            # JSON.parse が失敗して、その周回の記録が読めなくなる。実機は出さない値
+            if self._has_non_finite(result):
+                self._non_finite_count += 1
+                if self._non_finite_count <= 3:
+                    logger.warning("Packet with non-finite float dropped")
+                return None
+
             # コース推定はmain.pyで実行
             result["course"] = {"id": "unknown", "name": "", "confidence": 0}
 
@@ -233,6 +249,17 @@ class GT7Decoder:
         except Exception as e:
             logger.error(f"Parse failed: {e}", exc_info=True)
             return None
+
+    @staticmethod
+    def _has_non_finite(value):
+        """dict / list の中の float に NaN / ±Infinity が 1 つでもあれば True(#641)。"""
+        if isinstance(value, float):
+            return not math.isfinite(value)
+        if isinstance(value, dict):
+            return any(GT7Decoder._has_non_finite(v) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(GT7Decoder._has_non_finite(v) for v in value)
+        return False
 
     @staticmethod
     def _quat(d, f):

@@ -67,7 +67,8 @@ function engineerSendMessage(text, severity) {
 
 function engineerConnect() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = wsProtocol + '//' + window.location.host + '/ws';
+    // role=engineer: サーバはドライバーの応答(driver_response)をこの役の端末にだけ送る(#642)
+    const wsUrl = wsProtocol + '//' + window.location.host + '/ws?role=engineer';
     engineerState.ws = new WebSocket(wsUrl);
 
     engineerState.ws.onopen = function() {

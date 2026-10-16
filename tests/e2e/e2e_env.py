@@ -12,12 +12,15 @@
     GT7_E2E_UPDATE_GOLDEN  1 のとき、ゴールデンを現在の結果で書き換える
 """
 import atexit
+import glob
 import json
 import math
 import os
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
@@ -43,8 +46,29 @@ def _free_port():
     return port
 
 
-def start_static_server(root=REPO, timeout_s=15):
-    """root を配信する静的サーバーを空きポートで起動し、(プロセス, URL) を返す。"""
+def stage_ui_assets(repo=REPO):
+    """ページが読む UI アセットだけを一時ディレクトリへ複製して、そのパスを返す(#643)。
+
+    本番の main.py と同じ範囲(index.html / engineer.html / 直下の *.js / *.css)。リポジトリ全体を
+    配信すると ssl/ の秘密鍵・config.json・記録データまで loopback の HTTP に出てしまう。
+    """
+    staging = tempfile.mkdtemp(prefix='gt7_e2e_ui_')
+    atexit.register(shutil.rmtree, staging, True)
+    names = ['index.html', 'engineer.html']
+    names += [os.path.basename(p) for p in glob.glob(os.path.join(repo, '*.js'))]
+    names += [os.path.basename(p) for p in glob.glob(os.path.join(repo, '*.css'))]
+    for name in names:
+        shutil.copyfile(os.path.join(repo, name), os.path.join(staging, name))
+    served = set(os.listdir(staging))
+    assert not any(n == 'config.json' or n == 'ssl' or n.startswith('gt7data') for n in served), served
+    return staging
+
+
+def start_static_server(root=None, timeout_s=15):
+    """root(既定: UI アセットだけの一時ディレクトリ)を配信する静的サーバーを空きポートで起動し、
+    (プロセス, URL) を返す。"""
+    if root is None:
+        root = stage_ui_assets()
     port = _free_port()
     proc = subprocess.Popen(
         [sys.executable, '-m', 'http.server', str(port), '--bind', '127.0.0.1', '--directory', root],

@@ -13,6 +13,7 @@ import aiohttp
 import joblib
 from datetime import datetime
 from aiohttp import web
+from yarl import URL
 from telemetry import GT7TelemetryClient
 from decoder import GT7Decoder, CourseEstimator
 from lapstore import LAP_FILE_RE, FEATURE_COLUMNS, FEATURE_QUERY_PARAMS, repace_timestamps, aid_bits
@@ -183,6 +184,35 @@ CONFIG = load_config()
 
 # アプリケーション状態: 接続中のWebSocketクライアント一覧
 websocket_clients = set()
+# エンジニア端末(/ws?role=engineer)のソケット(#642)。driver_response はここにだけ送る
+# (ダッシュボードに届くと、テレメトリとして処理されて解析状態がリセットされる)
+engineer_clients = set()
+
+
+def _cross_site_request(request):
+    """ブラウザからの越境リクエストか(#642)。
+
+    Origin のホスト:ポートが自分(Host)と違う、または Sec-Fetch-Site が cross-site なら True。
+    ヘッダが無い(curl・スクリプト・同一オリジンの GET)は False。LAN のユーザーが開いた
+    外部ページから /ws・/api/laps/import・/api/diag を叩かれるのを防ぐ。
+    """
+    if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+        return True
+    origin = request.headers.get("Origin")
+    if not origin:
+        return False
+    if origin == "null":
+        return True
+    try:
+        o = URL(origin)
+    except Exception:
+        return True
+    return (o.host, o.port) != (request.url.host, request.url.port)
+
+
+def _log_path(request):
+    """ログに書く path。制御文字(改行など)を「\\xNN」に置き換え、1 リクエスト 1 行を守る(#642)。"""
+    return re.sub(r'[\x00-\x1f\x7f]', lambda m: '\\x%02x' % ord(m.group()), request.path)
 
 # 配信専用キュー(#434 P1-b): telemetry_background_taskの受信ループから配信I/O
 # (broadcast_to_clients、低速/無応答クライアントで最大1秒/クライアントの遅延あり)を
@@ -204,6 +234,23 @@ IMPORT_LOG_DIR = "gt7data_imported"
 # (169.6MB JSON→74MB CSV、#175検証)を踏まえ、実測最大級ラップの全件CSVでも
 # 収まるよう100MBを上限としたDoS対策(具体的な悪用防止のための上限値)。
 IMPORT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
+# インポート置き場(IMPORT_LOG_DIR)の総量上限(#642)。ローテーション(gt7data_rotate.py)の
+# 対象外なので、上限なしだとアップロードの繰り返しでホストのディスクを埋められる
+IMPORT_MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
+
+
+def _import_dir_bytes():
+    """IMPORT_LOG_DIR にあるファイルの合計サイズ(無ければ 0)。"""
+    total = 0
+    try:
+        with os.scandir(IMPORT_LOG_DIR) as it:
+            for e in it:
+                if e.is_file(follow_symlinks=False):
+                    total += e.stat().st_size
+    except FileNotFoundError:
+        pass
+    return total
 
 # 診断ログ(#558): ブラウザ(REVIEW の再生)から送られる計測値を、ホストで読めるログ
 # ファイルへ追記する。目的は、操作者のブラウザ環境でしか再現しない問題(再生が実際より
@@ -343,6 +390,19 @@ RECORD_SPLIT_GAP_S = 60.0       # 受信がこれ以上途切れたら別の走�
 RECORD_MIN_SAMPLES = 120        # これ未満の断片(約 2 秒)は保存しない
 
 
+def _flush_recording(parts, lap_number, car_id, reason):
+    """蓄積を 1 つの記録として保存する(ワーカースレッドで呼ぶ)。
+
+    RECORD_MIN_SAMPLES 未満の断片は捨てる。区切り(#617)でもラップ境界(#641)でも同じ扱い。
+    戻り値は保存したかどうか。
+    """
+    if len(parts) >= RECORD_MIN_SAMPLES:
+        save_lap_to_file(parts, lap_number, car_id)
+        return True
+    logger.info(f"Dropped short recording fragment: {len(parts)} samples (reason={reason})")
+    return False
+
+
 def _record_split_reason(last_pos, sample, lap_count, current_lap_number, dt_s):
     """新しい記録を始めるべき理由を返す(無ければ None)。
 
@@ -419,15 +479,16 @@ class FuelTracker:
         return result
 
 
-async def broadcast_to_clients(message):
-    """WebSocketクライアントにメッセージを配信"""
-    if not websocket_clients:
+async def broadcast_to_clients(message, targets=None):
+    """WebSocketクライアントにメッセージを配信。targets で宛先の集合を絞れる(#642)"""
+    clients = websocket_clients if targets is None else targets
+    if not clients:
         return
 
     disconnected = set()
     # list() スナップショット: 送信の await 中に websocket_handler が
     # websocket_clients を変更しても RuntimeError にならないようにする
-    for ws in list(websocket_clients):
+    for ws in list(clients):
         try:
             # タイムアウト付き送信: 1クライアントの停滞が全体の配信を止めるのを防ぐ。
             # タイムアウトしたクライアントは切断扱いにして close を試みる。
@@ -443,6 +504,7 @@ async def broadcast_to_clients(message):
 
     if disconnected:
         websocket_clients.difference_update(disconnected)
+        engineer_clients.difference_update(disconnected)
         logger.info(f"Removed {len(disconnected)} disconnected client(s). Active: {len(websocket_clients)}")
 
 
@@ -495,7 +557,9 @@ async def telemetry_background_task():
         CONFIG["ps5_ip"],
         CONFIG.get("send_port", DEFAULT_SEND_PORT),
         CONFIG.get("receive_port", DEFAULT_RECEIVE_PORT),
-        CONFIG["heartbeat_interval"]
+        CONFIG["heartbeat_interval"],
+        # 送信元を ps5_ip に限定する(#641)。別ホストから流すときだけ config で true にする
+        accept_any_source=bool(CONFIG.get("telemetry_accept_any_source", False)),
     )
     decoder = GT7Decoder()
     course_estimator = CourseEstimator()
@@ -609,12 +673,8 @@ async def telemetry_background_task():
                     last_pos, parsed, lap_count, current_lap_number, time_delta
                 ) if current_lap_parts else None
                 if split_reason:
-                    if len(current_lap_parts) >= RECORD_MIN_SAMPLES:
-                        await asyncio.to_thread(save_lap_to_file, current_lap_parts,
-                                                current_lap_number, current_lap_car_id)
-                    else:
-                        logger.info(f"Dropped short recording fragment: {len(current_lap_parts)} samples "
-                                    f"(reason={split_reason})")
+                    await asyncio.to_thread(_flush_recording, current_lap_parts,
+                                            current_lap_number, current_lap_car_id, split_reason)
                     await asyncio.to_thread(_clear_checkpoint)
                     current_lap_parts = []
                     checkpoint_written = 0
@@ -686,8 +746,10 @@ async def telemetry_background_task():
                 # 旧リストは保存スレッドに渡し切り、以後はここで新リストへ差し替えるので
                 # 書込み中のリストが変更されることはない。
                 if lap_count > current_lap_number and current_lap_number > 0:
-                    await asyncio.to_thread(save_lap_to_file, current_lap_parts, current_lap_number,
-                                            current_lap_car_id)
+                    # 短い断片は区切り(#617)と同じく捨てる(#641: 偽パケット 1 個で lap_count を
+                    # 進められても、1 パケット 1 ファイルにはならない)
+                    await asyncio.to_thread(_flush_recording, current_lap_parts, current_lap_number,
+                                            current_lap_car_id, "lap_boundary")
                     await asyncio.to_thread(_clear_checkpoint)
                     current_lap_parts = []
                     checkpoint_written = 0
@@ -744,12 +806,22 @@ DRIVER_RESPONSE_VALUES = frozenset(("OK", "COPY", "RE-PLAN"))
 
 
 async def websocket_handler(request):
-    """WebSocket接続を処理"""
+    """WebSocket接続を処理。?role=engineer はエンジニア端末(driver_response の宛先、#642)"""
+    if _cross_site_request(request):
+        # ブラウザは別オリジンへの WebSocket を CORS なしで張れる(#642)。外部ページが
+        # テレメトリを読んだり偽のエンジニア指示を流したりできないよう、握手の前に断る
+        logger.warning(f"WebSocket from foreign origin rejected: {request.headers.get('Origin')!r}")
+        return web.json_response({"error": "forbidden origin"}, status=403)
+
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    logger.info(f"WebSocket client connected. Total: {len(websocket_clients) + 1}")
+    is_engineer = request.query.get("role") == "engineer"
+    logger.info(f"WebSocket client connected ({'engineer' if is_engineer else 'dashboard'}). "
+                f"Total: {len(websocket_clients) + 1}")
     websocket_clients.add(ws)
+    if is_engineer:
+        engineer_clients.add(ws)
 
     try:
         async for msg in ws:
@@ -782,10 +854,12 @@ async def websocket_handler(request):
                     response = data.get("response")
                     if response not in DRIVER_RESPONSE_VALUES:
                         continue
+                    # エンジニア端末にだけ送る(#642)。ダッシュボードはこの型のフレームを
+                    # 受け取る必要がなく、受け取るとテレメトリとして処理してしまう
                     await broadcast_to_clients(json.dumps({
                         "type": "driver_response",
                         "response": response,
-                    }))
+                    }), targets=engineer_clients)
             elif msg.type == aiohttp.WSMsgType.ERROR:
                 logger.warning(f"WebSocket error: {ws.exception()}")
                 break
@@ -793,6 +867,7 @@ async def websocket_handler(request):
         logger.error(f"WebSocket handler error: {e}", exc_info=True)
     finally:
         websocket_clients.discard(ws)
+        engineer_clients.discard(ws)
         logger.info(f"WebSocket client disconnected. Remaining: {len(websocket_clients)}")
 
     return ws
@@ -853,6 +928,9 @@ DEFAULT_LAP_FIELDS = (
     "timestamp", "current_laptime", "speed_kmh", "throttle_pct", "brake_pct",
     "position_x", "position_z", "gear", "lap_count", "last_laptime"
 )
+
+# fields クエリに許す名前(#643)
+_FIELD_NAME_RE = re.compile(r'^[A-Za-z0-9_]+$')
 
 API_LAPS_LIMIT_DEFAULT = 200
 API_LAPS_LIMIT_MAX = 1000
@@ -917,6 +995,18 @@ def _csv_columns(fields):
     return columns
 
 
+# スプレッドシートが数式として評価する先頭文字(#643)。インポートした文字列をそのまま
+# CSV に書き戻すと、開いた人の PC で数式が動く(CSV injection)。' を前置して文字列にする
+_CSV_FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r')
+
+
+def _csv_cell(v):
+    """文字列セルの数式プレフィックスを無害化する(#643)。数値・None はそのまま。"""
+    if isinstance(v, str) and v.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + v
+    return v
+
+
 def _csv_row(sample, fields):
     """1サンプルをCSV列順の値リストへ変換する(欠損時は空文字)。"""
     row = []
@@ -940,11 +1030,11 @@ def _csv_row(sample, fields):
                 row.extend([""] * len(CSV_FLAG_KEYS))
         elif name == "course":
             if isinstance(v, dict):
-                row.extend(v.get(k, "") for k in CSV_COURSE_KEYS)
+                row.extend(_csv_cell(v.get(k, "")) for k in CSV_COURSE_KEYS)
             else:
                 row.extend([""] * len(CSV_COURSE_KEYS))
         else:
-            row.append(v if v is not None else "")
+            row.append(_csv_cell(v) if v is not None else "")
     return row
 
 
@@ -1013,7 +1103,7 @@ def _fastf1_row(sample, fields):
         elif name == "flags":
             row.append("OnTrack" if isinstance(v, dict) and v.get("car_on_track") else "OffTrack")
         else:
-            row.append(v if v is not None else "")
+            row.append(_csv_cell(v) if v is not None else "")
     return row
 
 
@@ -1395,8 +1485,11 @@ async def api_lap_detail_handler(request):
 
     fields_raw = request.query.get("fields")
     if fields_raw:
-        # 未知フィールド名はエラーにせず単に無視される(前方互換: 射影で自然に落ちる)
+        # 未知フィールド名はエラーにせず単に無視される(前方互換: 射影で自然に落ちる)。
+        # ただし名前は英数字と _ だけ(#643: CSV の列見出しにそのまま出るので、数式などを書かせない)
         fields = tuple(f.strip() for f in fields_raw.split(',') if f.strip())
+        if any(not _FIELD_NAME_RE.match(f) for f in fields):
+            return web.json_response({"error": "invalid fields"}, status=400)
     elif output_format == "csv":
         fields = CSV_ALL_FIELDS  # CSV既定は全件(#174仕様書§2)。JSON既定(DEFAULT_LAP_FIELDS)とは別枠
     elif output_format == "fastf1":
@@ -1482,6 +1575,14 @@ async def api_laps_import_handler(request):
     (#177調査報告§4のリスク対策)。ライブ受信経路(telemetry.py/decoder.py/websocket)には
     一切触れない。
     """
+    if _cross_site_request(request):
+        # multipart/form-data は CORS のプリフライトなしで送れる(#642)。外部ページから
+        # ユーザーのブラウザ経由で取り込ませない
+        return web.json_response({"error": "forbidden origin"}, status=403)
+    if await asyncio.to_thread(_import_dir_bytes) >= IMPORT_MAX_TOTAL_BYTES:
+        return web.json_response(
+            {"error": f"import storage full (max {IMPORT_MAX_TOTAL_BYTES} bytes in {IMPORT_LOG_DIR})"},
+            status=507)
     try:
         reader = await request.multipart()
     except Exception:
@@ -1675,6 +1776,8 @@ async def api_diag_handler(request):
     書き込み先は固定(DIAG_LOG_DIR/DIAG_LOG_NAME)で、クライアントはパスを指定できない。
     サイズ・頻度・長さを制限し、既存のテレメトリ受信・記録・配信には一切触れない。
     """
+    if _cross_site_request(request):
+        return web.json_response({"error": "forbidden origin"}, status=403)
     ip = request.remote or "?"
     now = time.monotonic()
     if now - _diag_last_ts.get(ip, -1e9) < DIAG_MIN_INTERVAL_S:
@@ -1789,15 +1892,15 @@ async def logging_middleware(request, handler):
     try:
         response = await handler(request)
         duration = (datetime.now() - start_time).total_seconds()
-        logger.info(f"{request.method} {request.path} -> {response.status} ({duration:.3f}s)")
+        logger.info(f"{request.method} {_log_path(request)} -> {response.status} ({duration:.3f}s)")
         return response
     except web.HTTPException as e:
         duration = (datetime.now() - start_time).total_seconds()
-        logger.warning(f"{request.method} {request.path} -> {e.status} ({duration:.3f}s)")
+        logger.warning(f"{request.method} {_log_path(request)} -> {e.status} ({duration:.3f}s)")
         raise
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
-        logger.error(f"{request.method} {request.path} -> ERROR ({duration:.3f}s): {e}", exc_info=True)
+        logger.error(f"{request.method} {_log_path(request)} -> ERROR ({duration:.3f}s): {e}", exc_info=True)
         raise
 
 

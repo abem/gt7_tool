@@ -31,13 +31,17 @@ class _TelemetryProtocol(asyncio.DatagramProtocol):
     # キュー溢れ警告のログ間引き間隔（秒）。この間隔に1回だけ累積ドロップ数を出す。
     _DROP_LOG_INTERVAL_SEC = 60.0
 
-    def __init__(self, queue: asyncio.Queue, on_first_packet):
+    def __init__(self, queue: asyncio.Queue, on_first_packet, allowed_ip=None):
         self._queue = queue
         self._on_first_packet = on_first_packet
         self.transport = None
         # キュー溢れの監視用カウンタ（ログ洪水を防ぐため間引いて出力）
         self._dropped_since_log = 0
         self._last_drop_log = 0.0
+        # 受け付ける送信元(#641)。None なら誰からでも受ける(意図して別ホストから流すとき)
+        self._allowed_ip = allowed_ip
+        self._rejected_since_log = 0
+        self._last_reject_log = 0.0
 
     def connection_made(self, transport):  # noqa: D401 - asyncio API 実装
         self.transport = transport
@@ -45,6 +49,23 @@ class _TelemetryProtocol(asyncio.DatagramProtocol):
         logger.info(f"UDP listener bound to {sockname}")
 
     def datagram_received(self, data, addr):  # noqa: D401 - asyncio API 実装
+        # 送信元の制限(#641): 設定の ps5_ip 以外からのパケットは受け付けない。復号できること
+        # (公開鍵の Salsa20 + マジック 4 バイト)は「GT7 の形式である」ことしか示さず、LAN 上の
+        # 誰でも本物そっくりのパケットを作れる。UDP の送信元も同一リンク上では偽装できるので、
+        # これは認証ではなく多層防御の 1 層。拒否は数えて 1 分に 1 回だけ警告する
+        if self._allowed_ip is not None and addr[0] != self._allowed_ip:
+            self._rejected_since_log += 1
+            now = time.monotonic()
+            if now - self._last_reject_log >= self._DROP_LOG_INTERVAL_SEC:
+                logger.warning(
+                    f"Telemetry from unexpected source {addr[0]} rejected: "
+                    f"{self._rejected_since_log} packet(s) in the last interval "
+                    f"(expected {self._allowed_ip}; set telemetry_accept_any_source to allow)"
+                )
+                self._rejected_since_log = 0
+                self._last_reject_log = now
+            return
+
         # キューが溢れる場合は古いパケットから破棄（テレメトリは過去値より最新値優先）
         dropped = False
         if self._queue.full():
@@ -98,8 +119,10 @@ class GT7TelemetryClient:
     BIND_HOST = '0.0.0.0'
 
     def __init__(self, ip, send_port=33739, receive_port=33740,
-                 heartbeat_interval=10, heartbeat_type=b'~'):
+                 heartbeat_interval=10, heartbeat_type=b'~', accept_any_source=False):
         self.ip = ip
+        # 送信元を ip に限定する(#641)。True は別ホストからの再生など、意図して受けるときだけ
+        self.accept_any_source = accept_any_source
         self.send_port = send_port
         self.receive_port = receive_port
         self.heartbeat_interval = heartbeat_interval
@@ -128,15 +151,17 @@ class GT7TelemetryClient:
             if self.packets_received == 0:
                 logger.info(f"Started receiving data: {len(data)} bytes from {addr}")
 
+        allowed_ip = None if self.accept_any_source else self.ip
         transport, protocol = await loop.create_datagram_endpoint(
-            lambda: _TelemetryProtocol(self._queue, _on_first_packet),
+            lambda: _TelemetryProtocol(self._queue, _on_first_packet, allowed_ip),
             local_addr=(self.BIND_HOST, self.receive_port),
         )
         self._transport = transport
         self._connected = True
         logger.info(
             f"GT7TelemetryClient ready: listening {self.BIND_HOST}:{self.receive_port}, "
-            f"heartbeat -> {self.ip}:{self.send_port}"
+            f"heartbeat -> {self.ip}:{self.send_port}, "
+            f"accepting from {'any source' if allowed_ip is None else allowed_ip}"
         )
 
     async def send_heartbeat(self):
