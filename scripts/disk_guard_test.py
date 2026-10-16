@@ -44,6 +44,7 @@ class Harness:
             mock.patch.object(dg.R, "purge_trash", side_effect=self._purge),
             mock.patch.object(dg, "emergency_stage_to_trash", side_effect=self._stage),
             mock.patch.object(dg, "STATE_FILE", os.path.join(self.tmp, "state.json")),
+            mock.patch.object(dg, "LOG_DIR", self.tmp),      # 週次ジョブのログは無い状態(見張りは黙る)
             mock.patch.object(dg.os, "access", return_value=True),
         ]
 
@@ -125,6 +126,65 @@ class DiskGuardTest(unittest.TestCase):
 
     def test_thresholds_unchanged(self):
         self.assertEqual((dg.WARN_PCT, dg.EMERGENCY_PCT), (85, 90))
+
+    # --- 週次ジョブの見張り(#632) ---
+    @staticmethod
+    def _touch(d, name, days_ago):
+        import time
+        p = os.path.join(d, name)
+        open(p, "w").close()
+        ts = time.time() - days_ago * 86400
+        os.utime(p, (ts, ts))
+
+    def test_weekly_fresh_logs_do_not_alert(self):
+        with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
+            self._touch(h.tmp, "rotate_20261011_030001.log", 5)
+            self._touch(h.tmp, "retrain_20261015_094505.log", 1)
+            with mock.patch("builtins.print"):
+                dg.main()
+            self.assertEqual(h.calls["alert"], [])
+
+    def test_weekly_stale_log_alerts_even_when_disk_is_fine(self):
+        with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
+            self._touch(h.tmp, "rotate_20260920_030001.log", 20)
+            self._touch(h.tmp, "rotate_20260927_030001.log", 9)      # 最新が 9 日前 > 8 日
+            self._touch(h.tmp, "retrain_20261015_094505.log", 1)
+            self._touch(h.tmp, "rotate_cron.log", 30)                  # 名前が違うので対象外
+            with mock.patch("builtins.print"):
+                dg.main()
+            self.assertEqual(len(h.calls["alert"]), 1)
+            title, body = h.calls["alert"][0][0]
+            self.assertIn("週次ジョブ", title)
+            self.assertIn("ローテーション", body)
+            self.assertIn("9 日", body)
+            self.assertNotIn("再学習", body)                           # 新鮮な方は挙げない
+            self.assertEqual(h.calls["alert"][0][1].get("urgency"), "normal")
+
+    def test_weekly_no_logs_of_a_kind_is_ignored(self):
+        # retrain のログが 1 本も無い(初回前)なら見ない。rotate だけ新鮮なら黙る
+        with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
+            self._touch(h.tmp, "rotate_20261011_030001.log", 5)
+            with mock.patch("builtins.print"):
+                dg.main()
+            self.assertEqual(h.calls["alert"], [])
+
+    def test_weekly_alert_cooldown_24h(self):
+        with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
+            self._touch(h.tmp, "retrain_20260901_040000.log", 30)
+            with mock.patch("builtins.print"):
+                dg.main()
+                dg.main()
+            self.assertEqual(len(h.calls["alert"]), 1)
+            self.assertEqual(dg.COOLDOWN_HOURS["stale"], 24)
+
+    def test_weekly_stale_and_disk_warn_both_alert(self):
+        with Harness((46.0, 115.0), (86.0, 30.0), False) as h:
+            self._touch(h.tmp, "rotate_20260901_030001.log", 30)
+            with mock.patch("builtins.print"):
+                dg.main()
+            titles = [a[0][0] for a in h.calls["alert"]]
+            self.assertEqual(len(titles), 2)
+            self.assertTrue(any("週次ジョブ" in t for t in titles) and any("警告" in t for t in titles))
 
 
 if __name__ == "__main__":

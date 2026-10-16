@@ -24,9 +24,16 @@ openclawゲートウェイまで巻き添えでクラッシュした。
 gt7data 側の肥大化を検知できないため。閾値の判定は両者のうち高い方で行う。
 緊急時の退避(trashへの移動)は、gt7data が載るFSが緊急水準のときだけ行う
 (「/」だけが高い場合は、gt7data の退避では空き容量が増えないため、通知のみ)。
+
+週次ジョブの見張り(#632で追加): 週次ローテーション(root cron 日曜 03:00)と予測モデルの
+再学習(利用者 cron 日曜 04:00)は、実行されなかったときに何も起きない(crontab の行の消失、
+cron の停止、ラッパーの起動失敗)。本スクリプト(4 時間ごとに稼働)が scripts/logs の
+rotate_*.log / retrain_*.log の最新の更新時刻を見て、WEEKLY_STALE_DAYS より古ければ通知する。
+ログが 1 本も無い種類は見ない(初回の誤報を防ぐ)。ディスク使用率の判定とは独立に動く。
 """
 import json
 import os
+import re
 import shutil
 import sys
 from datetime import datetime, timedelta
@@ -39,12 +46,21 @@ REPO_ROOT = "/home/abem/Projects/gt7/gt7_tool"
 DATA_DIR = os.path.join(REPO_ROOT, "gt7data")
 TRASH_DIR = os.path.join(REPO_ROOT, "gt7data_trash")
 CONFIG_PATH = os.path.join(REPO_ROOT, "config.json")
-STATE_FILE = os.path.join(REPO_ROOT, "scripts", "logs", "disk_guard_state.json")
+LOG_DIR = os.path.join(REPO_ROOT, "scripts", "logs")
+STATE_FILE = os.path.join(LOG_DIR, "disk_guard_state.json")
 
 WARN_PCT = 85
 EMERGENCY_PCT = 90
 BATCH = 1200
-COOLDOWN_HOURS = {"warn": 12, "emergency": 3}
+COOLDOWN_HOURS = {"warn": 12, "emergency": 3, "stale": 24}
+
+# 週次ジョブ: ログ名の接頭辞 → 説明(通知文に使う)。ログ名は <接頭辞>_YYYYMMDD_HHMMSS.log
+WEEKLY_STALE_DAYS = 8
+WEEKLY_JOBS = {
+    "rotate": "週次ローテーション(root cron 日曜 03:00、rotate_cron_wrapper.py)",
+    "retrain": "予測モデルの再学習(利用者 abem の cron 日曜 04:00、retrain_cron_wrapper.py)",
+}
+_LOG_NAME = re.compile(r"^(rotate|retrain)_\d{8}_\d{6}\.log$")
 
 
 def disk_pct(path="/"):
@@ -111,7 +127,45 @@ def data_disk():
         return None
 
 
+def newest_log_age_days(prefix, now):
+    """<prefix>_YYYYMMDD_HHMMSS.log の最新の更新時刻からの経過日数。ログが無い・読めないときは None。"""
+    try:
+        names = [n for n in os.listdir(LOG_DIR) if _LOG_NAME.match(n) and n.startswith(prefix + "_")]
+        if not names:
+            return None
+        newest = max(os.path.getmtime(os.path.join(LOG_DIR, n)) for n in names)
+    except OSError as e:
+        print(f"disk_guard: cannot read {LOG_DIR}: {e}")
+        return None
+    return (now - datetime.fromtimestamp(newest)).total_seconds() / 86400
+
+
+def check_weekly_jobs(state, now=None):
+    """週次ジョブのログが古ければ通知する。古いジョブの数を返す。"""
+    now = now or datetime.now()
+    stale = []
+    for prefix, label in WEEKLY_JOBS.items():
+        age = newest_log_age_days(prefix, now)
+        if age is not None and age > WEEKLY_STALE_DAYS:
+            stale.append(f"{label}: 最後の実行から {age:.0f} 日")
+    if not stale:
+        return 0
+    print("weekly jobs stale: " + " / ".join(stale))
+    if should_alert(state, "stale"):
+        alert(
+            "週次ジョブが実行されていない (gt7data_guard)",
+            "; ".join(stale) + f"。{WEEKLY_STALE_DAYS} 日以内に実行された記録が {LOG_DIR} にありません。"
+            "crontab -l(abem)/ sudo crontab -l(root)の行と cron の稼働を確認してください。",
+            urgency="normal",
+        )
+        mark_alerted(state, "stale")
+    return len(stale)
+
+
 def main():
+    state = load_state()
+    check_weekly_jobs(state)
+
     root_pct, root_free = disk_pct("/")
     line = (f"{datetime.now():%Y-%m-%d %H:%M:%S} disk / = {root_pct:.1f}% "
             f"(free {root_free:.1f}GB)")
@@ -133,7 +187,6 @@ def main():
     if pct < WARN_PCT:
         return 0
 
-    state = load_state()
     retention = R.load_retention_config(CONFIG_PATH)
     purged = R.purge_trash(TRASH_DIR, retention["trash_days"], apply=True,
                             now=datetime.now()) if retention else []
