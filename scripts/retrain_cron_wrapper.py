@@ -25,6 +25,7 @@ import traceback
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIR = os.path.join(REPO, "scripts", "logs")
 LOCK_FILE = os.path.join(LOG_DIR, ".retrain.lock")
+LAST_RUN_FILE = os.path.join(LOG_DIR, ".retrain_last_run")   # 実行の目印(#632 の見張りが読む。--dry-run では書かない)
 GATED_GROUPS = os.path.join(REPO, "models", "gated_groups.json")
 SUMMARY = os.path.join(REPO, "models", "training_summary.json")
 TIMEOUT_S = 3600
@@ -121,6 +122,7 @@ def main(argv):
         err = _text(e.stderr) + f"\n[timeout after {TIMEOUT_S}s] " + kill_container()
     except Exception:               # noqa: BLE001  docker が見つからない(cron の PATH)など。黙って落ちないことが最優先
         rc, out, err = -2, "", "[wrapper exception]\n" + traceback.format_exc()
+    mark_last_run()
     after = gated_count()
     line = summary_line()
     try:
@@ -140,6 +142,17 @@ def main(argv):
               f"{before} -> {after} 組。log={log_path}\n{line}", urgency="normal")
     print(f"retrain: exit={rc} gated {before} -> {after} log={log_path}\n{line}")
     return 0     # cron 自体を失敗扱いにしない(通知は済んでいる)
+
+
+def mark_last_run(path=None):
+    """実行の目印に現在時刻(ISO)を書く。失敗しても本体のログ・通知は妨げない。"""
+    path = path or LAST_RUN_FILE
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(datetime.datetime.now().isoformat(timespec="seconds") + "\n")
+    except OSError as e:
+        print(f"retrain: last-run marker failed: {e}")
 
 
 def _text(v):

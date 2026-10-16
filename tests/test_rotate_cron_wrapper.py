@@ -14,14 +14,21 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 
 @pytest.fixture
-def wrapper(monkeypatch):
+def wrapper(tmp_path, monkeypatch):
     spec = importlib.util.spec_from_file_location("rotate_cron_wrapper",
                                                   os.path.join(ROOT, "scripts", "rotate_cron_wrapper.py"))
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
     alerts = []
     monkeypatch.setattr(m, "alert", lambda title, body, urgency="critical": alerts.append((title, body, urgency)))
+    monkeypatch.setattr(m, "LAST_RUN_FILE", str(tmp_path / "logs" / ".rotate_last_run"))
     m._alerts = alerts
     return m
+
+
+def marker_age_s(m):
+    import datetime
+    with open(m.LAST_RUN_FILE) as f:
+        return (datetime.datetime.now() - datetime.datetime.fromisoformat(f.read().strip())).total_seconds()
 
 
 def test_success_passes_output_through_without_alert(wrapper, monkeypatch, capsys):
@@ -30,6 +37,7 @@ def test_success_passes_output_through_without_alert(wrapper, monkeypatch, capsy
     assert m.main() == 0
     assert m._alerts == []
     assert capsys.readouterr().out == "moved 3\n"
+    assert 0 <= marker_age_s(m) < 60            # 実行の目印(#632 の見張りが読む)
 
 
 def test_safety_abort_exit3_alerts_with_manual_hint(wrapper, monkeypatch):
@@ -60,6 +68,16 @@ def test_launch_failure_alerts_and_exits_zero(wrapper, monkeypatch):
     assert len(m._alerts) == 1
     title, body, _ = m._alerts[0]
     assert "例外" in title and "FileNotFoundError" in body
+    assert 0 <= marker_age_s(m) < 60            # 失敗しても「実行した」目印は残す
+
+
+def test_marker_write_failure_does_not_break_alerting(wrapper, monkeypatch, tmp_path):
+    m = wrapper
+    blocker = tmp_path / "blocker"; blocker.write_text("x")
+    monkeypatch.setattr(m, "LAST_RUN_FILE", str(blocker / ".rotate_last_run"))   # ファイルの下 → OSError
+    monkeypatch.setattr(m.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(cmd, 2, "", "refused\n"))
+    assert m.main() == 0
+    assert len(m._alerts) == 1 and "exit=2" in m._alerts[0][1]
 
 
 def test_timeout_alerts_and_exits_zero(wrapper, monkeypatch):

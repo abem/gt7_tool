@@ -14,6 +14,8 @@
 ときや、ハングしたときも、黙って落ちずに通知して終了コード 0 で抜ける
 (#626 の retrain 側ラッパーと同じ形)。終了コード -1=タイムアウト、-2=ラッパー例外。
 """
+import datetime
+import os
 import subprocess
 import sys
 import traceback
@@ -23,6 +25,20 @@ from alert_notify import alert
 
 ROTATE_SCRIPT = "/home/abem/Projects/gt7/gt7_tool/scripts/gt7data_rotate.py"
 TIMEOUT_S = 2 * 3600   # 通常は数秒〜数十秒(rename のみ)。これを超えたら異常として止めて通知する
+# このラッパーが動いた目印(#632 の disk_guard の見張りが読む)。本家の rotate_*.log は手動の
+# dry-run でもできてしまうので、cron 経由の実行だけが書くこのファイルを別に持つ。
+LAST_RUN_FILE = "/home/abem/Projects/gt7/gt7_tool/scripts/logs/.rotate_last_run"
+
+
+def mark_last_run(path=None):
+    """実行の目印に現在時刻(ISO)を書く。失敗しても本体の通知は妨げない。"""
+    path = path or LAST_RUN_FILE
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(datetime.datetime.now().isoformat(timespec="seconds") + "\n")
+    except OSError as e:
+        sys.stderr.write(f"[last-run marker failed: {e}]\n")
 
 
 def _text(v):
@@ -46,6 +62,7 @@ def main():
         rc, out, err = -2, "", "[wrapper exception]\n" + traceback.format_exc()
     sys.stdout.write(out)
     sys.stderr.write(err)
+    mark_last_run()          # 成否に関わらず「実行した」ことを残す(実行されなかったことを見張りが検知する)
 
     if rc != 0:
         tail = "\n".join((out + err).strip().splitlines()[-5:])

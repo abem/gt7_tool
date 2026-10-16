@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -129,27 +130,30 @@ class DiskGuardTest(unittest.TestCase):
 
     # --- 週次ジョブの見張り(#632) ---
     @staticmethod
-    def _touch(d, name, days_ago):
-        import time
-        p = os.path.join(d, name)
-        open(p, "w").close()
-        ts = time.time() - days_ago * 86400
-        os.utime(p, (ts, ts))
+    def _log(d, prefix, days_ago):
+        """ラッパー/本家が残す日付入りログ(名前の日付で判定される)。"""
+        name = f"{prefix}_{datetime.now() - timedelta(days=days_ago):%Y%m%d_%H%M%S}.log"
+        open(os.path.join(d, name), "w").close()
 
-    def test_weekly_fresh_logs_do_not_alert(self):
+    @staticmethod
+    def _marker(d, prefix, days_ago, text=None):
+        """ラッパーが実行のたびに書く目印(.rotate_last_run / .retrain_last_run)。"""
+        with open(os.path.join(d, f".{prefix}_last_run"), "w") as f:
+            f.write(text if text is not None
+                    else (datetime.now() - timedelta(days=days_ago)).isoformat(timespec="seconds") + "\n")
+
+    def test_weekly_fresh_markers_do_not_alert(self):
         with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
-            self._touch(h.tmp, "rotate_20261011_030001.log", 5)
-            self._touch(h.tmp, "retrain_20261015_094505.log", 1)
+            self._marker(h.tmp, "rotate", 5)
+            self._marker(h.tmp, "retrain", 1)
             with mock.patch("builtins.print"):
                 dg.main()
             self.assertEqual(h.calls["alert"], [])
 
-    def test_weekly_stale_log_alerts_even_when_disk_is_fine(self):
+    def test_weekly_stale_marker_alerts_even_when_disk_is_fine(self):
         with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
-            self._touch(h.tmp, "rotate_20260920_030001.log", 20)
-            self._touch(h.tmp, "rotate_20260927_030001.log", 9)      # 最新が 9 日前 > 8 日
-            self._touch(h.tmp, "retrain_20261015_094505.log", 1)
-            self._touch(h.tmp, "rotate_cron.log", 30)                  # 名前が違うので対象外
+            self._marker(h.tmp, "rotate", 9)          # 9 日前 > 8 日
+            self._marker(h.tmp, "retrain", 1)
             with mock.patch("builtins.print"):
                 dg.main()
             self.assertEqual(len(h.calls["alert"]), 1)
@@ -157,20 +161,52 @@ class DiskGuardTest(unittest.TestCase):
             self.assertIn("週次ジョブ", title)
             self.assertIn("ローテーション", body)
             self.assertIn("9 日", body)
-            self.assertNotIn("再学習", body)                           # 新鮮な方は挙げない
+            self.assertNotIn("再学習", body)           # 新鮮な方は挙げない
             self.assertEqual(h.calls["alert"][0][1].get("urgency"), "normal")
 
-    def test_weekly_no_logs_of_a_kind_is_ignored(self):
-        # retrain のログが 1 本も無い(初回前)なら見ない。rotate だけ新鮮なら黙る
+    def test_weekly_marker_beats_manual_dry_run_log(self):
+        # 本家を手動で dry-run すると rotate_*.log はできるが、cron 経由の目印が古ければ鳴る(レビュー指摘)
         with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
-            self._touch(h.tmp, "rotate_20261011_030001.log", 5)
+            self._marker(h.tmp, "rotate", 12)
+            self._log(h.tmp, "rotate", 0)
+            with mock.patch("builtins.print"):
+                dg.main()
+            self.assertEqual(len(h.calls["alert"]), 1)
+            self.assertIn("12 日", h.calls["alert"][0][0][1])
+
+    def test_weekly_falls_back_to_log_name_date_without_marker(self):
+        # 目印がまだ無い(導入直後)なら、ログ名の日付で判定する。mtime は見ない。rotate_cron.log は対象外
+        with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
+            self._log(h.tmp, "rotate", 20)
+            self._log(h.tmp, "rotate", 9)
+            os.utime(os.path.join(h.tmp, sorted(os.listdir(h.tmp))[-1]), None)   # mtime を今にしても無関係
+            self._log(h.tmp, "retrain", 1)
+            open(os.path.join(h.tmp, "rotate_cron.log"), "w").close()
+            with mock.patch("builtins.print"):
+                dg.main()
+            self.assertEqual(len(h.calls["alert"]), 1)
+            self.assertIn("ローテーション", h.calls["alert"][0][0][1])
+            self.assertIn("9 日", h.calls["alert"][0][0][1])
+
+    def test_weekly_corrupt_marker_falls_back_to_logs(self):
+        with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
+            self._marker(h.tmp, "retrain", 0, text="garbage")
+            self._log(h.tmp, "retrain", 1)
+            with mock.patch("builtins.print"):
+                dg.main()
+            self.assertEqual(h.calls["alert"], [])
+
+    def test_weekly_no_record_of_a_kind_is_ignored(self):
+        # retrain の目印もログも無い(初回前)なら見ない。rotate だけ新鮮なら黙る
+        with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
+            self._marker(h.tmp, "rotate", 5)
             with mock.patch("builtins.print"):
                 dg.main()
             self.assertEqual(h.calls["alert"], [])
 
     def test_weekly_alert_cooldown_24h(self):
         with Harness((46.0, 115.0), (29.0, 165.0), False) as h:
-            self._touch(h.tmp, "retrain_20260901_040000.log", 30)
+            self._marker(h.tmp, "retrain", 30)
             with mock.patch("builtins.print"):
                 dg.main()
                 dg.main()
@@ -179,12 +215,35 @@ class DiskGuardTest(unittest.TestCase):
 
     def test_weekly_stale_and_disk_warn_both_alert(self):
         with Harness((46.0, 115.0), (86.0, 30.0), False) as h:
-            self._touch(h.tmp, "rotate_20260901_030001.log", 30)
+            self._marker(h.tmp, "rotate", 30)
             with mock.patch("builtins.print"):
                 dg.main()
             titles = [a[0][0] for a in h.calls["alert"]]
             self.assertEqual(len(titles), 2)
             self.assertTrue(any("週次ジョブ" in t for t in titles) and any("警告" in t for t in titles))
+
+    def test_weekly_check_failure_does_not_block_emergency_staging(self):
+        # 状態ファイルが書けない(「/」が満杯等)でも、見張りの通知・使用率の判定・退避は実行される(レビュー指摘)。
+        # 緊急経路の mark_alerted も同じ状態ファイルを書くので、save_state 自体が失敗に耐えること
+        with Harness((46.0, 115.0), (91.0, 10.0), False) as h:
+            self._marker(h.tmp, "rotate", 30)
+            blocker = os.path.join(h.tmp, "blocker"); open(blocker, "w").close()
+            with mock.patch.object(dg, "STATE_FILE", os.path.join(blocker, "state.json")), \
+                 mock.patch("builtins.print"):
+                rc = dg.main()
+            self.assertEqual(rc, 0)
+            self.assertEqual(h.calls["stage"], 1)
+            titles = [a[0][0] for a in h.calls["alert"]]
+            self.assertEqual(len(titles), 2)
+            self.assertTrue(any("週次ジョブ" in t for t in titles) and any("緊急" in t for t in titles), titles)
+
+    def test_weekly_unreadable_log_dir_is_silent_and_disk_logic_runs(self):
+        with Harness((46.0, 115.0), (86.0, 30.0), False) as h:
+            with mock.patch.object(dg, "LOG_DIR", os.path.join(h.tmp, "missing")), mock.patch("builtins.print"):
+                dg.main()
+            titles = [a[0][0] for a in h.calls["alert"]]
+            self.assertEqual(len(titles), 1)
+            self.assertIn("警告", titles[0])
 
 
 if __name__ == "__main__":

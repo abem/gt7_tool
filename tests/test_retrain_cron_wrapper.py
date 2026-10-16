@@ -23,6 +23,7 @@ def wrapper(tmp_path, monkeypatch):
     logs = tmp_path / "logs"; models = tmp_path / "models"; models.mkdir()
     monkeypatch.setattr(m, "LOG_DIR", str(logs))
     monkeypatch.setattr(m, "LOCK_FILE", str(logs / ".lock"))
+    monkeypatch.setattr(m, "LAST_RUN_FILE", str(logs / ".retrain_last_run"))
     monkeypatch.setattr(m, "GATED_GROUPS", str(models / "gated_groups.json"))
     monkeypatch.setattr(m, "SUMMARY", str(models / "training_summary.json"))
     monkeypatch.setattr(m, "REPO", str(tmp_path))
@@ -49,6 +50,7 @@ def test_success_without_decrease_does_not_alert(wrapper, monkeypatch):
     assert m.main([]) == 0
     assert m._alerts == []
     assert "exit=0 gated 11 -> 11" in log_text(m)
+    assert os.path.exists(m.LAST_RUN_FILE)          # 実行の目印(#632 の見張りが読む)
 
 
 def test_gated_decrease_alerts_normal(wrapper, monkeypatch):
@@ -129,4 +131,4 @@ def test_dry_run_prints_command_only(wrapper, monkeypatch, capsys):
     assert m.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "compose run" in out and "--name " + m.CONTAINER_NAME in out
-    assert not os.path.exists(m.LOG_DIR)
+    assert not os.path.exists(m.LOG_DIR)            # 目印も書かない(見張りの時計を戻さない)

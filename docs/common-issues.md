@@ -383,7 +383,7 @@
 ### 問題: 「週次ジョブが実行されていない」の通知が来た
 
 **原因:**
-- 週次ローテーション（root の cron、日曜 03:00）または再学習（利用者の cron、日曜 04:00）の実行ログ（`scripts/logs/rotate_*.log` / `retrain_*.log`）の最新が 8 日より古い。crontab の行の消失、cron の停止、ラッパーの起動失敗のどれか（#632）
+- 週次ローテーション（root の cron、日曜 03:00）または再学習（利用者の cron、日曜 04:00）のラッパーが最後に動いた目印（`scripts/logs/.rotate_last_run` / `.retrain_last_run`。無ければ `rotate_*.log` / `retrain_*.log` の名前の日付）が 8 日より古い。crontab の行の消失、cron の停止、ラッパーの起動失敗のどれか（#632）
 
 **解決方法:**
 - `crontab -l`（abem）と `sudo crontab -l`（root）に該当の行があるか確認します（行の内容は [scripts/README.md](../scripts/README.md)）

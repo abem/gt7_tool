@@ -28,8 +28,11 @@ gt7data 側の肥大化を検知できないため。閾値の判定は両者の
 週次ジョブの見張り(#632で追加): 週次ローテーション(root cron 日曜 03:00)と予測モデルの
 再学習(利用者 cron 日曜 04:00)は、実行されなかったときに何も起きない(crontab の行の消失、
 cron の停止、ラッパーの起動失敗)。本スクリプト(4 時間ごとに稼働)が scripts/logs の
-rotate_*.log / retrain_*.log の最新の更新時刻を見て、WEEKLY_STALE_DAYS より古ければ通知する。
-ログが 1 本も無い種類は見ない(初回の誤報を防ぐ)。ディスク使用率の判定とは独立に動く。
+各ラッパーが実行のたびに書く目印 .rotate_last_run / .retrain_last_run(ISO 時刻)を見て、
+WEEKLY_STALE_DAYS より古ければ通知する。目印が無いときは rotate_*.log / retrain_*.log の
+名前の日付で代替する(本家 gt7data_rotate.py は手動の dry-run でもログを書くので、目印の方が確か。
+mtime は復元やコピーで変わるので使わない)。どちらも無い種類は見ない(初回の誤報を防ぐ)。
+ディスク使用率の判定とは独立に動き、見張りの失敗で使用率の判定・退避を止めない。
 """
 import json
 import os
@@ -77,9 +80,14 @@ def load_state():
 
 
 def save_state(state):
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    """状態(通知のクールダウン)を書く。書けなくても(「/」が満杯等)監視・退避は続ける。
+    その場合は次回も通知が出る(クールダウンが効かない)だけで、通知が消えるよりはよい。"""
+    try:
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except OSError as e:
+        print(f"disk_guard: cannot write {STATE_FILE}: {e}")
 
 
 def should_alert(state, level):
@@ -127,17 +135,30 @@ def data_disk():
         return None
 
 
-def newest_log_age_days(prefix, now):
-    """<prefix>_YYYYMMDD_HHMMSS.log の最新の更新時刻からの経過日数。ログが無い・読めないときは None。"""
+def last_run_age_days(prefix, now):
+    """週次ジョブの最後の実行からの経過日数。
+    ラッパーが書く目印 .<prefix>_last_run(ISO 時刻)を優先し、無い・壊れているときは
+    <prefix>_YYYYMMDD_HHMMSS.log の名前の日付の最新で代替する。どちらも無い・読めないときは None。"""
+    marker = os.path.join(LOG_DIR, f".{prefix}_last_run")
+    try:
+        with open(marker) as f:
+            return (now - datetime.fromisoformat(f.read().strip())).total_seconds() / 86400
+    except (OSError, ValueError):
+        pass
     try:
         names = [n for n in os.listdir(LOG_DIR) if _LOG_NAME.match(n) and n.startswith(prefix + "_")]
-        if not names:
-            return None
-        newest = max(os.path.getmtime(os.path.join(LOG_DIR, n)) for n in names)
     except OSError as e:
         print(f"disk_guard: cannot read {LOG_DIR}: {e}")
         return None
-    return (now - datetime.fromtimestamp(newest)).total_seconds() / 86400
+    stamps = []
+    for n in names:
+        try:
+            stamps.append(datetime.strptime(n[len(prefix) + 1:-len(".log")], "%Y%m%d_%H%M%S"))
+        except ValueError:
+            pass
+    if not stamps:
+        return None
+    return (now - max(stamps)).total_seconds() / 86400
 
 
 def check_weekly_jobs(state, now=None):
@@ -145,7 +166,7 @@ def check_weekly_jobs(state, now=None):
     now = now or datetime.now()
     stale = []
     for prefix, label in WEEKLY_JOBS.items():
-        age = newest_log_age_days(prefix, now)
+        age = last_run_age_days(prefix, now)
         if age is not None and age > WEEKLY_STALE_DAYS:
             stale.append(f"{label}: 最後の実行から {age:.0f} 日")
     if not stale:
@@ -164,7 +185,10 @@ def check_weekly_jobs(state, now=None):
 
 def main():
     state = load_state()
-    check_weekly_jobs(state)
+    try:
+        check_weekly_jobs(state)
+    except Exception as e:      # noqa: BLE001  見張りの失敗(状態ファイルの書き込み不能など)で退避を止めない
+        print(f"disk_guard: weekly job check failed: {e}")
 
     root_pct, root_free = disk_pct("/")
     line = (f"{datetime.now():%Y-%m-%d %H:%M:%S} disk / = {root_pct:.1f}% "
