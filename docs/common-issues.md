@@ -53,7 +53,8 @@
 4. **ファイアウォール設定を確認**
    - UDPポート 33740（受信）がブロックされていないか確認
    - Windows: ファイアウォールの受信の規則を追加
-   - Linux: `sudo ufw allow 33740/udp`
+   - Linux（本番 abem2 は ufw）: `sudo ufw allow from <PS5のIP> to any port 33740 proto udp`。コンテナは `network_mode: host` なので Docker の自動開放は効かず、ufw のルールがそのまま当たります。遮断されていれば `journalctl -k | grep "UFW BLOCK" | grep DPT=33740` に PS5 からのパケットが並びます
+   - **実績（#639、2026-10-16）**: 別作業で ufw を有効にした 2026-10-09 以降、PS5 からの UDP が 1 週間遮断されて記録が止まっていた。ログは `Heartbeat sent` だけが続き、エラーは出ない（受信できないだけ）ので気づきにくい
    - macOS: システム環境設定→セキュリティとプライバシー→ファイアウォール
 
 5. **サーバーログで受信状況を確認**
@@ -62,6 +63,22 @@
    ```
    - 正常時は `Heartbeat sent to ...` → `Started receiving data: 344 bytes from (...)` → `Parsed: XX.X km/h, RPM: XXXX, Gear: X` → `Telemetry stream active` の順に流れる
    - `Decryption failed` が継続する場合は、`decoder.py` の `_try_decrypt` 内で `from Crypto.Cipher import Salsa20` が遅延 import されているか確認（過去に import 漏れで5日間機能不全になった実績あり）
+
+### 問題: 別の PC からダッシュボードが開けない（接続できない・タイムアウト）
+
+**症状:**
+- サーバーの PC 自身では `https://localhost:8080` が開くのに、LAN の別 PC から `https://abem02.local:8080/` や IP 指定で開けない（「接続できません」「応答時間が長すぎます」）
+- サーバーのログに、その PC からの `GET /` が出ない
+
+**原因:**
+- サーバー側のファイアウォール（ufw）が TCP 8080 を遮断している。コンテナは `network_mode: host` なので、Docker を使っていても ufw のルールが必要（#639）
+- `.local` 名が解決できない（mDNS）。この場合は IP 指定なら開く
+
+**解決方法:**
+1. サーバーで遮断の記録を確認: `journalctl -k | grep "UFW BLOCK" | grep DPT=8080`
+2. LAN からの 8080/TCP を許可: `sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp comment 'gt7 dashboard'`
+3. 同時に PS5 からのテレメトリも開いているか確認: `sudo ufw status numbered` に 33740/udp の行があること（無ければ上の「PS5からのテレメトリが受信できない」の 4 を実施）
+4. 証明書は `abem02.local` 名義（SAN に IP は無い）なので、IP 指定より `https://abem02.local:8080/` の方が警告が少ない
 
 ### 問題: ブラウザでダッシュボードが開けない（HTTPS警告）
 
