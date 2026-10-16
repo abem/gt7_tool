@@ -92,6 +92,8 @@ def test_cross_site_helper_compares_host_and_port():
     assert f(Req({"Origin": "https://abem02.local:8080", "Sec-Fetch-Site": "cross-site"})) is True
     assert f(Req({"Origin": "not a url"})) is True
     assert f(Req({"Origin": "https://abem02.local:8080", "Sec-Fetch-Site": "same-origin"})) is False
+    assert f(Req({"Origin": "https://[::1]:8080"}, host="::1", port=8080)) is False      # IPv6 リテラル
+    assert f(Req({"Origin": "https://[::1]:8080"}, host="abem02.local", port=8080)) is True
 
 
 # ---------------------------------------------------------------- 総量上限(#642)

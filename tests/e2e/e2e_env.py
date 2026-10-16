@@ -87,10 +87,19 @@ def start_static_server(root=None, timeout_s=15):
     raise RuntimeError('静的サーバーを起動できません: ' + base)
 
 
+def _stop_server(proc):
+    """静的サーバーを止めて終了を待つ(レビュー指摘: 複製先の削除より先に確実に止める)。"""
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        proc.kill()
+
+
 BASE = os.environ.get('GT7_E2E_BASE')
 if not BASE:
     _server, BASE = start_static_server()
-    atexit.register(_server.terminate)
+    atexit.register(_stop_server, _server)      # atexit は後に登録したものから実行: 停止 → 複製先の削除
 
 
 def _diff(exp, got, tol, path='$'):

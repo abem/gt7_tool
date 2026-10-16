@@ -65,6 +65,12 @@ def _plain_packet(**floats_at):
 def test_parse_drops_packet_with_nan_or_inf():
     d = GT7Decoder()
     assert d.parse(_plain_packet()) is not None                       # 基準: ゼロ埋めは解析できる
+    # Packet ~(0x158 バイト)の拡張フィールド(torque_vector)に NaN があっても捨てる
+    big = bytearray(_plain_packet()) + bytes(0x158 - 0x128)
+    assert d.parse(bytes(big)) is not None and "torque_vector" in d.parse(bytes(big))
+    struct.pack_into('<f', big, 0x144, float("nan"))
+    assert d.parse(bytes(big)) is None
+    d._non_finite_count = 0
     assert d.parse(_plain_packet(**{"0x4C": float("nan")})) is None   # speed_ms = NaN
     assert d.parse(_plain_packet(**{"0x3C": float("inf")})) is None   # rpm = +Inf
     assert d.parse(_plain_packet(**{"0x60": -float("inf")})) is None  # tyre_temp[0] = -Inf(リストの中)
@@ -85,6 +91,17 @@ def test_decrypt_rejects_oversized_datagram():
 
 
 # ---------------------------------------------------------------- ラップ境界の短い断片(#641)
+
+def test_load_config_rejects_non_boolean_accept_any_source(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.json").write_text('{"ps5_ip": "10.0.0.2", "telemetry_accept_any_source": "false"}')
+    cfg = main.load_config()
+    assert cfg["telemetry_accept_any_source"] is False          # 文字列 "false" は真偽値ではない → 既定の false
+    (tmp_path / "config.json").write_text('{"ps5_ip": "10.0.0.2", "telemetry_accept_any_source": true}')
+    assert main.load_config()["telemetry_accept_any_source"] is True
+    (tmp_path / "config.json").write_text('{"ps5_ip": "10.0.0.2"}')
+    assert main.load_config()["telemetry_accept_any_source"] is False
+
 
 def test_flush_recording_drops_fragment_below_min_samples(monkeypatch):
     saved = []

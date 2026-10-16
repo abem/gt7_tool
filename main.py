@@ -177,6 +177,13 @@ def load_config():
     cfg["receive_port"] = _int_env("RECEIVE_PORT", cfg.get("receive_port", DEFAULT_RECEIVE_PORT))
     cfg["http_port"] = _int_env("HTTP_PORT", cfg.get("http_port", DEFAULT_HTTP_PORT))
     cfg["heartbeat_interval"] = _int_env("HEARTBEAT_INTERVAL", cfg.get("heartbeat_interval", DEFAULT_HEARTBEAT_INTERVAL))
+    # 送信元フィルタの解除(#641)は JSON の真偽値だけを受け付ける。"false" のような文字列は
+    # bool() で True になり、気づかないうちにフィルタが外れる(レビュー指摘)
+    accept_any = cfg.get("telemetry_accept_any_source", False)
+    if not isinstance(accept_any, bool):
+        logger.warning(f"config telemetry_accept_any_source must be true/false, got {accept_any!r}; using false")
+        accept_any = False
+    cfg["telemetry_accept_any_source"] = accept_any
     return cfg
 
 
@@ -559,7 +566,7 @@ async def telemetry_background_task():
         CONFIG.get("receive_port", DEFAULT_RECEIVE_PORT),
         CONFIG["heartbeat_interval"],
         # 送信元を ps5_ip に限定する(#641)。別ホストから流すときだけ config で true にする
-        accept_any_source=bool(CONFIG.get("telemetry_accept_any_source", False)),
+        accept_any_source=CONFIG.get("telemetry_accept_any_source", False),
     )
     decoder = GT7Decoder()
     course_estimator = CourseEstimator()
