@@ -34,6 +34,8 @@ GT7 Toolは、GT7（グランツーリスモ7）からのテレメトリデー�
 
 **メソッド:** WebSocket (GET)
 
+**接続の制限（#642）:** ブラウザが送る `Origin` のホスト:ポートがサーバー自身（`Host`）と違う、または `Sec-Fetch-Site: cross-site` の握手は 403 で断ります（LAN のユーザーが開いた外部ページがテレメトリを読んだり、偽のエンジニア指示を流したりできないようにするため）。`Origin` を送らないクライアント（スクリプト等）は従来どおり接続できます。`/ws?role=engineer` で接続した端末だけに `driver_response` が届きます（エンジニア画面 `engineer.js` が付けます。ダッシュボードには届きません）。
+
 **説明:** テレメトリデータのリアルタイムストリームを受信します
 
 **接続例:**
@@ -180,6 +182,8 @@ ws.onmessage = (event) => {
 **リクエスト:** `file`フィールドに1個のCSVファイルを添付した`multipart/form-data`。
 
 **検証・拒否条件（いずれか一つでも該当すればアップロード全体を拒否・部分取込は行わない）:**
+- 越境リクエスト（`Origin` のホスト:ポートがサーバーと違う、`Origin: null`、`Sec-Fetch-Site: cross-site`）→ 403（#642。multipart はプリフライトなしで送れるため、外部ページからユーザーのブラウザ経由で取り込ませない）
+- `gt7data_imported/` の合計が `IMPORT_MAX_TOTAL_BYTES`（2GiB）以上 → 507（#642。この置き場はローテーションの対象外）
 - ヘッダの列名が本ツールの既知CSV列集合（`CSV_ALL_FIELDS`の展開列）の部分集合でない → 400
 - `timestamp`または`car_id`列が無い、あるいはいずれかの行で値が空 → 400
 - いずれかの行で数値列の型変換に失敗 → 400
@@ -215,7 +219,7 @@ ws.onmessage = (event) => {
 
 | パラメータ | 型 | 既定値 | 説明 |
 |-----------|-----|--------|------|
-| `fields` | string（カンマ区切り） | 既定フィールド集合（`format=csv`/`format=fastf1`時は既定が異なる。下記参照） | 返却するサンプルのフィールドを絞り込み |
+| `fields` | string（カンマ区切り） | 既定フィールド集合（`format=csv`/`format=fastf1`時は既定が異なる。下記参照） | 返却するサンプルのフィールドを絞り込み。名前は英数字と `_` だけ（それ以外は 400。#643: CSV の列見出しにそのまま出るため） |
 | `every` | int | 実装既定値 | Nフレームごとに1件間引き |
 | `format` | string（`json`/`csv`/`fastf1`） | `json` | `csv`指定でCSVダウンロード応答、`fastf1`指定でFastF1互換CSVダウンロード応答に切替（`csv`は#174/#175、`fastf1`は#434 P2） |
 
@@ -232,6 +236,7 @@ ws.onmessage = (event) => {
 - **配列/辞書フィールドの列展開**: `tyre_temp`/`susp_height`/`wheel_rps`/`tyre_radius`/`torque_vector`は`_fl`/`_fr`/`_rl`/`_rr`の4列へ、`gear_ratios`は`_1`〜`_8`の8列へ、`flags`は`flag_*`（12列）へ、`course`は`course_*`（`id`/`name_ja`/`name_en`/`confidence`/`verified`/`source`の6列）へ展開されます。
 - **レスポンスヘッダ**: `Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="<元ファイル名の拡張子を.csvに置換>"`。
 - **エンコーディング**: UTF-8 with BOM（Windows版Excelでの文字化け回避）。区切り文字はカンマ、1行目はヘッダ行。
+- **数式の無害化（#643）**: 文字列のセルが `=` `+` `-` `@` タブ CR で始まるときは先頭に `'` を付けます（`format=fastf1` も同じ）。インポートした CSV 由来の文字列（コース名・2 行目以降の `timestamp`）が、エクスポートを開いた人の表計算ソフトで数式として動かないようにするためです。数値には付きません。
 
 #### FastF1互換エクスポート（`format=fastf1`）
 
@@ -345,7 +350,7 @@ docker compose run --rm --no-deps \
 
 **リクエスト:** `Content-Type: application/json`、JSON オブジェクト（例: `{"v":1,"sid":"ab12cd","records":[{"ev":"sample","ratio":1.0,...}]}`）。上限 32KB。
 
-**レスポンス:** 204（追記した）／ 400（JSON でない、またはオブジェクトでない）／ 413（32KB 超）／ 429（同一IPから0.5秒未満の連続送信）／ 500（書き込み失敗）。
+**レスポンス:** 204（追記した）／ 400（JSON でない、またはオブジェクトでない）／ 403（越境リクエスト。#642）／ 413（32KB 超）／ 429（同一IPから0.5秒未満の連続送信）／ 500（書き込み失敗）。
 
 **保存先:** `logs/replay_diag.jsonl`（コンテナ内 `/app/logs`。`docker-compose.yml` でホストの `./logs` にマウント）。1行1レコード（JSON Lines）で、`received_at`・`ip`・`data` を持ちます。5MB を超えると `replay_diag.jsonl.1` へ世代交代し、最大約10MBです。文字列は300文字、リスト・辞書は200要素、ネストは5階層に切り詰めます。書き込み先は固定で、クライアントはパスを指定できません。既存のテレメトリの受信・記録・配信には触れません。
 
@@ -596,6 +601,7 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
     "ssl_cert": "ssl/server-cert.pem",
     "ssl_key": "ssl/server-key.pem",
     "recording_enabled": true,
+    "telemetry_accept_any_source": false,
     "data_retention": {
         "enabled": true,
         "max_total_gb": 20,
@@ -606,6 +612,7 @@ iv = iv2.to_bytes(4, 'little') + iv1.to_bytes(4, 'little')
 ```
 
 - `recording_enabled`: `false` にすると受信・ライブ表示は継続したまま `gt7data/` へのファイル保存のみ停止する（反映には再ビルドが必要）。
+- `telemetry_accept_any_source`: 既定 `false`。`false` のとき `ps5_ip` 以外の送信元からの UDP は受け付けない（#641。拒否は 1 分に 1 回 `Telemetry from unexpected source ... rejected` と記録）。別のホストから記録を流し込むときだけ `true` にする（反映には再ビルドが必要）。
 - `data_retention`: `scripts/gt7data_rotate.py` の保存ポリシー設定。ソースコードの既定値は安全側の `enabled: false`（`--apply` を拒否）だが、上記は**本ツールの現在の運用設定値**（`enabled: true`。cronで週1回自動実行中）。詳細は [README の「記録データの保存ポリシー」](../README.md#記録データの保存ポリシーローテーション)を参照。
 
 **環境変数による設定上書き**（環境変数優先・config.jsonフォールバック）:

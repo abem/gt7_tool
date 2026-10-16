@@ -27,7 +27,7 @@
 - または `Decryption failed` が大量に出続ける
 
 **原因:**
-- PS5のIPアドレスが間違っている
+- PS5のIPアドレスが間違っている（2026-10-16 以降は、設定の `ps5_ip` 以外からの UDP を受け付けないため、ログに `Telemetry from unexpected source <IP> rejected` が 1 分に 1 回出ます。#641）
 - PS5とPCが同じネットワークに接続されていない
 - PS5のテレメトリ送信がOFFになっている
 - ファイアウォールでUDPポートがブロックされている
@@ -62,6 +62,7 @@
    docker compose logs -f
    ```
    - 正常時は `Heartbeat sent to ...` → `Started receiving data: 344 bytes from (...)` → `Parsed: XX.X km/h, RPM: XXXX, Gear: X` → `Telemetry stream active` の順に流れる
+   - `Telemetry from unexpected source 192.168.1.xx rejected: N packet(s)` が出る場合、その IP からパケットは届いているが `ps5_ip` と違うので捨てている（#641）。PS5 の IP が変わった（DHCP）なら `config.json` / `PS5_IP` を直す。別のホストから意図して流しているなら `telemetry_accept_any_source: true`
    - `Decryption failed` が継続する場合は、`decoder.py` の `_try_decrypt` 内で `from Crypto.Cipher import Salsa20` が遅延 import されているか確認（過去に import 漏れで5日間機能不全になった実績あり）
 
 ### 問題: 別の PC からダッシュボードが開けない（接続できない・タイムアウト）
@@ -79,6 +80,21 @@
 2. LAN からの 8080/TCP を許可: `sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp comment 'gt7 dashboard'`
 3. 同時に PS5 からのテレメトリも開いているか確認: `sudo ufw status numbered` に 33740/udp の行があること（無ければ上の「PS5からのテレメトリが受信できない」の 4 を実施）
 4. 証明書は `abem02.local` 名義（SAN に IP は無い）なので、IP 指定より `https://abem02.local:8080/` の方が警告が少ない
+
+### 問題: エンジニア画面に OK / COPY / RE-PLAN の応答が届かない、または 403 が出る
+
+**症状:**
+- `/engineer` でドライバーの応答（OK / COPY / RE-PLAN）が表示されない
+- ログに `WebSocket from foreign origin rejected` が出る、または `/api/laps/import` が 403 を返す
+
+**原因:**
+- 2026-10-16（#642）から、ドライバーの応答はエンジニア役の端末（`/ws?role=engineer`）にだけ送る。古い `engineer.js` をブラウザが掴んでいると `?role=engineer` を付けずに接続する
+- 同じく #642 から、`Origin` のホスト:ポートがサーバーの `Host` と違うブラウザからの WebSocket・取り込み・診断ログは 403。リバースプロキシや別名で中継していると、ブラウザの `Origin` と到達時の `Host` が食い違う
+
+**解決方法:**
+1. エンジニア画面を Ctrl+F5 で再読み込みする（`engineer.js` を新しくする）
+2. ダッシュボードを開いた URL（例 `https://abem02.local:8080/`）と、サーバーが見ている `Host` が同じか確認する。中継を挟むなら `Host` ヘッダをそのまま渡す
+3. スクリプトから叩くときは `Origin` を付けない（付けなければ従来どおり通る）
 
 ### 問題: ブラウザでダッシュボードが開けない（HTTPS警告）
 

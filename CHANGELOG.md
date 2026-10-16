@@ -7,6 +7,27 @@
 
 ---
 
+## 2026-10-16 — Claude Security スキャンの指摘 12 件への対応（親 #640）
+
+スキャン: Anthropic 公式プラグイン claude-security 0.11、コミット b1217f3 を medium で全体スキャン。候補 19 → 検証パネル通過 12（MEDIUM 5 / LOW 7、CRITICAL・HIGH なし）。根本原因は 3 つ。
+
+### fix(security): UDP テレメトリの受信側防御（#641: F1/F2/F5/F6/F8）
+- `telemetry.py`: 送信元 IP が `ps5_ip` 以外のデータグラムはキューに積まない（1 分に 1 回だけ警告）。`config.json` の `telemetry_accept_any_source`（既定 false）で意図して解除できる。UDP の送信元は同一リンク上で偽装できるので、認証ではなく多層防御の 1 層。
+- `decoder.py`: 非有限 float（NaN / ±Inf）を含むパケットは捨てる（`json.dumps` が `NaN` という JSON ではない字句を書き、その周回がブラウザで読めなくなっていた）。1024 バイト超のデータグラムは復号しない。
+- `main.py`: 区切り（#617）とラップ境界の保存を `_flush_recording` に共通化し、ラップ境界でも `RECORD_MIN_SAMPLES`（120）未満の断片は捨てる（1 パケット 1 ファイルを防ぐ）。
+
+### fix(security): HTTP / WebSocket の越境防御（#642: F3/F4/F9/F10/F11）
+- `_cross_site_request`: `Origin` のホスト:ポートが自分と違う、`Origin: null`、`Sec-Fetch-Site: cross-site` は `/ws`（握手前）・`POST /api/laps/import`・`POST /api/diag` で 403。`Origin` の無いクライアントは従来どおり。
+- `driver_response` は `/ws?role=engineer` で接続したソケットにだけ送る（`engineer.js` が付ける）。ダッシュボードに届いてテレメトリとして処理され、解析状態がリセットされる経路を断つ。`websocket.js` は無変更。
+- `gt7data_imported/` の合計が 2 GiB 以上なら取り込みを 507 で断る（ローテーションの対象外のため）。
+- `logging_middleware`: path の制御文字を `\xNN` にし、1 リクエスト 1 行を守る。
+
+### fix(security): CSV と e2e（#643: F7/F12）
+- `_csv_cell`: 文字列セルが `=` `+` `-` `@` タブ CR で始まるときは `'` を前置（csv / fastf1）。`fields` クエリは英数字と `_` だけ（それ以外は 400）。
+- `tests/e2e/e2e_env.py`: 静的サーバーはリポジトリ全体ではなく、index.html / engineer.html / 直下の *.js *.css だけを複製した一時ディレクトリを配信（ssl/ の秘密鍵・config.json・記録データを loopback に出さない）。
+- テスト: `tests/test_security_hardening.py`（7）、`tests/test_http_hardening.py`（7）。静的チェック・pytest 94・e2e 453/0 通過。独立レビュー済み。
+- 見送り: エンジニア用の共有トークン（LAN 内の攻撃者向け。別チケット候補）。
+
 ## 2026-10-16 — 本番障害: ufw による 8080/TCP・33740/UDP の遮断（#639）
 
 ### fix(ops): ファイアウォールの許可ルール（ホスト側、コードの変更なし）

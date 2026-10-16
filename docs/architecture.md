@@ -112,9 +112,9 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 
 | ファイル名 | 説明 | 主要なクラス/関数 |
 |-----------|------|-----------------|
-| `main.py` | エントリーポイント・HTTP/WSサーバ・周回の記録 | `build_app`（#622、テストから受信なしで組み立てる）, `FuelTracker`, `websocket_handler`, `telemetry_background_task`, `telemetry_supervisor`, `_heartbeat_loop`, `_record_split_reason`（#617）, `_append_checkpoint`（#621）, `_load_lap_file`, `on_startup`, `on_cleanup` |
-| `telemetry.py` | UDP通信管理（非同期・`asyncio.DatagramProtocol` ベース） | `GT7TelemetryClient`, `_TelemetryProtocol` |
-| `decoder.py` | パケット復号・解析 (A/B/~ 対応) | `GT7Decoder`, `CourseEstimator` |
+| `main.py` | エントリーポイント・HTTP/WSサーバ・周回の記録。越境リクエスト（`Origin` 不一致・`Sec-Fetch-Site: cross-site`）は `/ws`・取り込み・診断ログで 403（#642） | `build_app`（#622、テストから受信なしで組み立てる）, `FuelTracker`, `websocket_handler`, `_cross_site_request`（#642）, `telemetry_background_task`, `telemetry_supervisor`, `_heartbeat_loop`, `_record_split_reason`（#617）, `_flush_recording`（#641）, `_append_checkpoint`（#621）, `_load_lap_file`, `_csv_cell`（#643）, `on_startup`, `on_cleanup` |
+| `telemetry.py` | UDP通信管理（非同期・`asyncio.DatagramProtocol` ベース）。送信元が `ps5_ip` 以外のデータグラムは捨てる（#641。復号できることは「GT7 の形式」の証明にしかならず、LAN の誰でも作れるため。認証ではなく多層防御の 1 層） | `GT7TelemetryClient`, `_TelemetryProtocol` |
+| `decoder.py` | パケット復号・解析 (A/B/~ 対応)。1024 バイト超は復号しない、非有限 float を含むパケットは捨てる（#641） | `GT7Decoder`, `CourseEstimator` |
 | `lapstore.py` | 記録ファイルに関する共有定義（標準ライブラリのみ。`main.py` と `train_laptime_model.py` が参照。#574）: ファイル名の規則、予測の特徴量の列、詰まった受信時刻の並べ直し（#602）、運転支援の作動ビット（#628） | `LAP_FILE_RE`, `FEATURE_COLUMNS`, `FEATURE_QUERY_PARAMS`, `repace_timestamps`, `aid_bits` |
 | `train_laptime_model.py` | ラップタイム予測モデルのオフライン学習（コース×車種ごと。時系列の検証と品質ゲート。イメージには入れず、`docker compose run` でマウントして実行。[API.md](API.md) 参照） | `filter_group_outliers`, `_time_ordered_split` |
 
