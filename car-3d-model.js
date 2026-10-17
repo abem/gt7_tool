@@ -38,7 +38,8 @@ var gtCarModelState = {
 (function () {
     var MODEL_URL = '/car.glb';
     var CAR_LENGTH = 3.3;          // 針金の前後ホイールベース(halfLen*cornerZ*2=2.48)より少し長い全長（無次元）
-    var PIVOT_Y = 0.34;            // 姿勢の回転中心の高さ(車輪の中心＝針金の wheelR)。地面で回すと反対側が床に沈む
+    var PIVOT_Y = 0.34;            // 姿勢の回転中心の高さ(車輪の中心＝針金の wheelR)。小さな角度では地面で回すのと
+                                   // ほぼ同じ見え方(反対側が少し格子より下がるのは残る。気になれば接地点を毎フレーム y=0 に合わせる)
     var CAM_DISTANCE = 20;         // 平行投影なので距離は見え方に影響しない（near/far の都合だけ）
 
     function urlFlag() {

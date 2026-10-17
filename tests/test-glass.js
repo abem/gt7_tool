@@ -123,7 +123,8 @@ async function main() {
     }
     console.log(`Canvas: ${info.width}x${info.height}, initialized: ${info.inited}, 描画ピクセル(サンプル): ${info.nonEmpty}`);
 
-    const canvasEl = await page.$('#car-3d-view canvas');
+    // 針金図の 2D キャンバスを撮る(3D 車モデルが有効なときは先頭が WebGL のキャンバスになる)
+    const canvasEl = await page.evaluateHandle(() => (typeof car3DState !== 'undefined' && car3DState.canvas) || document.querySelector('#car-3d-view canvas'));
     if (canvasEl) {
         await canvasEl.screenshot({ path: SCREENSHOT_PATH });
         console.log('スクリーンショット保存:', SCREENSHOT_PATH);
