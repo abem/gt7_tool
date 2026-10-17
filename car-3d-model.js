@@ -38,6 +38,7 @@ var gtCarModelState = {
 (function () {
     var MODEL_URL = '/car.glb';
     var CAR_LENGTH = 3.3;          // 針金の前後ホイールベース(halfLen*cornerZ*2=2.48)より少し長い全長（無次元）
+    var PIVOT_Y = 0.34;            // 姿勢の回転中心の高さ(車輪の中心＝針金の wheelR)。地面で回すと反対側が床に沈む
     var CAM_DISTANCE = 20;         // 平行投影なので距離は見え方に影響しない（near/far の都合だけ）
 
     function urlFlag() {
@@ -122,7 +123,7 @@ var gtCarModelState = {
             if (!webglAvailable(flag === '1')) return giveUp('webgl unavailable');
 
             var renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' });
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.setPixelRatio(window.devicePixelRatio || 1);     // 2D 側(resizeAttitude2D)と同じ解像度
             renderer.outputEncoding = THREE.sRGBEncoding;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.setClearColor(0x000000, 0);
@@ -132,9 +133,7 @@ var gtCarModelState = {
             el.style.left = '0'; el.style.top = '0';
             el.style.zIndex = '0';
             el.style.pointerEvents = 'none';
-            canvas2d.style.position = 'relative';
-            canvas2d.style.zIndex = '1';
-            container.insertBefore(el, canvas2d);
+            // DOM へはモデルの読み込みに成功してから挿す(404 のときに空のキャンバスを残さない)
 
             var scene = new THREE.Scene();
             scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a2230, 0.9));
@@ -153,6 +152,7 @@ var gtCarModelState = {
             grid.position.y = -0.005;
             scene.add(grid);
             var body = new THREE.Group();
+            body.position.y = PIVOT_Y;        // 回転中心を車輪の高さに置く(モデルはその分下げる)
             scene.add(body);
 
             s.renderer = renderer; s.scene = scene; s.camera = camera; s.body = body;
@@ -164,7 +164,11 @@ var gtCarModelState = {
             new THREE.GLTFLoader().load(MODEL_URL, function (gltf) {
                 try {
                     fitModel(gltf.scene);
+                    gltf.scene.position.y -= PIVOT_Y;
                     body.add(gltf.scene);
+                    canvas2d.style.position = 'relative';
+                    canvas2d.style.zIndex = '1';
+                    container.insertBefore(el, canvas2d);
                     s.active = true;
                     updateCamera();
                     if (!s.animationId) renderLoop();
@@ -195,6 +199,7 @@ var gtCarModelState = {
             s.renderer = null;
         }
         s.scene = null; s.camera = null; s.body = null;
+        if (s.canvas2d) { s.canvas2d.style.position = ''; s.canvas2d.style.zIndex = ''; }
         giveUp(reason);
     }
 

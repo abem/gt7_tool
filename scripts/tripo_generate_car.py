@@ -104,14 +104,24 @@ def model_url(task):
     sys.exit(f"no model URL in output: {json.dumps(out)[:500]}")
 
 
+MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024   # 生成物の上限(公開配信される /car.glb になるので念のため)
+
+
 def download(url, out_path):
+    if not url.startswith("https://"):
+        sys.exit(f"refusing non-https model URL: {url[:80]}")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     tmp = out_path + ".part"
+    total = 0
     with urllib.request.urlopen(url, timeout=300) as r, open(tmp, "wb") as f:
         while True:
             chunk = r.read(1 << 20)
             if not chunk:
                 break
+            total += len(chunk)
+            if total > MAX_DOWNLOAD_BYTES:
+                f.close(); os.remove(tmp)
+                sys.exit(f"model larger than {MAX_DOWNLOAD_BYTES} bytes; not saved")
             f.write(chunk)
     os.replace(tmp, out_path)
     return os.path.getsize(out_path)

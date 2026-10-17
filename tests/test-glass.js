@@ -6,7 +6,8 @@
  * 実際に初期化され、キャンバスに中身が描かれることを確認する（青ガラス/赤ルーフ等の概念は廃止）。
  *
  * 検査項目:
- *  1. initCar3D が関数として存在する（THREE への依存が無い）
+ *  1. initCar3D が関数として存在し、針金図は Canvas2D で初期化される（THREE は #644 の 3D 車モデル用で任意。
+ *     有っても無くても 2D が動く）
  *  2. initCar3D() 後に car3DState.initialized === true
  *  3. #car-3d-view に <canvas> が生成され、サイズが正
  *  4. キャンバスに非透明ピクセルがある（＝実際に描画されている）
@@ -69,10 +70,10 @@ async function main() {
 
     await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 15000 });
 
-    // 依存確認: initCar3D があること / THREE への依存が無いこと
+    // 依存確認: initCar3D があること。THREE は 3D 車モデル(#644、任意)用で、有無は情報として出すだけ
     const hasInitCar3D = await page.evaluate(() => typeof initCar3D === 'function');
     const threePresent = await page.evaluate(() => typeof THREE !== 'undefined');
-    console.log(`initCar3D: ${hasInitCar3D ? 'OK' : 'NG'}, THREE依存: ${threePresent ? 'あり(想定外)' : 'なし(OK)'}`);
+    console.log(`initCar3D: ${hasInitCar3D ? 'OK' : 'NG'}, THREE: ${threePresent ? 'あり(3D 車モデル用・任意)' : 'なし'}`);
     if (!hasInitCar3D) {
         console.error('FAIL: car-3d.js (initCar3D) not loaded');
         await browser.close();
@@ -92,9 +93,11 @@ async function main() {
     const info = await page.evaluate(() => {
         const container = document.getElementById('car-3d-view');
         if (!container) return { error: 'container #car-3d-view not found' };
-        const canvas = container.querySelector('canvas');
+        // 針金図の 2D キャンバス(3D 車モデルが有効なときは WebGL のキャンバスが前に挿さるので、先頭を取らない)
+        const canvas = (typeof car3DState !== 'undefined' && car3DState.canvas) || container.querySelector('canvas');
         if (!canvas) return { error: 'canvas not found' };
         const inited = (typeof car3DState !== 'undefined') && car3DState.initialized === true;
+        const is2d = !!(car3DState.ctx && typeof car3DState.ctx.fillRect === 'function');
         // 非透明ピクセル数をサンプリングして、実際に描画されているか確認
         let nonEmpty = -1;
         try {
@@ -110,7 +113,7 @@ async function main() {
         } catch (e) {
             return { error: 'getImageData failed: ' + e.message, width: canvas.width, height: canvas.height, inited };
         }
-        return { width: canvas.width, height: canvas.height, inited, nonEmpty };
+        return { width: canvas.width, height: canvas.height, inited, nonEmpty, is2d };
     });
 
     if (info.error) {
@@ -128,7 +131,7 @@ async function main() {
 
     // === 判定 ===
     const checks = [
-        { name: 'THREE 非依存', pass: !threePresent },
+        { name: '針金図は Canvas2D で初期化(THREE の有無に依らない)', pass: info.is2d === true },
         { name: 'car3DState.initialized', pass: info.inited === true },
         { name: 'canvas サイズ > 0', pass: info.width > 0 && info.height > 0 },
         { name: 'キャンバスに描画あり', pass: info.nonEmpty > 0 },
