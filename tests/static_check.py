@@ -32,7 +32,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAGES = ('index.html', 'engineer.html')
 # 配布物そのまま(検査しない)
-VENDORED = {'uplot.min.js', 'uplot.min.css'}
+VENDORED = {'uplot.min.js', 'uplot.min.css', 'three.min.js', 'GLTFLoader.js'}   # 同梱ライブラリ(three.js r147 は #644)
 
 problems = []
 

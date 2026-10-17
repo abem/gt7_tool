@@ -124,6 +124,8 @@ function initCar3D() {
 
     car3DState.initialized = true;
     if (typeof debugLog === 'function') debugLog('ATTITUDE_2D', 'Initialized 2D attitude view');
+    // 3D 車モデル(#644): WebGL が使えてモデルがあるときだけ、この針金図の背面に重なる
+    if (typeof gtCarModelInit === 'function') gtCarModelInit(container, canvas);
     renderLoop();
 }
 
@@ -170,6 +172,7 @@ function updateCar3D(pitch, yaw, roll, rpm, steering, susp) {
         car3DState.susp = [finiteOr0(susp[0]), finiteOr0(susp[1]), finiteOr0(susp[2]), finiteOr0(susp[3])];
     }
     car3DState.needsRender = true;
+    if (typeof gtCarModelUpdate === 'function') gtCarModelUpdate(car3DState.pitch, car3DState.yaw, car3DState.roll, car3DState.steering, car3DState.susp);   // #644
 }
 
 /**
@@ -254,6 +257,8 @@ function projGround(x, y, z) {
 // ── 描画 ─────────────────────────────────────────────────────
 
 function drawGround() {
+    // 3D 車モデル表示中(#644)は格子を 3D 側(車体の下)で描く。ここで描くと車体の上に線が乗る
+    if (typeof gtCarModelState !== 'undefined' && gtCarModelState.active) return;
     var ctx = car3DState.ctx;
     var n = 4, step = 0.9;
     ctx.lineWidth = 1;

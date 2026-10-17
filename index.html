@@ -800,7 +800,11 @@
         <span id="course-name" style="display:none"></span>
     </div>
 
-    <!-- Three.js 廃止: CAR ATTITUDE は car-3d.js の Canvas2D 実装（WebGL不要）に置換 -->
+    <!-- CAR ATTITUDE: car-3d.js の Canvas2D 実装（WebGL不要）が基本。three.js(r147 同梱)+ car-3d-model.js は
+         WebGL が使えて /car.glb があるときだけ 3D 車モデルを背面に重ねる（#644。無ければ何もしない） -->
+    <script src="/three.min.js"></script>
+    <script src="/GLTFLoader.js"></script>
+    <script src="/car-3d-model.js"></script>
     <script src="/uplot.min.js"></script>
     <script src="/constants.js"></script>
     <script src="/common-utils.js"></script>

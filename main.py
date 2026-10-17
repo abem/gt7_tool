@@ -233,6 +233,11 @@ _telemetry_supervisor_task = None
 
 LOG_DIR = "gt7data"
 
+# CAR ATTITUDE の 3D 車モデル(#644)。Tripo で生成した GLB をホストの models/ に置く(git 管理外、
+# docker-compose で /app/models にマウント)。/car.glb で配信し、無ければ 404(ブラウザは Canvas2D のまま)
+CAR_MODEL_DIR = "models"
+CAR_MODEL_FILE = "car.glb"
+
 # インポートしたラップの保存先(#177/#178)。実記録データ(LOG_DIR)とは物理的に
 # 完全分離する(実データへの意図しない混入防止)。
 IMPORT_LOG_DIR = "gt7data_imported"
@@ -902,6 +907,14 @@ async def static_handler(request):
 
     if filename == 'favicon.ico':
         return web.Response(status=204)
+
+    if filename == CAR_MODEL_FILE:
+        # 3D 車モデル(#644)。ファイル名は固定で、クライアントはパスを指定できない
+        path = os.path.join(CAR_MODEL_DIR, CAR_MODEL_FILE)
+        if not os.path.isfile(path):
+            return web.Response(status=404, text="File not found")
+        return web.FileResponse(path, headers={'Cache-Control': 'no-cache',
+                                               'Content-Type': 'model/gltf-binary'})
 
     # 意図: リポジトリ直下の UI アセットのみ配信（鍵・設定・ソースの漏えい防止）。
     # 許可リスト方式: パス区切りを含まず、拡張子が .js / .css のものだけを配信し、
