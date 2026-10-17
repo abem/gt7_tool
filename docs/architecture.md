@@ -143,7 +143,8 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `ui_components.js` | 定数・ユーティリティ | 設定定数、ユーティリティ関数、DOM要素キャッシュ |
 | `charts.js` | チャート管理 | uPlotチャート初期化・加速度チャート・距離軸解析チャート描画 |
 | `steer-response.js` | STEER RESPONSE 可視化 | Canvas2D。舵角(ステアリングホイール角)から期待される旋回(狙い=青破線)と実ヨーレートから求めた旋回(実際=橙実線)を弧で比較。バランス比 \|ω\|/\|ω_exp\| によるアンダー/オーバー判定、車固有の中立ゲイン自動較正。物理導出・較正詳細は [steer-response.md](steer-response.md) 参照 |
-| `car-3d.js` | CAR ATTITUDE 可視化 | Canvas2D クォータービュー（固定アングル疑似3D）。ダブルウィッシュボーン・サス、ステア連動タイヤ、重心点 CoG（横G/前後G 荷重移動）、pitch/yaw/roll。※旧 Three.js 3D モデルから移行し、G-FORCE パネルを統合 |
+| `car-3d.js` | CAR ATTITUDE 可視化 | Canvas2D クォータービュー（固定アングル疑似3D）。ダブルウィッシュボーン・サス、ステア連動タイヤ、重心点 CoG（横G/前後G 荷重移動）、pitch/yaw/roll。※旧 Three.js 3D モデルから移行し、G-FORCE パネルを統合。`gtCarModelInit` / `gtCarModelUpdate` を typeof ガードで呼ぶ（#644） |
+| `car-3d-model.js` | CAR ATTITUDE の 3D 車モデル（#644、任意） | three.js（r147 UMD、同梱）+ GLTFLoader で `/car.glb` を針金図の背面に描く。カメラは car-3d.js の平行投影と同じ向き・尺度。WebGL 不可・モデル無し・`?car3d=0` では何もしない（Canvas2D のまま） |
 | `lap-manager.js` | ラップ管理 | ラップタイム記録・履歴管理 |
 | `telemetry-analysis.js` | 距離基準ラップ解析 | 距離索引、ライブ・タイムデルタ、推定ラップタイム、リファレンス速度重畳、レースエンジニア通知 |
 | `drive-view.js` | DRIVE/ANALYSIS ビュー切替 | 走行用最小表示（DRIVE）と解析表示（ANALYSIS）の切替、選択は localStorage に永続化 |
@@ -206,6 +207,7 @@ GT7 Telemetry Dashboardは、クライアント-サーバーアーキテクチ�
 | `docker-compose.yml` | Docker Compose設定（`network_mode: host`。ボリューム: `gt7data` / `gt7data_imported` / `models` / `logs` / `ssl`(読み取り専用)） |
 | `requirements.txt` | Python依存パッケージ（aiohttp / pycryptodome、予測の推論に scikit-learn / numpy / joblib、学習に pandas、テストに pytest）。e2e 用の playwright / Pillow は `requirements-dev.txt`（イメージに入れない） |
 | `uplot.min.js` | uPlotグラフライブラリ |
+| `three.min.js` / `GLTFLoader.js` | three.js r147（MIT、UMD 版。r148 以降は ES モジュールのみで、本プロジェクトの plain script 方針に合わない）。CAR ATTITUDE の 3D 車モデル用（#644） |
 | `uplot.min.css` | uPlotスタイルシート |
 | `scripts/` | ホストの cron で動く運用スクリプト（`gt7data_rotate.py` + `rotate_cron_wrapper.py`: 記録の世代管理（root の cron でコンテナ外から実行するため `lapstore.py` を import せず、正規表現の一致は `tests/test_lapstore.py` で固定）、`disk_guard.py`: ディスク監視と週次ジョブの見張り（#632）、`retrain_cron_wrapper.py`: 予測モデルの週次再学習（#626）、`alert_notify.py`: 通知の共通部）と、開発用の使い捨てスクリプト。[scripts/README.md](../scripts/README.md)。本番のイメージには入れない |
 

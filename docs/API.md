@@ -18,6 +18,7 @@ GT7 Toolは、GT7（グランツーリスモ7）からのテレメトリデー�
 | `/api/laps/import` | POST | 自前CSVからのラップインポート（#177/#178） |
 | `/api/laps/{file}` | GET | 単一ラップの詳細（fields射影・every間引き対応。`format=csv`でCSVダウンロード） |
 | `/api/predict/laptime` | GET | ラップタイム予測（品質ゲート済み・MAE≤3%のコース×車種のみ、#434 P5 Stage2） |
+| `/car.glb` | GET | CAR ATTITUDE の 3D 車モデル（#644）。ホストの `models/car.glb`（マウント、git 管理外）を `model/gltf-binary` で返す。無ければ 404（ブラウザは Canvas2D のまま）。固定名のみ |
 | `/{filename}` | GET | 静的ファイル配信 |
 
 ### 1. メインダッシュボード `/`

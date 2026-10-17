@@ -150,6 +150,22 @@
 
 ---
 
+## CAR ATTITUDE 関連の問題
+
+### 問題: CAR ATTITUDE に 3D の車体が出ない（針金図だけ）
+
+**原因（どれか）:**
+- ホストに `models/car.glb` が無い（`/car.glb` が 404）。3D 表示は任意で、無ければ針金図だけが正常（#644）
+- ブラウザで WebGL が使えない、またはソフトウェア描画しかない（既定では描かない）
+- URL に `?car3d=0` が付いている
+
+**確認方法:**
+1. ブラウザで `https://<ホスト>:8080/car.glb` を開き、ダウンロードになれば配置済み（404 なら未配置）
+2. 開発者ツールのコンソールで `gtCarModelState.reason` を見る（`webgl unavailable` / `model not available` / `three.js not loaded` 等）
+3. ソフトウェア描画でも試すときは `?car3d=1` を付けて開く
+
+**配置方法:** Tripo の Web 画面で生成した GLB を `models/car.glb` に置く（`models/` は docker-compose でコンテナにマウント済み、再ビルド不要）。API クレジットがあれば `python3 -B scripts/tripo_generate_car.py` でも生成できる。
+
 ## グラフ表示関連の問題
 
 ### 問題: グラフが表示されない

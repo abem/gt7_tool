@@ -19,6 +19,7 @@
 | `disk_guard.py` | ディスク使用率の監視（85% 警告 / 90% 緊急）。**「/」と、gt7data が載るファイルシステム（現在は /data）の両方**を見る。緊急時は gt7data の新規対象を trash へ退避（物理削除はしない）。**週次ジョブの見張り（#632）**: 各ラッパーが実行のたびに書く目印 `scripts/logs/.rotate_last_run` / `.retrain_last_run` が 8 日より古ければ「週次ジョブが実行されていない」を通知（24 時間に 1 回。目印が無ければ `rotate_*.log` / `retrain_*.log` の名前の日付で代替。どちらも無い種類は見ない） | root の cron（`0 */4 * * *`、4時間ごと。**稼働を確認済み**、`scripts/logs/disk_guard.log` に「/」と gt7data の両方の使用率が出る） |
 | `alert_notify.py` | 通知の共通部。`~/DISK_ALERT.txt` への追記と `notify-send` の二経路 | 上記から呼ばれる |
 | `disk_guard_test.py` | `disk_guard.py` のモックテスト（ディスク・通知・削除に触れない）。`python3 -B scripts/disk_guard_test.py` | 手動 |
+| `tripo_generate_car.py` | CAR ATTITUDE の 3D 車モデルを Tripo（文章→3D）の API で 1 回生成し、`models/car.glb` に保存（#644）。鍵は `~/.tripo/api.txt`（リポジトリ外）。`--balance` で残クレジットの確認のみ、`--task <id>` で既存タスクの取り直し。API クレジットが 0 だと 403 で止まる（消費なし）。Tripo の Web 画面で生成した GLB を `models/car.glb` に置いても同じ | 手動 |
 
 `retrain_cron_wrapper.py` / `rotate_cron_wrapper.py` のテストは `tests/test_retrain_cron_wrapper.py` / `tests/test_rotate_cron_wrapper.py`（`bash tests/run_all.sh` の pytest に含まれる）。`disk_guard.py` のテストは `scripts/disk_guard_test.py`（手動。pytest には含まれない）。
 

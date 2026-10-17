@@ -7,6 +7,16 @@
 
 ---
 
+## 2026-10-17 — CAR ATTITUDE の 3D 車モデル（#644）
+
+### feat(attitude): `models/car.glb` を置くと針金図の背面に 3D の車体を重ねる
+- `car-3d-model.js`（新規）: three.js r147（UMD、同梱）+ GLTFLoader で `/car.glb` を描く。カメラは car-3d.js の平行投影（camYaw / camPitch / scale / horizonY）と同じ向き・尺度にし、針金の車輪と同じ座標系に乗せる。Pitch / Roll を車体に反映。3D 表示中は地面の格子を 3D 側で描く。
+- 何もしない条件（従来の Canvas2D のまま）: three.js 未読み込み、WebGL 不可（ソフトウェア描画は `?car3d=1` のときだけ許可）、`/car.glb` が 404、`?car3d=0`。
+- `main.py`: `/car.glb` をホストの `models/car.glb`（git 管理外、マウント済み）から配信。固定名のみ。
+- `scripts/tripo_generate_car.py`: Tripo API（V2 ホスト `api.tripo3d.ai`）で生成して保存。今回は API クレジット 0 のため未生成（Web 画面の無償クレジットは API に使えない）。Web 画面でダウンロードした GLB を置いても同じに動く。
+- car-3d.js への変更は typeof ガードの 1 行フック 2 つと格子の 1 行。websocket.js 無変更。
+- テスト: `tests/test_car_model_route.py`（2）。ヘッドレス（SwiftShader）で表示・傾き・無効時のフォールバックを確認。静的チェック・pytest 97・e2e 453/0 通過。
+
 ## 2026-10-16 — Claude Security スキャンの指摘 12 件への対応（親 #640）
 
 スキャン: Anthropic 公式プラグイン claude-security 0.11、コミット b1217f3 を medium で全体スキャン。候補 19 → 検証パネル通過 12（MEDIUM 5 / LOW 7、CRITICAL・HIGH なし）。根本原因は 3 つ。
